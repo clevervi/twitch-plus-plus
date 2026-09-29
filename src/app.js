@@ -1,0 +1,108 @@
+/**
+ * Arranque y API de diagnóstico.
+ *
+ * Orden: catálogo cacheado (sin red) → estilos → features → atajos → router →
+ * scheduler → UI → tareas de red (catálogo + comprobación de actualización).
+ */
+import { on as onBus } from './core/bus.js';
+import { refresh as refreshCatalog, status as catalogStatus, warm as warmCatalog } from './core/catalog.js';
+import { onIdle, ready } from './core/dom.js';
+import { bindGlobal, register as registerKeybind } from './core/keybinds.js';
+import { setDebug, trackedErrors } from './core/log.js';
+import { applyAll, disableAll, onRouteAll, statuses } from './core/registry.js';
+import { start as startRouter } from './core/router.js';
+import { kick as kickScheduler, scheduleRoute, start as startScheduler } from './core/scheduler.js';
+import { declare, get as storeGet, set as storeSet } from './core/store.js';
+import { rebuild as rebuildStyles } from './core/styles.js';
+import { check as checkUpdate, shouldCheck } from './core/updater.js';
+import { VERSION } from './core/version.js';
+import { ChatPause } from './features/chat-pause.js';
+import './features/index.js';
+import { UI } from './ui/panel.js';
+
+declare('keybinds', 'object', {});
+declare('preset', 'string', 'balanced');
+declare('catalog', 'bool', true);
+declare('autoUpdate', 'bool', true);
+declare('debug', 'bool', false);
+
+function registerKeybinds() {
+  registerKeybind('panel', 'Abrir panel', 'Alt+O');
+  registerKeybind('chatPause', 'Pausar chat', 'Alt+P');
+  registerKeybind('pauseAll', 'Desactivar todo', 'Alt+Shift+X');
+}
+
+function runAction(id) {
+  if (id === 'panel') {
+    UI.togglePanel();
+    return;
+  }
+  if (id === 'chatPause') {
+    ChatPause.toggle();
+    UI.sync();
+    return;
+  }
+  if (id === 'pauseAll') {
+    disableAll();
+    UI.sync();
+  }
+}
+
+async function networkTasks() {
+  try {
+    await refreshCatalog();
+  } catch {
+    /* el catálogo es opcional: nunca debe romper el arranque */
+  }
+  UI.renderCatalogNote();
+  if (!shouldCheck()) return;
+  try {
+    const result = await checkUpdate();
+    if (result?.update) UI.renderCatalogNote();
+  } catch {
+    /* sin red: se ignora */
+  }
+}
+
+export function start() {
+  ready(() => {
+    setDebug(!!storeGet('debug'));
+    warmCatalog();
+    rebuildStyles();
+    applyAll();
+    registerKeybinds();
+    bindGlobal(runAction);
+    startRouter();
+    startScheduler();
+    UI.build();
+    UI.renderCatalogNote();
+    onIdle(networkTasks);
+
+    onBus('route', (route) => {
+      onRouteAll(route);
+      ChatPause.ensure();
+      scheduleRoute();
+      kickScheduler();
+    });
+
+    const list = statuses();
+    const active = list.filter((feature) => feature.enabled).length;
+    console.info(
+      `%c[Twitch++]%c v${VERSION} · ${active}/${list.length} features activas · catálogo rev. ${catalogStatus().revision || 'local'}`,
+      'color:#9147ff;font-weight:bold',
+      'color:inherit',
+    );
+  });
+}
+
+export function setFeature(id, value) {
+  storeSet(id, !!value);
+  applyAll();
+}
+
+export const diagnostics = {
+  version: VERSION,
+  features: statuses,
+  errors: trackedErrors,
+  catalog: catalogStatus,
+};

@@ -1,0 +1,41 @@
+{
+  "name": "twitch-plus-plus",
+  "version": "2.0.0",
+  "description": "Twitch++ — userscript modular, autoactualizable y extensible desde el repo (OLED, sidebar, chat, analítica de viewers, auto Channel Points, pausa de chat).",
+  "type": "module",
+  "license": "MIT",
+  "private": false,
+  "engines": {
+    "node": ">=18"
+  },
+  "repository": {
+    "type": "git",
+    "url": "git+https://github.com/twitchplusplus/twitch-plus-plus.git"
+  },
+  "homepage": "https://github.com/twitchplusplus/twitch-plus-plus",
+  "bugs": {
+    "url": "https://github.com/twitchplusplus/twitch-plus-plus/issues"
+  },
+  "keywords": [
+    "twitch",
+    "userscript",
+    "tampermonkey",
+    "greasyfork",
+    "oled",
+    "chat"
+  ],
+  "files": [
+    "dist",
+    "src",
+    "catalog.json"
+  ],
+  "scripts": {
+    "build": "node scripts/build.mjs",
+    "watch": "node scripts/build.mjs --watch",
+    "lint": "node scripts/lint.mjs",
+    "test": "node --test \"test/*.test.mjs\"",
+    "verify": "node scripts/lint.mjs && node scripts/build.mjs && node --test \"test/*.test.mjs\"",
+    "bump": "node scripts/bump.mjs",
+    "release": "node scripts/bump.mjs && node scripts/build.mjs"
+  }
+}

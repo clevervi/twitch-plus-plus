@@ -1,0 +1,28 @@
+name: CI
+
+on:
+  push:
+    branches: [main]
+  pull_request:
+  workflow_dispatch:
+
+jobs:
+  verify:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 20
+
+      - name: Lint
+        run: node scripts/lint.mjs
+
+      - name: Build
+        run: node scripts/build.mjs
+
+      - name: El bundle no debe tener drifted
+        run: git diff --exit-code dist/
+
+      - name: Tests
+        run: node --test "test/*.test.mjs"

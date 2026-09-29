@@ -1,0 +1,43 @@
+{
+  "schema": 1,
+  "revision": 1,
+  "note": "Selectores base del script. Sube `revision` al añadir o corregir selectores: los usuarios los recogen sin reinstalar.",
+  "selectors": {
+    "chat.container": [
+      "[data-test-selector=\"chat-scrollable-area__message-container\"]",
+      ".chat-scrollable-area__message-container"
+    ],
+    "chat.line": [
+      "[data-a-target=\"chat-line-message\"]",
+      ".chat-line__message"
+    ],
+    "chat.username": [
+      ".chat-line__username",
+      "[data-a-target=\"chat-message-username\"]"
+    ],
+    "sideNav.card": [
+      "[data-a-target=\"side-nav-card\"]",
+      ".side-nav-card"
+    ],
+    "sideNav.link": [
+      "[data-a-target=\"side-nav-link\"]",
+      ".side-nav-card__link"
+    ],
+    "viewerCount": [
+      "strong[data-a-target=\"animated-channel-viewers-count\"]",
+      "[data-test-selector=\"viewer-count\"]",
+      ".channel-info-bar__viewers"
+    ],
+    "claimBonus": [
+      "button[aria-label=\"Claim Bonus\"]",
+      ".claimable-bonus__icon",
+      "[data-test-selector=\"claimable-bonus-icon\"]"
+    ],
+    "pauseChat": [
+      "button[aria-label=\"Pause Chat\"]",
+      "button[aria-label=\"Pausar chat\"]",
+      "[data-test-selector=\"chat-pause-button\"]"
+    ]
+  },
+  "features": []
+}

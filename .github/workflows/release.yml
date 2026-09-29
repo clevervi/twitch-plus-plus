@@ -1,0 +1,43 @@
+name: Release
+
+# Sube versión, reconstruye dist/ y lo deja commiteado: dist/ es lo que
+# serves @downloadURL / @updateURL, así que tiene que ir en el repo.
+
+on:
+  workflow_dispatch:
+    inputs:
+      level:
+        description: "major | minor | patch"
+        required: true
+        default: patch
+      notes:
+        description: "Notas del release (una línea por punto, separadas por ;)"
+        required: false
+        default: ""
+
+permissions:
+  contents: write
+
+jobs:
+  release:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 20
+
+      - name: Bump + build
+        run: |
+          node scripts/bump.mjs "${{ inputs.level }}" "${{ inputs.notes }}"
+          node scripts/lint.mjs
+          node scripts/build.mjs
+          node --test "test/*.test.mjs"
+
+      - name: Commit
+        run: |
+          git config user.name "github-actions[bot]"
+          git config user.email "github-actions[bot]@users.noreply.github.com"
+          git add package.json CHANGELOG.md dist/
+          git diff --staged --quiet || git commit -m "chore(release): v$(node -p "require('./package.json').version")"
+          git push

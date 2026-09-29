@@ -1,0 +1,142 @@
+/**
+ * Registro y ciclo de vida de features.
+ *
+ * Cada feature es un objeto declarativo; el registry se encarga de:
+ *  - declarar la clave en el store (con default y tipo bool)
+ *  - activar/desactivar (clase CSS en <html> + hooks)
+ *  - ejecutarla en el scheduler respetando su `interval`
+ *  - aislar errores: una feature rota se apaga sola tras varios fallos seguidos
+ */
+import { emit } from './bus.js';
+import { log, track, warn } from './log.js';
+import { declare, get as storeGet, set as storeSet } from './store.js';
+
+export const SECTIONS = [
+  { id: 'visual', title: 'Visual' },
+  { id: 'clean', title: 'Limpieza' },
+  { id: 'sidebar', title: 'Sidebar' },
+  { id: 'chat', title: 'Chat' },
+  { id: 'auto', title: 'Automatización' },
+  { id: 'advanced', title: 'Avanzado' },
+];
+
+const features = [];
+const byId = new Map();
+const failures = new Map();
+const lastRun = new Map();
+const MAX_FAILURES = 3;
+
+function scopeClass(id) {
+  return `twpp-${id}`;
+}
+
+export function defineFeature(spec) {
+  if (!spec || !spec.id) throw new Error('Feature sin id');
+  if (byId.has(spec.id)) throw new Error(`Feature duplicada: ${spec.id}`);
+  const section = SECTIONS.some((s) => s.id === spec.section) ? spec.section : 'advanced';
+  const feature = { interval: 0, default: false, ...spec, section };
+  byId.set(feature.id, feature);
+  features.push(feature);
+  declare(feature.id, 'bool', !!feature.default);
+  for (const setting of feature.settings || []) {
+    declare(setting.key, setting.type || 'string', setting.default ?? '');
+  }
+  return feature;
+}
+
+export function all() {
+  return features;
+}
+
+export function get(id) {
+  return byId.get(id) || null;
+}
+
+export function isEnabled(id) {
+  return !!storeGet(id);
+}
+
+export function apply(id) {
+  const feature = byId.get(id);
+  if (!feature) return;
+  const on = !!storeGet(id);
+  document.documentElement.classList.toggle(scopeClass(id), on);
+  if (on) {
+    // el contador de fallos se reinicia al (re)activar, no al apagar
+    failures.delete(id);
+    lastRun.delete(id);
+  }
+  try {
+    if (on && feature.onEnable) feature.onEnable();
+    if (!on && feature.onDisable) feature.onDisable();
+  } catch (error) {
+    track(`enable:${id}`, error);
+  }
+  emit('feature:toggled', { id, on });
+}
+
+export function applyAll() {
+  for (const feature of features) apply(feature.id);
+}
+
+function fail(feature, error) {
+  const count = (failures.get(feature.id) || 0) + 1;
+  failures.set(feature.id, count);
+  track(`tick:${feature.id}`, error);
+  if (count >= MAX_FAILURES && isEnabled(feature.id)) {
+    storeSet(feature.id, false);
+    apply(feature.id);
+    warn(`feature "${feature.id}" desactivada tras ${count} errores seguidos`);
+    emit('feature:disabled', { id: feature.id, reason: 'errores' });
+  }
+}
+
+export function tickAll(now = Date.now()) {
+  for (const feature of features) {
+    if (!feature.tick) continue;
+    if (!storeGet(feature.id)) continue;
+    const last = lastRun.get(feature.id);
+    if (feature.interval && last !== undefined && now - last < feature.interval) continue;
+    lastRun.set(feature.id, now);
+    try {
+      feature.tick(now);
+      failures.delete(feature.id);
+    } catch (error) {
+      fail(feature, error);
+    }
+  }
+}
+
+export function onRouteAll(route) {
+  for (const feature of features) {
+    if (!feature.onRoute) continue;
+    if (!storeGet(feature.id)) continue;
+    try {
+      feature.onRoute(route);
+    } catch (error) {
+      track(`route:${feature.id}`, error);
+    }
+  }
+}
+
+export function disableAll() {
+  for (const feature of features) {
+    storeSet(feature.id, false);
+    apply(feature.id);
+  }
+  log('todas las features desactivadas');
+}
+
+export function statuses() {
+  return features.map((feature) => ({
+    id: feature.id,
+    section: feature.section,
+    enabled: !!storeGet(feature.id),
+    remote: !!feature.remote,
+    failures: failures.get(feature.id) || 0,
+  }));
+}
+
+export function sectionOf(id) {
+  return byId.get(id)?.section || 'advanced';
+}
