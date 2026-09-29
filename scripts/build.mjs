@@ -176,22 +176,7 @@ function build() {
 
   const code = `${header()}\n\n(function () {\n'use strict';\n${body}\n})();\n`;
   writeFileSync(OUT, code, 'utf8');
-
-  writeFileSync(
-    LATEST,
-    `${JSON.stringify(
-      {
-        version: pkg.version,
-        script: `${raw}/dist/twitch-plus-plus.user.js`,
-        homepage: repo,
-        publishedAt: new Date().toISOString(),
-        notes: notes(),
-      },
-      null,
-      2,
-    )}\n`,
-    'utf8',
-  );
+  writeFileSync(LATEST, `${JSON.stringify(latestManifest(), null, 2)}\n`, 'utf8');
 
   const check = spawnSync(process.execPath, ['--check', OUT], { encoding: 'utf8' });
   if (check.status !== 0) {
@@ -202,6 +187,28 @@ function build() {
   const kb = (Buffer.byteLength(code, 'utf8') / 1024).toFixed(1);
   process.stdout.write(`  dist/twitch-plus-plus.user.js  v${pkg.version}  ${kb} KB  (${Date.now() - started} ms)\n`);
   return code;
+}
+
+/**
+ * Manifiesto de la versión publicada. Reconstruir sin cambiar de versión no lo
+ * toca (así `git diff --exit-code dist/` en CI no falla por el timestamp).
+ */
+function latestManifest() {
+  const { repo, raw } = repoInfo();
+  let publishedAt = new Date().toISOString();
+  try {
+    const previous = JSON.parse(readFileSync(LATEST, 'utf8'));
+    if (previous && previous.version === pkg.version && previous.publishedAt) publishedAt = previous.publishedAt;
+  } catch {
+    /* primera build */
+  }
+  return {
+    version: pkg.version,
+    script: `${raw}/dist/twitch-plus-plus.user.js`,
+    homepage: repo,
+    publishedAt,
+    notes: notes(),
+  };
 }
 
 if (process.argv[1] && pathToFileURL(process.argv[1]).href === import.meta.url) {
