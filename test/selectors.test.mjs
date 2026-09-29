@@ -1,7 +1,18 @@
 import assert from 'node:assert/strict';
 import test from 'node:test';
 
-import { applyRemote, candidates, clearRemote, isValidSelector, select, selectAll, snapshot } from '../src/core/selectors.js';
+import {
+  applyRemote,
+  brokenSelectors,
+  candidates,
+  clearRemote,
+  isValidSelector,
+  resetHealth,
+  select,
+  selectAll,
+  selectorReport,
+  snapshot,
+} from '../src/core/selectors.js';
 
 function root(matches) {
   return {
@@ -69,4 +80,38 @@ test('clearRemote deja el registro como estaba', () => {
   clearRemote();
   assert.equal(candidates('sideNav.card').length, 2);
   assert.equal(Object.keys(snapshot()).length > 10, true);
+});
+
+test('la salud recuerda qué candidato funciona y cuántas veces falló', () => {
+  resetHealth();
+  const present = root({ '.chat-line__message': {} });
+  const absent = root({});
+
+  select('chat.line', present);
+  select('chat.line', present);
+  const report = selectorReport(present).find((row) => row.key === 'chat.line');
+  assert.equal(report.ok, true);
+  assert.equal(report.matched, '.chat-line__message');
+
+  select('chat.line', absent);
+  const broken = selectorReport(absent).find((row) => row.key === 'chat.line');
+  assert.equal(broken.ok, false);
+  assert.equal(broken.misses >= 1, true);
+
+  // al volver a funcionar, el estado se recupera solo
+  assert.equal(selectorReport(present).find((row) => row.key === 'chat.line').ok, true);
+});
+
+test('brokenSelectors solo lista las claves que no resuelven', () => {
+  resetHealth();
+  const report = brokenSelectors(root({ '[data-a-target="chat-line-message"]': {} }));
+  assert.equal(report.some((row) => row.key === 'chat.line'), false);
+  assert.equal(report.some((row) => row.key === 'viewerCount'), true);
+  assert.equal(report.every((row) => row.ok === false), true);
+});
+
+test('selectAll también deja constancia cuando no encuentra nada', () => {
+  resetHealth();
+  selectAll('viewerCount', root({}));
+  assert.equal(selectorReport(root({})).find((row) => row.key === 'viewerCount').misses >= 1, true);
 });

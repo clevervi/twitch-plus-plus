@@ -24,10 +24,26 @@ const features = [];
 const byId = new Map();
 const failures = new Map();
 const lastRun = new Map();
+const guards = new Map();
 const MAX_FAILURES = 3;
 
 function scopeClass(id) {
   return `twpp-${id}`;
+}
+
+/**
+ * `when()` permite que una feature esté activa solo bajo una condición (por
+ * ejemplo, OLED solo con el tema oscuro de Twitch). Si el resultado cambia, la
+ * feature se (des)aplica sola sin tocar la config del usuario.
+ */
+function allowed(feature) {
+  if (typeof feature.when !== 'function') return true;
+  try {
+    return !!feature.when();
+  } catch (error) {
+    track(`when:${feature.id}`, error);
+    return false;
+  }
 }
 
 export function defineFeature(spec) {
@@ -59,7 +75,8 @@ export function isEnabled(id) {
 export function apply(id) {
   const feature = byId.get(id);
   if (!feature) return;
-  const on = !!storeGet(id);
+  const enabled = !!storeGet(id);
+  const on = enabled && allowed(feature);
   document.documentElement.classList.toggle(scopeClass(id), on);
   if (on) {
     // el contador de fallos se reinicia al (re)activar, no al apagar
@@ -72,11 +89,17 @@ export function apply(id) {
   } catch (error) {
     track(`enable:${id}`, error);
   }
-  emit('feature:toggled', { id, on });
+  emit('feature:toggled', { id, on, enabled });
 }
 
 export function applyAll() {
   for (const feature of features) apply(feature.id);
+}
+
+/** `true` si la feature está habilitada y su condición se cumple. */
+export function isActive(id) {
+  const feature = byId.get(id);
+  return !!feature && !!storeGet(id) && allowed(feature);
 }
 
 function fail(feature, error) {
@@ -91,12 +114,20 @@ function fail(feature, error) {
   }
 }
 
-export function tickAll(now = Date.now()) {
+export function tickAll(now = Date.now(), { force = false } = {}) {
   for (const feature of features) {
-    if (!feature.tick) continue;
     if (!storeGet(feature.id)) continue;
+    if (typeof feature.when === 'function') {
+      const state = allowed(feature);
+      if (guards.get(feature.id) !== state) {
+        guards.set(feature.id, state);
+        apply(feature.id);
+      }
+      if (!state) continue;
+    }
+    if (!feature.tick) continue;
     const last = lastRun.get(feature.id);
-    if (feature.interval && last !== undefined && now - last < feature.interval) continue;
+    if (!force && feature.interval && last !== undefined && now - last < feature.interval) continue;
     lastRun.set(feature.id, now);
     try {
       feature.tick(now);
@@ -132,6 +163,8 @@ export function statuses() {
     id: feature.id,
     section: feature.section,
     enabled: !!storeGet(feature.id),
+    active: isActive(feature.id),
+    blocked: typeof feature.when === 'function' && !allowed(feature),
     remote: !!feature.remote,
     failures: failures.get(feature.id) || 0,
   }));
@@ -139,4 +172,8 @@ export function statuses() {
 
 export function sectionOf(id) {
   return byId.get(id)?.section || 'advanced';
+}
+
+export function failureCount(id) {
+  return failures.get(id) || 0;
 }

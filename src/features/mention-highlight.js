@@ -2,7 +2,7 @@
 import { defineFeature } from '../core/registry.js';
 import { chatContainer, chatLines, currentUsername, messageText } from '../core/twitch.js';
 
-const seen = new WeakSet();
+const CLASS = 'twpp-mention';
 let username = null;
 let pattern = null;
 
@@ -14,19 +14,20 @@ function detectUsername() {
   return username;
 }
 
+// La clase ES el estado: si el usuario se detecta tarde o cambia de cuenta,
+// los mensajes ya marcados se reevalúan solos.
 function sweep() {
   if (!detectUsername()) return;
   const container = chatContainer();
   if (!container) return;
   for (const line of chatLines(container)) {
-    if (seen.has(line)) continue;
-    seen.add(line);
-    if (pattern.test(messageText(line))) line.classList.add('twpp-mention');
+    if (line.classList.contains(CLASS)) continue;
+    if (pattern.test(messageText(line))) line.classList.add(CLASS);
   }
 }
 
 function clear() {
-  for (const line of document.querySelectorAll('.twpp-mention')) line.classList.remove('twpp-mention');
+  for (const line of document.querySelectorAll(`.${CLASS}`)) line.classList.remove(CLASS);
 }
 
 defineFeature({

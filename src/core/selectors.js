@@ -55,10 +55,36 @@ const FORBIDDEN = /[{};@]|url\(|expression\(|javascript:|\\|\/\*/i;
 const state = new Map();
 for (const [key, list] of Object.entries(BASE)) state.set(key, { local: list, remote: [] });
 
+/** Salud por clave: cuál candidato sigue funcionando y cuánto falla. */
+const health = new Map();
+
 function list(key) {
   const entry = state.get(key);
   if (!entry) return [];
   return entry.remote.concat(entry.local);
+}
+
+function note(key, matched) {
+  let entry = health.get(key);
+  if (!entry) {
+    entry = { hits: 0, misses: 0, ok: null, matched: null, lastHitAt: 0, lastMissAt: 0 };
+    health.set(key, entry);
+  }
+  const hit = !!matched;
+  if (entry.ok === hit) {
+    if (hit) entry.matched = matched;
+    return;
+  }
+  const now = Date.now();
+  if (hit) {
+    entry.hits += 1;
+    entry.lastHitAt = now;
+    entry.matched = matched;
+  } else {
+    entry.misses += 1;
+    entry.lastMissAt = now;
+  }
+  entry.ok = hit;
 }
 
 export function candidates(key) {
@@ -69,25 +95,32 @@ export function select(key, root = document) {
   for (const selector of list(key)) {
     try {
       const found = root.querySelector(selector);
-      if (found) return found;
+      if (found) {
+        note(key, selector);
+        return found;
+      }
     } catch {
       /* candidato inválido: se ignora */
     }
   }
+  note(key, null);
   return null;
 }
 
 export function selectAll(key, root = document) {
-  const out = [];
   for (const selector of list(key)) {
     try {
       const found = root.querySelectorAll(selector);
-      if (found && found.length) return Array.from(found);
+      if (found && found.length) {
+        note(key, selector);
+        return Array.from(found);
+      }
     } catch {
       /* ignorar */
     }
   }
-  return out;
+  note(key, null);
+  return [];
 }
 
 export function isValidSelector(selector) {
@@ -133,4 +166,31 @@ export function snapshot() {
   const out = {};
   for (const [key, entry] of state) out[key] = list(key);
   return out;
+}
+
+/**
+ * Estado de todas las claves: qué selector sigue funcionando y cuáles han
+ * dejado de existir. Es el dato que dice "qué se rompió" sin adivinar.
+ */
+export function selectorReport(root = document) {
+  return [...state.keys()].map((key) => {
+    const matched = select(key, root);
+    const stats = health.get(key) || { hits: 0, misses: 0 };
+    return {
+      key,
+      ok: !!matched,
+      matched: stats.matched,
+      total: list(key).length,
+      remote: state.get(key).remote.length,
+      misses: stats.misses,
+    };
+  });
+}
+
+export function brokenSelectors(root = document) {
+  return selectorReport(root).filter((row) => !row.ok);
+}
+
+export function resetHealth() {
+  health.clear();
 }

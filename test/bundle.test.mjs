@@ -7,6 +7,7 @@ import vm from 'node:vm';
 import { createDomStub } from '../tools/dom-stub.mjs';
 
 const BUNDLE = resolve(process.cwd(), 'dist/twitch-plus-plus.user.js');
+const VERSION = JSON.parse(readFileSync(resolve(process.cwd(), 'package.json'), 'utf8')).version;
 
 function boot() {
   const stub = createDomStub();
@@ -19,6 +20,7 @@ function boot() {
     JSON,
     Image: class {},
     history: { pushState() {}, replaceState() {} },
+    navigator: { userAgent: 'twpp-test/1.0' },
     fetch: () => Promise.reject(new Error('sin red en el test')),
     CustomEvent: class {
       constructor(type, init) {
@@ -49,7 +51,7 @@ function feature(sandbox, id) {
 test('el bundle arranca sin lanzar y expone la API pública', () => {
   const sandbox = boot();
   assert.equal(typeof sandbox.TwitchPP, 'object');
-  assert.equal(sandbox.TwitchPP.version, '2.0.0');
+  assert.equal(sandbox.TwitchPP.version, VERSION);
   assert.equal(typeof sandbox.TwitchPP.diagnostics.features, 'function');
   assert.ok(sandbox.TwitchPP.diagnostics.features().length >= 15);
 });
@@ -71,7 +73,7 @@ test('los hooks declarados en el header son los que necesita el repo', () => {
     '@connect      raw.githubusercontent.com',
     '@downloadURL',
     '@updateURL',
-    '@version      2.0.0',
+    `@version      ${VERSION}`,
     '==/UserScript==',
   ]) {
     assert.ok(code.includes(token), `falta ${token}`);
@@ -133,4 +135,47 @@ test('un ajuste numérico se recorta a su rango', () => {
   input.value = '9000';
   shadow.fire('change', { target: input });
   assert.equal(input.value, '120');
+});
+
+test('la sonda fuerza todas las features y restaura la config', () => {
+  const sandbox = boot();
+  const before = sandbox.TwitchPP.diagnostics.features().filter((f) => f.active).map((f) => f.id).sort();
+
+  const data = sandbox.TwitchPP.diagnostics.probe();
+  assert.equal(data.features.length >= 15, true);
+  assert.equal(data.selectors.length >= 12, true);
+  assert.equal(data.summary.featuresTotal, data.features.length);
+  assert.equal(data.summary.selectorsOk <= data.summary.selectorsTotal, true);
+  assert.equal(typeof data.summary.featuresOk, 'number');
+
+  const after = sandbox.TwitchPP.diagnostics.features().filter((f) => f.active).map((f) => f.id).sort();
+  assert.deepEqual(after, before, 'la sonda no debe dejar la config cambiada');
+});
+
+test('la sonda lista los selectores que no resuelven en el DOM actual', () => {
+  const sandbox = boot();
+  const broken = sandbox.TwitchPP.diagnostics.broken();
+  assert.ok(Array.isArray(broken));
+  assert.ok(broken.every((row) => row.ok === false));
+});
+
+test('el informe incluye versión, features, selectores y catálogo', () => {
+  const sandbox = boot();
+  const text = sandbox.TwitchPP.diagnostics.report();
+  assert.match(text, new RegExp(`Twitch\\+\\+ v${VERSION.replace(/\./g, '\\.')}`));
+  assert.match(text, /features activas:/);
+  assert.match(text, /selectores sin resolver:/);
+  assert.match(text, /catálogo: rev\./);
+});
+
+test('probe.html carga el bundle local y llama a la sonda', () => {
+  const html = readFileSync(resolve(process.cwd(), 'probe.html'), 'utf8');
+  assert.match(html, /dist\/twitch-plus-plus\.user\.js/);
+  assert.match(html, /diagnostics\.probe\(\)/);
+  assert.match(html, /outerHTML/);
+  assert.equal(/<script src="https?:/.test(html), false, 'probe.html no debe cargar nada externo');
+
+  const inline = [...html.matchAll(/<script>([\s\S]*?)<\/script>/g)].map((match) => match[1]);
+  assert.equal(inline.length, 1, 'espera un único script embebido');
+  assert.doesNotThrow(() => new vm.Script(inline[0]), 'el script de probe.html debe parsear');
 });

@@ -17,6 +17,6 @@
 // @grant        GM_openInTab
 // @grant        GM_info
 // @connect      raw.githubusercontent.com
-// @run-at       document-idle
+// @run-at       document-start
 // @noframes
 // ==/UserScript==

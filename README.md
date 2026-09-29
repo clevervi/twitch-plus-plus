@@ -20,6 +20,28 @@ npm run watch      # reconstruye al guardar
 
 Atajos por defecto: `Alt+O` abre el panel, `Alt+P` pausa el chat, `Alt+Shift+X` desactiva todo (válvula de escape).
 
+## Cuando Twitch cambia el DOM: la sonda
+
+`probe.html` es la herramienta para eso. Ábrelo (doble clic, o sírvelo con cualquier servidor estático) y:
+
+1. En twitch.tv, consola → `copy(document.documentElement.outerHTML)`.
+2. Pega el volcado en la sonda y pulsa **Cargar snapshot y analizar**.
+3. El script se ejecuta dentro de un iframe aislado contra ese HTML y te dice, sin tocar tu navegador:
+   - qué features lanzan errores,
+   - qué claves de selector **dejan de resolver** y cuál de sus candidatos es el que aún funciona,
+   - un informe de texto para pegar en un issue.
+
+Con esa lista el arreglo es mecánico: se corrige (o se añade) el selector en `catalog.json` subiendo `revision`, y los usuarios lo recogen sin reinstalar.
+
+Lo mismo, en vivo, desde la consola de Twitch:
+
+```js
+TwitchPP.diagnostics.report()      // texto para un issue
+TwitchPP.diagnostics.broken()      // selectores que no resuelven ahora mismo
+TwitchPP.diagnostics.probe()       // fuerza todas las features y restaura la config
+TwitchPP.diagnostics.selectors()   // tabla completa: clave → selector que funciona
+```
+
 ## Estructura
 
 ```
@@ -27,26 +49,29 @@ src/
   index.js              punto de entrada (solo arranca y expone TwitchPP)
   app.js                orden de arranque y tareas de red
   core/
-    registry.js         defineFeature + ciclo de vida + circuit breaker
-    selectors.js        registro de selectores con candidatos y fallback
+    registry.js         defineFeature + ciclo de vida + circuit breaker + when()
+    selectors.js        registro de selectores con candidatos, fallback y salud
     store.js            config tipada (declare/get/set + import/export)
     migrations.js       un paso por versión de config
+    probe.js            fuerza todas las features y devuelve qué funciona
+    report.js           informe de texto para issues
     scheduler.js        latido único, evento + intervalo, se para en segundo plano
     router.js           navegación SPA de Twitch
     styles.js           CSS consolidado con scope por feature
     catalog.js          catálogo remoto (selectores + features del repo)
     updater.js          comprobación de versión contra dist/latest.json
     keybinds.js         atajos con validación
-    twitch.js           helpers de Twitch (canal, miniaturas, viewers, chat)
+    twitch.js           helpers de Twitch (canal, tema, miniaturas, viewers, chat)
     gm.js               adaptador GM_* con fallback a localStorage
     dom.js, log.js, bus.js, toast.js, version.js
   features/             una feature por archivo
   ui/panel.js           panel en shadow DOM (filas, ajustes, presets)
   ui/presets.js         minimal / balanced / agresivo
-test/                   41 tests con node:test
+test/                   52 tests con node:test
 tools/dom-stub.mjs      DOM mínimo para arrancar el bundle fuera del navegador
 scripts/                build (bundler propio), lint, bump
 catalog.json            lo que el script lee del repo (ver abajo)
+probe.html              sonda: pega un volcado del DOM y comprueba qué funciona
 dist/                   bundle + latest.json (se commitean: los sirve el userscript)
 ```
 
@@ -73,12 +98,15 @@ También hay un workflow *Release* en GitHub Actions que hace exactamente eso.
 
 ## Cómo contribute una feature
 
-1. Crea `src/features/mi-feature.js` con un `defineFeature({ id, label, section, default, css, tick, onEnable, onDisable, onRoute, settings })`.
+1. Crea `src/features/mi-feature.js` con un `defineFeature({ id, label, section, default, css, tick, onEnable, onDisable, onRoute, settings, when })`.
    - `css` con `%SCOPE%` se inyecta solo como `html.twpp-<id>`.
    - `interval` (ms) evita el tick en cada latido para lo caro.
+   - `when()` la deja inactiva bajo una condición (p.ej. OLED solo con el tema oscuro) sin tocar la config del usuario; si la condición cambia, se reaplica sola.
    - `settings` acepta `bool`, `text`, `number` y `select`; el panel los dibuja solo.
 2. Añade el `import '../features/mi-feature.js';` en `src/features/index.js`.
 3. `npm run verify`.
+
+Si tu feature depende del DOM, añade su clave al registro de `src/core/selectors.js`: así `probe.html` te avisa cuando Twitch la rompa.
 
 El bundler (`scripts/build.mjs`, sin dependencias) solo entiende un subconjunto de ESM a propósito: `import { a, b as c } from './x.js'`, `export const|function|class`, `export { a }` y `export { a } from './x.js'`. Cualquier otra forma hace fallar el build, y un import que no exista en el destino también.
 

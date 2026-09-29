@@ -1,5 +1,20 @@
 # Changelog
 
+## 2.1.0
+
+- `probe.html`: pega un volcado del DOM de Twitch y el script se ejecuta contra él en un iframe aislado, diciendo qué features fallan y qué selectores dejan de resolver. Es la herramienta para arreglar cambios de Twitch sin depurar en vivo.
+- Salud de selectores: cada clave del registro recuerda qué candidato funciona y cuántos fallos acumula. Disponible en `TwitchPP.diagnostics.selectors()`, `broken()`, `report()` y en el botón *Diagnóstico* del panel.
+- `TwitchPP.diagnostics.probe()`: fuerza todas las features contra el DOM actual, recoge los errores y restaura la configuración del usuario.
+- `TwitchPP.diagnostics.report()`: informe de texto listo para pegar en un issue.
+- Arranque a prueba de fallos: cada capa va en su propio `try/catch`; si algo peta se registra, se lanza `twpp:boot-error` y se avisa con un toast en vez de dejar al usuario sin panel.
+- Importación de la configuración del script de un solo archivo (clave `twpp`) la primera vez, con sus migraciones.
+- OLED respeta el tema de Twitch: con el ajuste *Solo en tema oscuro de Twitch* (activo por defecto) no se impone el negro si el usuario está en tema claro, y reaplica solo cuando cambia el tema.
+- `when()` en el registro: una feature puede estar habilitada y aun así inactiva por condición, sin tocar la config del usuario.
+- Fin del flash de tema: `@run-at document-start` y el CSS se inyecta antes de que Twitch pinte; la UI y el scheduler esperan al DOM.
+- El estado de las features pasa a vivir en el DOM (atributos y clases) en vez de en `WeakSet`: canales offline, menciones y palabras clave ya no se quedan sin reevaluar al cambiar de canal, al desactivar y al editar los ajustes.
+- Las tareas de red no se ejecutan fuera de `twitch.tv`, para que un catálogo remoto no contamine una medida.
+- Tests: 52 (los nuevos cubren la importación de la config antigua, `when()`, la salud de selectores, la sonda, el informe y que `probe.html` parsea).
+
 ## 2.0.0
 
 - Arquitectura modular: cada feature es un módulo en `src/features/` con ciclo de vida propio (enable/disable/route) y su propio intervalo de ejecución.

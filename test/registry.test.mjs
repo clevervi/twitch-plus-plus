@@ -150,3 +150,44 @@ test('onRoute solo llama a las features habilitadas', async () => {
   onRouteAll({ path: '/y' });
   assert.deepEqual(calls, ['on']);
 });
+
+test('when() bloquea la feature sin tocar la config y se reaplica sola', async () => {
+  const { defineFeature, isActive, statuses, store, tickAll } = await freshRegistry();
+  let permitido = false;
+  let ticks = 0;
+  defineFeature({
+    id: 'condicional',
+    label: 'Condicional',
+    section: 'visual',
+    default: true,
+    when: () => permitido,
+    tick: () => (ticks += 1),
+  });
+
+  assert.equal(isActive('condicional'), false, 'cuando when() es false no está activa');
+  assert.equal(store.get('condicional'), true, 'pero el usuario la sigue teniendo activada');
+  assert.equal(document.documentElement.classList.contains('twpp-condicional'), false);
+
+  tickAll(1000);
+  assert.equal(ticks, 0, 'no se ejecuta mientras está bloqueada');
+
+  permitido = true;
+  tickAll(2000);
+  assert.equal(ticks, 1, 'en cuanto la condición se cumple, se aplica y corre');
+  assert.equal(document.documentElement.classList.contains('twpp-condicional'), true);
+  assert.equal(statuses().find((s) => s.id === 'condicional').blocked, false);
+});
+
+test('un when() que lanza no rompe el arranque', async () => {
+  const { defineFeature, isActive } = await freshRegistry();
+  defineFeature({
+    id: 'when-roto',
+    label: 'When roto',
+    section: 'chat',
+    default: true,
+    when: () => {
+      throw new Error('boom');
+    },
+  });
+  assert.equal(isActive('when-roto'), false);
+});

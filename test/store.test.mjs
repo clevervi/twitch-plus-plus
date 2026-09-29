@@ -95,3 +95,30 @@ test('declare después de la primera lectura no pisa el valor del usuario', asyn
   store.declare('tardia', 'bool', false);
   assert.equal(store.get('tardia'), true);
 });
+
+test('importa la config del script de un solo archivo (clave "twpp")', async () => {
+  const { memory } = await freshStore();
+  memory.set('twpp', { _v: 0, hideExt: true, chatSearch: true, keybinds: { chatPause: 'Alt+G' } });
+  n += 1;
+  const store = await import(`../src/core/store.js?v=${n}`);
+  store.declare('hideExtensions', 'bool', false);
+  store.declare('chatSearch', 'bool', false);
+  store.declare('keybinds', 'object', {});
+
+  assert.equal(store.get('hideExtensions'), true, 'renombra hideExt');
+  assert.equal(store.get('chatSearch'), true, 'conserva lo que ya estaba activo');
+  assert.equal(store.get('keybinds').chatPause, 'Alt+G');
+  assert.equal(store.migratedFrom(), 'twpp');
+  assert.equal(memory.get('twpp.config').chatSearch, true, 'persiste en la clave nueva');
+});
+
+test('si ya hay config nueva, la del script viejo se ignora', async () => {
+  const { memory } = await freshStore();
+  memory.set('twpp.config', { _v: 5, chatSearch: false });
+  memory.set('twpp', { _v: 0, chatSearch: true });
+  n += 1;
+  const store = await import(`../src/core/store.js?v=${n}`);
+  store.declare('chatSearch', 'bool', false);
+  assert.equal(store.get('chatSearch'), false);
+  assert.equal(store.migratedFrom(), null);
+});

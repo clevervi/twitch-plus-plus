@@ -298,7 +298,13 @@ export function createDomStub() {
     open: () => null,
     prompt: () => null,
     confirm: () => true,
-    getComputedStyle: () => ({ visibility: 'visible', display: 'block', overflowY: 'visible' }),
+    getComputedStyle: () => ({
+      visibility: 'visible',
+      display: 'block',
+      overflowY: 'visible',
+      backgroundColor: 'rgb(0, 0, 0)',
+      color: 'rgb(239, 239, 241)',
+    }),
   };
 
   class MutationObserverStub {

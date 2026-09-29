@@ -3,7 +3,7 @@ import { qs } from '../core/dom.js';
 import { defineFeature } from '../core/registry.js';
 import { selectAll } from '../core/selectors.js';
 
-const marked = new WeakSet();
+const ATTR = 'data-twpp-offline';
 
 function isOffline(card) {
   if (qs('[class*="offline"], [class*="Offline"]', card)) return true;
@@ -12,20 +12,17 @@ function isOffline(card) {
   return false;
 }
 
+// El atributo ES el estado: nada de WeakSet, así volver a habilitar, cambiar de
+// canal o reconectar el canal se refleja sin recargar.
 function sweep() {
   for (const card of selectAll('sideNav.card')) {
-    if (marked.has(card)) continue;
-    if (isOffline(card)) {
-      marked.add(card);
-      card.setAttribute('data-twpp-offline', '1');
-    } else {
-      card.removeAttribute('data-twpp-offline');
-    }
+    if (card.getAttribute(ATTR) === '1') continue;
+    card.setAttribute(ATTR, isOffline(card) ? '1' : '0');
   }
 }
 
 function clear() {
-  for (const card of selectAll('sideNav.card')) card.removeAttribute('data-twpp-offline');
+  for (const card of selectAll('sideNav.card')) card.removeAttribute(ATTR);
 }
 
 defineFeature({
@@ -37,8 +34,7 @@ defineFeature({
   css: `
     %SCOPE% [data-a-target="side-nav-card"][data-twpp-offline="1"],
     %SCOPE% .side-nav-card[data-twpp-offline="1"] { display: none !important; }
-  `,
-  tick: sweep,
+  `,  tick: sweep,
   onEnable: sweep,
   onDisable: clear,
   onRoute: clear,

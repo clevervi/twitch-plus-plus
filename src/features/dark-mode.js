@@ -1,10 +1,19 @@
 import { defineFeature } from '../core/registry.js';
+import { get as storeGet } from '../core/store.js';
+import { isDarkTheme } from '../core/twitch.js';
 
 defineFeature({
   id: 'darkMode',
   label: 'Tema OLED',
   section: 'visual',
   default: true,
+  // Si el usuario está con el tema claro de Twitch, OLED no se impone: se
+  // respeta su elección y el tick reevalúa la condición al cambiar el tema.
+  when: () => !storeGet('respectTwitchTheme') || isDarkTheme(),
+  interval: 1500,
+  settings: [
+    { key: 'respectTwitchTheme', label: 'Solo en tema oscuro de Twitch', type: 'bool', default: true },
+  ],
   css: `
     %SCOPE% {
       --color-background-body: #000000 !important;

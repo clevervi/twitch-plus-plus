@@ -42,6 +42,22 @@ export function currentChannel() {
   return (location.pathname.match(/^\/([^/]+)/) || [])[1] || '';
 }
 
+/**
+ * ¿Twitch está en tema oscuro? Primero la clase que Twitch usa y, si no está,
+ * se deduce del color de fondo real (sirve para cuando cambian el marcado).
+ */
+export function isDarkTheme() {
+  if (document.documentElement.classList.contains('tw-root--theme-dark')) return true;
+  if (document.body?.classList.contains('tw-root--theme-dark')) return true;
+  if (qs('.tw-root--theme-dark')) return true;
+
+  const style = getComputedStyle(document.body || document.documentElement);
+  const color = style?.backgroundColor || style?.color || '';
+  const [r, g, b] = (String(color).match(/[\d.]+/g) || []).map(Number);
+  if ([r, g, b].length < 3 || [r, g, b].some(Number.isNaN)) return true;
+  return (r * 299 + g * 587 + b * 114) / 1000 < 128;
+}
+
 /** Diálogo de hover que Twitch abre al pasar por una card de la sidebar. */
 export function hoverDialog() {
   const layers = qsAll('.tw-dialog-layer, [role="dialog"]');

@@ -1,7 +1,7 @@
 // ==UserScript==
 // @name         Twitch++
 // @namespace    https://github.com/twitchplusplus
-// @version      2.0.0
+// @version      2.1.0
 // @description  Twitch limpio, modular y autoactualizable: OLED, sidebar, chat, analítica de viewers, auto Channel Points y pausa de chat.
 // @author       Twitch++
 // @license      MIT
@@ -17,7 +17,7 @@
 // @grant        GM_openInTab
 // @grant        GM_info
 // @connect      raw.githubusercontent.com
-// @run-at       document-idle
+// @run-at       document-start
 // @noframes
 // ==/UserScript==
 
@@ -315,10 +315,36 @@ const FORBIDDEN = /[{};@]|url\(|expression\(|javascript:|\\|\/\*/i;
 const state = new Map();
 for (const [key, list] of Object.entries(BASE)) state.set(key, { local: list, remote: [] });
 
+/** Salud por clave: cuál candidato sigue funcionando y cuánto falla. */
+const health = new Map();
+
 function list(key) {
   const entry = state.get(key);
   if (!entry) return [];
   return entry.remote.concat(entry.local);
+}
+
+function note(key, matched) {
+  let entry = health.get(key);
+  if (!entry) {
+    entry = { hits: 0, misses: 0, ok: null, matched: null, lastHitAt: 0, lastMissAt: 0 };
+    health.set(key, entry);
+  }
+  const hit = !!matched;
+  if (entry.ok === hit) {
+    if (hit) entry.matched = matched;
+    return;
+  }
+  const now = Date.now();
+  if (hit) {
+    entry.hits += 1;
+    entry.lastHitAt = now;
+    entry.matched = matched;
+  } else {
+    entry.misses += 1;
+    entry.lastMissAt = now;
+  }
+  entry.ok = hit;
 }
 
 function candidates(key) {
@@ -329,25 +355,32 @@ function select(key, root = document) {
   for (const selector of list(key)) {
     try {
       const found = root.querySelector(selector);
-      if (found) return found;
+      if (found) {
+        note(key, selector);
+        return found;
+      }
     } catch {
       /* candidato inválido: se ignora */
     }
   }
+  note(key, null);
   return null;
 }
 
 function selectAll(key, root = document) {
-  const out = [];
   for (const selector of list(key)) {
     try {
       const found = root.querySelectorAll(selector);
-      if (found && found.length) return Array.from(found);
+      if (found && found.length) {
+        note(key, selector);
+        return Array.from(found);
+      }
     } catch {
       /* ignorar */
     }
   }
-  return out;
+  note(key, null);
+  return [];
 }
 
 function isValidSelector(selector) {
@@ -394,6 +427,33 @@ function snapshot() {
   for (const [key, entry] of state) out[key] = list(key);
   return out;
 }
+
+/**
+ * Estado de todas las claves: qué selector sigue funcionando y cuáles han
+ * dejado de existir. Es el dato que dice "qué se rompió" sin adivinar.
+ */
+function selectorReport(root = document) {
+  return [...state.keys()].map((key) => {
+    const matched = select(key, root);
+    const stats = health.get(key) || { hits: 0, misses: 0 };
+    return {
+      key,
+      ok: !!matched,
+      matched: stats.matched,
+      total: list(key).length,
+      remote: state.get(key).remote.length,
+      misses: stats.misses,
+    };
+  });
+}
+
+function brokenSelectors(root = document) {
+  return selectorReport(root).filter((row) => !row.ok);
+}
+
+function resetHealth() {
+  health.clear();
+}
 return {
   candidates: candidates,
   select: select,
@@ -402,6 +462,9 @@ return {
   applyRemote: applyRemote,
   clearRemote: clearRemote,
   snapshot: snapshot,
+  selectorReport: selectorReport,
+  brokenSelectors: brokenSelectors,
+  resetHealth: resetHealth,
 };
 })();
 
@@ -485,10 +548,12 @@ const { CONFIG_VERSION: CONFIG_VERSION, migrate: migrate } = __m4;
 
 
 const KEY = 'twpp.config';
+const LEGACY_KEYS = ['twpp'];
 
 const schema = new Map();
 const listeners = new Set();
 let cache = null;
+let importedFromLegacy = null;
 
 function coerce(value, type) {
   switch (type) {
@@ -517,8 +582,8 @@ function declare(key, type, fallback) {
 
 function all() {
   if (cache) return cache;
-  const raw = getValue(KEY, null);
-  const migrated = migrate(raw && typeof raw === 'object' ? raw : null);
+  const migrated = migrate(readConfig());
+  importedFromLegacy = importedFromLegacy || { imported: false, from: null };
 
   const next = {};
   let repaired = 0;
@@ -538,7 +603,30 @@ function all() {
   if (repaired) warn('claves reparadas:', repaired);
 
   cache = next;
+  if (importedFromLegacy.imported) {
+    log(`configuración migrada desde "${importedFromLegacy.from}"`);
+    persist();
+  }
   return cache;
+}
+
+/** Lee la config actual y, si no hay, la del script de un solo archivo (v1). */
+function readConfig() {
+  const current = getValue(KEY, null);
+  if (current && typeof current === 'object') return current;
+
+  for (const legacy of LEGACY_KEYS) {
+    const old = getValue(legacy, null);
+    if (!old || typeof old !== 'object' || Array.isArray(old)) continue;
+    importedFromLegacy = { imported: true, from: legacy };
+    return { ...old, _v: Number.isFinite(old._v) ? old._v : 0 };
+  }
+  return current;
+}
+
+/** `true` si esta sesión importó la configuración del script anterior. */
+function migratedFrom() {
+  return importedFromLegacy?.imported ? importedFromLegacy.from : null;
 }
 
 function clone(value) {
@@ -627,6 +715,7 @@ function schemaSnapshot() {
 return {
   declare: declare,
   all: all,
+  migratedFrom: migratedFrom,
   get: get,
   set: set,
   setMany: setMany,
@@ -670,10 +759,26 @@ const features = [];
 const byId = new Map();
 const failures = new Map();
 const lastRun = new Map();
+const guards = new Map();
 const MAX_FAILURES = 3;
 
 function scopeClass(id) {
   return `twpp-${id}`;
+}
+
+/**
+ * `when()` permite que una feature esté activa solo bajo una condición (por
+ * ejemplo, OLED solo con el tema oscuro de Twitch). Si el resultado cambia, la
+ * feature se (des)aplica sola sin tocar la config del usuario.
+ */
+function allowed(feature) {
+  if (typeof feature.when !== 'function') return true;
+  try {
+    return !!feature.when();
+  } catch (error) {
+    track(`when:${feature.id}`, error);
+    return false;
+  }
 }
 
 function defineFeature(spec) {
@@ -705,7 +810,8 @@ function isEnabled(id) {
 function apply(id) {
   const feature = byId.get(id);
   if (!feature) return;
-  const on = !!storeGet(id);
+  const enabled = !!storeGet(id);
+  const on = enabled && allowed(feature);
   document.documentElement.classList.toggle(scopeClass(id), on);
   if (on) {
     // el contador de fallos se reinicia al (re)activar, no al apagar
@@ -718,11 +824,17 @@ function apply(id) {
   } catch (error) {
     track(`enable:${id}`, error);
   }
-  emit('feature:toggled', { id, on });
+  emit('feature:toggled', { id, on, enabled });
 }
 
 function applyAll() {
   for (const feature of features) apply(feature.id);
+}
+
+/** `true` si la feature está habilitada y su condición se cumple. */
+function isActive(id) {
+  const feature = byId.get(id);
+  return !!feature && !!storeGet(id) && allowed(feature);
 }
 
 function fail(feature, error) {
@@ -737,12 +849,20 @@ function fail(feature, error) {
   }
 }
 
-function tickAll(now = Date.now()) {
+function tickAll(now = Date.now(), { force = false } = {}) {
   for (const feature of features) {
-    if (!feature.tick) continue;
     if (!storeGet(feature.id)) continue;
+    if (typeof feature.when === 'function') {
+      const state = allowed(feature);
+      if (guards.get(feature.id) !== state) {
+        guards.set(feature.id, state);
+        apply(feature.id);
+      }
+      if (!state) continue;
+    }
+    if (!feature.tick) continue;
     const last = lastRun.get(feature.id);
-    if (feature.interval && last !== undefined && now - last < feature.interval) continue;
+    if (!force && feature.interval && last !== undefined && now - last < feature.interval) continue;
     lastRun.set(feature.id, now);
     try {
       feature.tick(now);
@@ -778,6 +898,8 @@ function statuses() {
     id: feature.id,
     section: feature.section,
     enabled: !!storeGet(feature.id),
+    active: isActive(feature.id),
+    blocked: typeof feature.when === 'function' && !allowed(feature),
     remote: !!feature.remote,
     failures: failures.get(feature.id) || 0,
   }));
@@ -785,6 +907,10 @@ function statuses() {
 
 function sectionOf(id) {
   return byId.get(id)?.section || 'advanced';
+}
+
+function failureCount(id) {
+  return failures.get(id) || 0;
 }
 return {
   SECTIONS: SECTIONS,
@@ -794,11 +920,13 @@ return {
   isEnabled: isEnabled,
   apply: apply,
   applyAll: applyAll,
+  isActive: isActive,
   tickAll: tickAll,
   onRouteAll: onRouteAll,
   disableAll: disableAll,
   statuses: statuses,
   sectionOf: sectionOf,
+  failureCount: failureCount,
 };
 })();
 
@@ -850,7 +978,7 @@ return {
 /* ---- src/core/version.js ---- */
 const __m8 = (function () {
 /** Sustituido en build. Fuente única de verdad: package.json + header del userscript. */
-const VERSION = '2.0.0';
+const VERSION = '2.1.0';
 const REPO_URL = 'https://github.com/twitchplusplus/twitch-plus-plus';
 const RAW_URL = 'https://raw.githubusercontent.com/twitchplusplus/twitch-plus-plus/main';
 const BRANCH = 'main';
@@ -1266,8 +1394,109 @@ return {
 };
 })();
 
-/* ---- src/core/router.js ---- */
+/* ---- src/core/probe.js ---- */
 const __m12 = (function () {
+const { trackedErrors: trackedErrors } = __m2;
+const { all: all, applyAll: applyAll, failureCount: failureCount, isActive: isActive, tickAll: tickAll } = __m6;
+const { selectorReport: selectorReport } = __m3;
+const { get: storeGet, set: storeSet } = __m5;
+
+/**
+ * Sonda de diagnóstico: fuerza todas las features contra el DOM que hay ahora
+ * mismo y devuelve qué funcionó y qué se rompió. Se usa desde probe.html (con un
+ * volcado del HTML de Twitch) y desde `TwitchPP.diagnostics.probe()`.
+ * Restaura la configuración del usuario al terminar.
+ */
+
+
+
+
+
+function probe({ ticks = 2, root = document } = {}) {
+  const before = trackedErrors().length;
+  const snapshot = all().map((feature) => [feature.id, !!storeGet(feature.id)]);
+
+  for (const [id] of snapshot) storeSet(id, true);
+  applyAll(); // reactivar limpia los contadores de fallos
+  for (let i = 0; i < ticks; i += 1) tickAll(Date.now() + i * 60_000, { force: true });
+
+  const features = all().map((feature) => ({
+    id: feature.id,
+    section: feature.section,
+    hasTick: !!feature.tick,
+    active: isActive(feature.id),
+    blocked: typeof feature.when === 'function' && !isActive(feature.id),
+    errors: failureCount(feature.id),
+  }));
+
+  const selectors = selectorReport(root);
+  const errors = trackedErrors().slice(before);
+
+  for (const [id, enabled] of snapshot) storeSet(id, enabled);
+  applyAll();
+
+  return {
+    at: new Date().toISOString(),
+    url: root.location?.href ?? '',
+    features,
+    selectors,
+    errors,
+    summary: {
+      featuresOk: features.filter((feature) => feature.errors === 0).length,
+      featuresTotal: features.length,
+      selectorsOk: selectors.filter((row) => row.ok).length,
+      selectorsTotal: selectors.length,
+    },
+  };
+}
+return {
+  probe: probe,
+};
+})();
+
+/* ---- src/core/report.js ---- */
+const __m13 = (function () {
+const { status: catalogStatus } = __m9;
+const { trackedErrors: trackedErrors } = __m2;
+const { statuses: statuses } = __m6;
+const { brokenSelectors: brokenSelectors } = __m3;
+const { VERSION: VERSION } = __m8;
+
+/** Informe de una línea por dato, pensado para pegar en un issue. */
+
+
+
+
+
+
+function report() {
+  const list = statuses();
+  const active = list.filter((feature) => feature.active).map((feature) => feature.id);
+  const blocked = list.filter((feature) => feature.enabled && !feature.active).map((feature) => feature.id);
+  const failing = list.filter((feature) => feature.failures > 0).map((feature) => `${feature.id} (${feature.failures})`);
+  const dead = brokenSelectors().map((row) => row.key);
+  const catalog = catalogStatus();
+
+  const lines = [
+    `Twitch++ v${VERSION}`,
+    `navegador: ${globalThis.navigator?.userAgent || 'desconocido'}`,
+    `página: ${location.pathname}`,
+    `features activas: ${active.join(', ') || '—'}`,
+    `features bloqueadas por condición: ${blocked.join(', ') || '—'}`,
+    `features con errores: ${failing.join(', ') || '—'}`,
+    `selectores sin resolver: ${dead.join(', ') || '—'}`,
+    `catálogo: rev. ${catalog.revision || 'local'}${catalog.remote ? '' : ' (sin remoto)'}${catalog.error ? ` — ${catalog.error}` : ''}`,
+  ];
+  for (const entry of trackedErrors().slice(-5)) lines.push(`error: ${entry.scope}: ${entry.message}`);
+  return lines.join('\n');
+}
+return {
+  report: report,
+};
+})();
+
+/* ---- src/core/router.js ---- */
+const __m14 = (function () {
 const { emit: emit } = __m0;
 const { log: log } = __m2;
 
@@ -1319,7 +1548,7 @@ return {
 })();
 
 /* ---- src/core/scheduler.js ---- */
-const __m13 = (function () {
+const __m15 = (function () {
 const { debounce: debounce, onIdle: onIdle, throttle: throttle } = __m10;
 const { log: log } = __m2;
 const { tickAll: tickAll } = __m6;
@@ -1413,8 +1642,42 @@ return {
 };
 })();
 
+/* ---- src/core/toast.js ---- */
+const __m16 = (function () {
+const { log: log } = __m2;
+
+let host = null;
+const queue = [];
+
+function setHost(node) {
+  host = node;
+  while (queue.length && host) show(queue.shift());
+}
+
+function show(message, duration = 1800) {
+  if (!host) {
+    log('toast (sin host):', message);
+    queue.push([message, duration]);
+    return;
+  }
+  const node = document.createElement('div');
+  node.className = 'twpp-toast';
+  node.textContent = String(message);
+  host.appendChild(node);
+  requestAnimationFrame(() => node.classList.add('in'));
+  setTimeout(() => {
+    node.classList.remove('in');
+    setTimeout(() => node.remove(), 220);
+  }, duration);
+}
+return {
+  setHost: setHost,
+  show: show,
+};
+})();
+
 /* ---- src/core/updater.js ---- */
-const __m14 = (function () {
+const __m17 = (function () {
 const { getJson: getJson, getValue: getValue, openInTab: openInTab, setValue: setValue } = __m1;
 const { log: log } = __m2;
 const { get: storeGet } = __m5;
@@ -1496,45 +1759,11 @@ return {
 };
 })();
 
-/* ---- src/core/toast.js ---- */
-const __m15 = (function () {
-const { log: log } = __m2;
-
-let host = null;
-const queue = [];
-
-function setHost(node) {
-  host = node;
-  while (queue.length && host) show(queue.shift());
-}
-
-function show(message, duration = 1800) {
-  if (!host) {
-    log('toast (sin host):', message);
-    queue.push([message, duration]);
-    return;
-  }
-  const node = document.createElement('div');
-  node.className = 'twpp-toast';
-  node.textContent = String(message);
-  host.appendChild(node);
-  requestAnimationFrame(() => node.classList.add('in'));
-  setTimeout(() => {
-    node.classList.remove('in');
-    setTimeout(() => node.remove(), 220);
-  }, duration);
-}
-return {
-  setHost: setHost,
-  show: show,
-};
-})();
-
 /* ---- src/features/chat-pause.js ---- */
-const __m16 = (function () {
+const __m18 = (function () {
 const { isVisible: isVisible } = __m10;
 const { select: select } = __m3;
-const { show: toast } = __m15;
+const { show: toast } = __m16;
 
 /**
  * Pausa de chat.
@@ -1670,12 +1899,12 @@ return {
 })();
 
 /* ---- src/features/auto-claim.js ---- */
-const __m17 = (function () {
+const __m19 = (function () {
 const { isVisible: isVisible, qs: qs } = __m10;
 const { log: log } = __m2;
 const { defineFeature: defineFeature } = __m6;
 const { select: select, selectAll: selectAll } = __m3;
-const { show: toast } = __m15;
+const { show: toast } = __m16;
 const { get: storeGet } = __m5;
 
 /** Reclamo automático de Channel Points. */
@@ -1737,7 +1966,7 @@ return {
 })();
 
 /* ---- src/core/twitch.js ---- */
-const __m18 = (function () {
+const __m20 = (function () {
 const { qs: qs, qsAll: qsAll, isVisible: isVisible } = __m10;
 const { select: select, selectAll: selectAll } = __m3;
 
@@ -1783,6 +2012,22 @@ function thumbnailUrl(channel, width = 440) {
 
 function currentChannel() {
   return (location.pathname.match(/^\/([^/]+)/) || [])[1] || '';
+}
+
+/**
+ * ¿Twitch está en tema oscuro? Primero la clase que Twitch usa y, si no está,
+ * se deduce del color de fondo real (sirve para cuando cambian el marcado).
+ */
+function isDarkTheme() {
+  if (document.documentElement.classList.contains('tw-root--theme-dark')) return true;
+  if (document.body?.classList.contains('tw-root--theme-dark')) return true;
+  if (qs('.tw-root--theme-dark')) return true;
+
+  const style = getComputedStyle(document.body || document.documentElement);
+  const color = style?.backgroundColor || style?.color || '';
+  const [r, g, b] = (String(color).match(/[\d.]+/g) || []).map(Number);
+  if ([r, g, b].length < 3 || [r, g, b].some(Number.isNaN)) return true;
+  return (r * 299 + g * 587 + b * 114) / 1000 < 128;
 }
 
 /** Diálogo de hover que Twitch abre al pasar por una card de la sidebar. */
@@ -1852,6 +2097,7 @@ return {
   visibleChannels: visibleChannels,
   thumbnailUrl: thumbnailUrl,
   currentChannel: currentChannel,
+  isDarkTheme: isDarkTheme,
   hoverDialog: hoverDialog,
   waitForHoverDialog: waitForHoverDialog,
   currentUsername: currentUsername,
@@ -1864,18 +2110,19 @@ return {
 })();
 
 /* ---- src/features/chat-keywords.js ---- */
-const __m19 = (function () {
+const __m21 = (function () {
 const { defineFeature: defineFeature } = __m6;
-const { get: storeGet } = __m5;
-const { chatContainer: chatContainer, chatLines: chatLines, messageText: messageText } = __m18;
+const { get: storeGet, onChange: onChange } = __m5;
+const { chatContainer: chatContainer, chatLines: chatLines, messageText: messageText } = __m20;
 
 /** Resalta mensajes que contienen palabras clave (por defecto o regex). */
 
 
 
 
-const seen = new WeakSet();
+const CLASS = 'twpp-keyword';
 let cache = { key: '', matcher: null };
+let stop = null;
 
 function keywords() {
   return String(storeGet('chatKeywords') || '')
@@ -1885,21 +2132,22 @@ function keywords() {
 }
 
 function buildMatcher() {
-  const key = keywords().join('\u0000');
+  const list = keywords();
+  const key = `${list.join(' ')}|${storeGet('chatKeywordRegex') ? 're' : 'plain'}`;
   if (key === cache.key) return cache.matcher;
   cache = { key, matcher: null };
-  if (!key) return null;
+  if (!list.length) return null;
 
   if (storeGet('chatKeywordRegex')) {
     try {
-      cache.matcher = new RegExp(key.replace(/[\\]/g, '\\\\').replace(/[|\n]/g, '|'), 'i');
+      cache.matcher = new RegExp(list.map((word) => word.replace(/[\\|]/g, (char) => `\\${char}`)).join('|'), 'i');
     } catch {
       cache.matcher = null;
     }
     return cache.matcher;
   }
 
-  const needles = keywords().map((word) => word.toLowerCase());
+  const needles = list.map((word) => word.toLowerCase());
   cache.matcher = (text) => {
     const lower = text.toLowerCase();
     return needles.some((needle) => lower.includes(needle));
@@ -1908,9 +2156,11 @@ function buildMatcher() {
 }
 
 function clear() {
-  for (const line of document.querySelectorAll('.twpp-keyword')) line.classList.remove('twpp-keyword');
+  for (const line of document.querySelectorAll(`.${CLASS}`)) line.classList.remove(CLASS);
 }
 
+// La clase ES el estado, y la caché de keywords se invalida al cambiarlas:
+// editar la lista reevalúa los mensajes que ya están en pantalla.
 function sweep() {
   const match = buildMatcher();
   if (!match) {
@@ -1921,11 +2171,10 @@ function sweep() {
   if (!container) return;
 
   for (const line of chatLines(container)) {
-    if (seen.has(line)) continue;
-    seen.add(line);
+    if (line.classList.contains(CLASS)) continue;
     const text = messageText(line);
     const hit = match instanceof RegExp ? match.test(text) : match(text);
-    if (hit) line.classList.add('twpp-keyword');
+    if (hit) line.classList.add(CLASS);
   }
 }
 
@@ -1949,12 +2198,23 @@ defineFeature({
   tick: sweep,
   onEnable() {
     cache = { key: '', matcher: null };
+    clear();
+    stop = onChange((key) => {
+      if (key !== 'chatKeywords' && key !== 'chatKeywordRegex') return;
+      cache = { key: '', matcher: null };
+      clear();
+      sweep();
+    });
     sweep();
   },
-  onDisable: clear,
-  onRoute() {
+  onDisable() {
+    stop?.();
+    stop = null;
     cache = { key: '', matcher: null };
     clear();
+  },
+  onRoute() {
+    cache = { key: '', matcher: null };
   },
 });
 return {
@@ -1963,11 +2223,11 @@ return {
 })();
 
 /* ---- src/features/chat-search.js ---- */
-const __m20 = (function () {
+const __m22 = (function () {
 const { qs: qs } = __m10;
 const { defineFeature: defineFeature } = __m6;
 const { get: storeGet } = __m5;
-const { chatContainer: chatContainer, chatLines: chatLines, messageText: messageText } = __m18;
+const { chatContainer: chatContainer, chatLines: chatLines, messageText: messageText } = __m20;
 
 /** Buscador dentro del chat: filtra, cuenta y permite saltar entre coincidencias. */
 
@@ -2146,7 +2406,7 @@ return {
 })();
 
 /* ---- src/features/clean-mode.js ---- */
-const __m21 = (function () {
+const __m23 = (function () {
 const { defineFeature: defineFeature } = __m6;
 
 defineFeature({
@@ -2179,14 +2439,23 @@ return {
 })();
 
 /* ---- src/features/dark-mode.js ---- */
-const __m22 = (function () {
+const __m24 = (function () {
 const { defineFeature: defineFeature } = __m6;
+const { get: storeGet } = __m5;
+const { isDarkTheme: isDarkTheme } = __m20;
 
 defineFeature({
   id: 'darkMode',
   label: 'Tema OLED',
   section: 'visual',
   default: true,
+  // Si el usuario está con el tema claro de Twitch, OLED no se impone: se
+  // respeta su elección y el tick reevalúa la condición al cambiar el tema.
+  when: () => !storeGet('respectTwitchTheme') || isDarkTheme(),
+  interval: 1500,
+  settings: [
+    { key: 'respectTwitchTheme', label: 'Solo en tema oscuro de Twitch', type: 'bool', default: true },
+  ],
   css: `
     %SCOPE% {
       --color-background-body: #000000 !important;
@@ -2287,7 +2556,7 @@ return {
 })();
 
 /* ---- src/features/hide-blocks.js ---- */
-const __m23 = (function () {
+const __m25 = (function () {
 const { defineFeature: defineFeature } = __m6;
 
 defineFeature({
@@ -2353,7 +2622,7 @@ return {
 })();
 
 /* ---- src/features/hide-chat-extras.js ---- */
-const __m24 = (function () {
+const __m26 = (function () {
 const { defineFeature: defineFeature } = __m6;
 
 defineFeature({
@@ -2376,7 +2645,7 @@ return {
 })();
 
 /* ---- src/features/hide-extensions.js ---- */
-const __m25 = (function () {
+const __m27 = (function () {
 const { qsAll: qsAll } = __m10;
 const { log: log } = __m2;
 const { defineFeature: defineFeature } = __m6;
@@ -2543,7 +2812,7 @@ return {
 })();
 
 /* ---- src/features/hide-offline-channels.js ---- */
-const __m26 = (function () {
+const __m28 = (function () {
 const { qs: qs } = __m10;
 const { defineFeature: defineFeature } = __m6;
 const { selectAll: selectAll } = __m3;
@@ -2553,7 +2822,7 @@ const { selectAll: selectAll } = __m3;
 
 
 
-const marked = new WeakSet();
+const ATTR = 'data-twpp-offline';
 
 function isOffline(card) {
   if (qs('[class*="offline"], [class*="Offline"]', card)) return true;
@@ -2562,20 +2831,17 @@ function isOffline(card) {
   return false;
 }
 
+// El atributo ES el estado: nada de WeakSet, así volver a habilitar, cambiar de
+// canal o reconectar el canal se refleja sin recargar.
 function sweep() {
   for (const card of selectAll('sideNav.card')) {
-    if (marked.has(card)) continue;
-    if (isOffline(card)) {
-      marked.add(card);
-      card.setAttribute('data-twpp-offline', '1');
-    } else {
-      card.removeAttribute('data-twpp-offline');
-    }
+    if (card.getAttribute(ATTR) === '1') continue;
+    card.setAttribute(ATTR, isOffline(card) ? '1' : '0');
   }
 }
 
 function clear() {
-  for (const card of selectAll('sideNav.card')) card.removeAttribute('data-twpp-offline');
+  for (const card of selectAll('sideNav.card')) card.removeAttribute(ATTR);
 }
 
 defineFeature({
@@ -2587,8 +2853,7 @@ defineFeature({
   css: `
     %SCOPE% [data-a-target="side-nav-card"][data-twpp-offline="1"],
     %SCOPE% .side-nav-card[data-twpp-offline="1"] { display: none !important; }
-  `,
-  tick: sweep,
+  `,  tick: sweep,
   onEnable: sweep,
   onDisable: clear,
   onRoute: clear,
@@ -2599,15 +2864,15 @@ return {
 })();
 
 /* ---- src/features/mention-highlight.js ---- */
-const __m27 = (function () {
+const __m29 = (function () {
 const { defineFeature: defineFeature } = __m6;
-const { chatContainer: chatContainer, chatLines: chatLines, currentUsername: currentUsername, messageText: messageText } = __m18;
+const { chatContainer: chatContainer, chatLines: chatLines, currentUsername: currentUsername, messageText: messageText } = __m20;
 
 /** Resalta los mensajes que te mencionan. */
 
 
 
-const seen = new WeakSet();
+const CLASS = 'twpp-mention';
 let username = null;
 let pattern = null;
 
@@ -2619,19 +2884,20 @@ function detectUsername() {
   return username;
 }
 
+// La clase ES el estado: si el usuario se detecta tarde o cambia de cuenta,
+// los mensajes ya marcados se reevalúan solos.
 function sweep() {
   if (!detectUsername()) return;
   const container = chatContainer();
   if (!container) return;
   for (const line of chatLines(container)) {
-    if (seen.has(line)) continue;
-    seen.add(line);
-    if (pattern.test(messageText(line))) line.classList.add('twpp-mention');
+    if (line.classList.contains(CLASS)) continue;
+    if (pattern.test(messageText(line))) line.classList.add(CLASS);
   }
 }
 
 function clear() {
-  for (const line of document.querySelectorAll('.twpp-mention')) line.classList.remove('twpp-mention');
+  for (const line of document.querySelectorAll(`.${CLASS}`)) line.classList.remove(CLASS);
 }
 
 defineFeature({
@@ -2665,7 +2931,7 @@ return {
 })();
 
 /* ---- src/features/sidebar-compact.js ---- */
-const __m28 = (function () {
+const __m30 = (function () {
 const { defineFeature: defineFeature } = __m6;
 const { get: storeGet, onChange: onChange } = __m5;
 
@@ -2729,13 +2995,13 @@ return {
 })();
 
 /* ---- src/features/sidebar-thumbnails.js ---- */
-const __m29 = (function () {
+const __m31 = (function () {
 const { qs: qs } = __m10;
 const { log: log } = __m2;
 const { defineFeature: defineFeature } = __m6;
 const { selectAll: selectAll } = __m3;
 const { get: storeGet } = __m5;
-const { channelFromCard: channelFromCard, thumbnailUrl: thumbnailUrl, visibleChannels: visibleChannels, waitForHoverDialog: waitForHoverDialog } = __m18;
+const { channelFromCard: channelFromCard, thumbnailUrl: thumbnailUrl, visibleChannels: visibleChannels, waitForHoverDialog: waitForHoverDialog } = __m20;
 
 /** Miniaturas de canal al pasar el ratón por una card de la sidebar. */
 
@@ -2845,7 +3111,7 @@ return {
 })();
 
 /* ---- src/features/theater-clean.js ---- */
-const __m30 = (function () {
+const __m32 = (function () {
 const { defineFeature: defineFeature } = __m6;
 
 defineFeature({
@@ -2879,10 +3145,10 @@ return {
 })();
 
 /* ---- src/features/viewer-analytics.js ---- */
-const __m31 = (function () {
+const __m33 = (function () {
 const { defineFeature: defineFeature } = __m6;
 const { get: storeGet } = __m5;
-const { chatContainer: chatContainer, chatLines: chatLines, usernameOf: usernameOf, viewerCount: viewerCount } = __m18;
+const { chatContainer: chatContainer, chatLines: chatLines, usernameOf: usernameOf, viewerCount: viewerCount } = __m20;
 
 /** Contador real de viewers + chatters activos por ventana deslizante. */
 
@@ -3025,7 +3291,7 @@ return {
 })();
 
 /* ---- src/features/index.js ---- */
-const __m32 = (function () {
+const __m34 = (function () {
 /**
  * Índice de features.
  *
@@ -3038,7 +3304,7 @@ return {
 })();
 
 /* ---- src/ui/panel-css.js ---- */
-const __m33 = (function () {
+const __m35 = (function () {
 const PANEL_CSS = `
   :host { all: initial; }
   * { box-sizing: border-box; font-family: "Inter","Roobert",-apple-system,"Segoe UI",Roboto,sans-serif; }
@@ -3151,7 +3417,7 @@ return {
 })();
 
 /* ---- src/ui/presets.js ---- */
-const __m34 = (function () {
+const __m36 = (function () {
 /** Presets: un clic y la config queda como quieres. */
 const PRESETS = {
   minimal: ['darkMode', 'cleanMode', 'autoClaim'],
@@ -3205,21 +3471,25 @@ return {
 })();
 
 /* ---- src/ui/panel.js ---- */
-const __m35 = (function () {
+const __m37 = (function () {
 const { on: onBus } = __m0;
 const { setDebug: setDebug, trackedErrors: trackedErrors } = __m2;
 const { all: allFeatures, apply: apply, applyAll: applyAll, SECTIONS: SECTIONS, statuses: statuses } = __m6;
+const { report: report } = __m13;
+const { brokenSelectors: brokenSelectors, selectorReport: selectorReport } = __m3;
 const { exportJSON: exportJSON, get: get, importJSON: importJSON, reset: resetStore, set: set, setMany: setMany } = __m5;
 const { list: keybindList, setCombo: setCombo } = __m11;
-const { setHost: setToastHost, show: toast } = __m15;
+const { setHost: setToastHost, show: toast } = __m16;
 const { clearCache: clearCache, refresh: refreshCatalog, status: catalogStatus } = __m9;
-const { check: checkUpdate, install: installUpdate, shouldCheck: shouldCheck } = __m14;
-const { ChatPause: ChatPause } = __m16;
+const { check: checkUpdate, install: installUpdate, shouldCheck: shouldCheck } = __m17;
+const { ChatPause: ChatPause } = __m18;
 const { VERSION: VERSION } = __m8;
-const { PANEL_CSS: PANEL_CSS } = __m33;
-const { PRESETS: PRESETS, PRESET_LABELS: PRESET_LABELS, idsOf: idsOf } = __m34;
+const { PANEL_CSS: PANEL_CSS } = __m35;
+const { PRESETS: PRESETS, PRESET_LABELS: PRESET_LABELS, idsOf: idsOf } = __m36;
 
 /** Panel de control en shadow DOM (sin colisiones con el CSS de Twitch). */
+
+
 
 
 
@@ -3644,9 +3914,16 @@ function runImport() {
 
 function runDiagnostics() {
   const errors = trackedErrors();
+  const dead = brokenSelectors();
   console.table(statuses());
+  console.table(selectorReport());
   if (errors.length) console.table(errors);
-  toast(`Diagnóstico: ${statuses().length} features, ${errors.length} errores`);
+  console.log('[Twitch++] informe:\n' + report());
+
+  const parts = [`${statuses().length} features`, `${errors.length} errores`];
+  if (dead.length) parts.push(`${dead.length} selectores rotos`);
+  toast(`Diagnóstico: ${parts.join(' · ')}`);
+  if (dead.length) setNote(`Selectores sin resolver: <b>${dead.map((row) => row.key).join(', ')}</b><br>Copia el informe de la consola y abre una issue.`);
 }
 
 function runReset() {
@@ -3675,21 +3952,25 @@ return {
 })();
 
 /* ---- src/app.js ---- */
-const __m36 = (function () {
+const __m38 = (function () {
 const { on: onBus } = __m0;
 const { refresh: refreshCatalog, status: catalogStatus, warm: warmCatalog } = __m9;
 const { onIdle: onIdle, ready: ready } = __m10;
 const { bindGlobal: bindGlobal, register: registerKeybind } = __m11;
-const { setDebug: setDebug, trackedErrors: trackedErrors } = __m2;
+const { setDebug: setDebug, trackedErrors: trackedErrors, track: track } = __m2;
+const { probe: probe } = __m12;
+const { report: report } = __m13;
 const { applyAll: applyAll, disableAll: disableAll, onRouteAll: onRouteAll, statuses: statuses } = __m6;
-const { start: startRouter } = __m12;
-const { kick: kickScheduler, scheduleRoute: scheduleRoute, start: startScheduler } = __m13;
+const { start: startRouter } = __m14;
+const { brokenSelectors: brokenSelectors, selectorReport: selectorReport } = __m3;
+const { kick: kickScheduler, scheduleRoute: scheduleRoute, start: startScheduler } = __m15;
 const { declare: declare, get: storeGet, set: storeSet } = __m5;
 const { rebuild: rebuildStyles } = __m7;
-const { check: checkUpdate, shouldCheck: shouldCheck } = __m14;
+const { show: toast } = __m16;
+const { check: checkUpdate, shouldCheck: shouldCheck } = __m17;
 const { VERSION: VERSION } = __m8;
-const { ChatPause: ChatPause } = __m16;
-const { UI: UI } = __m35;
+const { ChatPause: ChatPause } = __m18;
+const { UI: UI } = __m37;
 
 /**
  * Arranque y API de diagnóstico.
@@ -3697,6 +3978,10 @@ const { UI: UI } = __m35;
  * Orden: catálogo cacheado (sin red) → estilos → features → atajos → router →
  * scheduler → UI → tareas de red (catálogo + comprobación de actualización).
  */
+
+
+
+
 
 
 
@@ -3742,6 +4027,9 @@ function runAction(id) {
 }
 
 async function networkTasks() {
+  // Fuera de twitch.tv (p.ej. la sonda de probe.html) no hay nada que buscar y
+  // un catálogo remoto contaminaría lameasurement.
+  if (!/(^|\.)twitch\.tv$/i.test(location.hostname)) return;
   try {
     await refreshCatalog();
   } catch {
@@ -3758,34 +4046,65 @@ async function networkTasks() {
 }
 
 function start() {
+  // Capa 1: todo lo que no necesita <body>. Se ejecuta en document-start para
+  // que el CSS esté en la página antes de que Twitch pinte el tema claro.
+  try {
+    bootStyles();
+  } catch (error) {
+    reportBootFailure('estilos', error);
+    return;
+  }
+
+  // Capa 2: UI y scheduler, cuando ya existe el DOM.
   ready(() => {
-    setDebug(!!storeGet('debug'));
-    warmCatalog();
-    rebuildStyles();
-    applyAll();
-    registerKeybinds();
-    bindGlobal(runAction);
-    startRouter();
-    startScheduler();
-    UI.build();
-    UI.renderCatalogNote();
-    onIdle(networkTasks);
-
-    onBus('route', (route) => {
-      onRouteAll(route);
-      ChatPause.ensure();
-      scheduleRoute();
-      kickScheduler();
-    });
-
-    const list = statuses();
-    const active = list.filter((feature) => feature.enabled).length;
-    console.info(
-      `%c[Twitch++]%c v${VERSION} · ${active}/${list.length} features activas · catálogo rev. ${catalogStatus().revision || 'local'}`,
-      'color:#9147ff;font-weight:bold',
-      'color:inherit',
-    );
+    try {
+      startScheduler();
+      UI.build();
+      UI.renderCatalogNote();
+      onIdle(networkTasks);
+    } catch (error) {
+      reportBootFailure('interfaz', error);
+    }
   });
+}
+
+function bootStyles() {
+  setDebug(!!storeGet('debug'));
+  warmCatalog();
+  rebuildStyles();
+  applyAll();
+  registerKeybinds();
+  bindGlobal(runAction);
+  startRouter();
+
+  onBus('route', (route) => {
+    onRouteAll(route);
+    ChatPause.ensure();
+    scheduleRoute();
+    kickScheduler();
+  });
+
+  announce();
+}
+
+function announce() {
+  const list = statuses();
+  const active = list.filter((feature) => feature.active).length;
+  console.info(
+    `%c[Twitch++]%c v${VERSION} · ${active}/${list.length} features activas · catálogo rev. ${catalogStatus().revision || 'local'}`,
+    'color:#9147ff;font-weight:bold',
+    'color:inherit',
+  );
+}
+
+/** Un fallo al arrancar no puede dejar al usuario sin panel ni explicación. */
+function reportBootFailure(stage, error) {
+  track(`boot:${stage}`, error);
+  const message = `Twitch++ no pudo arrancar (${stage})`;
+  window.dispatchEvent(new CustomEvent('twpp:boot-error', { detail: { stage, error: String(error?.message || error) } }));
+  // Toast.show encola si el panel todavía no existe: se verá en cuanto se monte.
+  toast(message);
+  console.error(`%c[Twitch++]%c ${message}:`, 'color:#ff5c5c;font-weight:bold', 'color:inherit', error);
 }
 
 function setFeature(id, value) {
@@ -3798,6 +4117,10 @@ const diagnostics = {
   features: statuses,
   errors: trackedErrors,
   catalog: catalogStatus,
+  selectors: selectorReport,
+  broken: brokenSelectors,
+  probe,
+  report,
 };
 return {
   start: start,
@@ -3807,8 +4130,8 @@ return {
 })();
 
 /* ---- src/index.js ---- */
-const __m37 = (function () {
-const { diagnostics: diagnostics, setFeature: setFeature, start: start } = __m36;
+const __m39 = (function () {
+const { diagnostics: diagnostics, setFeature: setFeature, start: start } = __m38;
 const { VERSION: VERSION } = __m8;
 
 /** Punto de entrada del userscript. */
@@ -3828,6 +4151,6 @@ return {
 };
 })();
 
-__m37;
+__m39;
 
 })();

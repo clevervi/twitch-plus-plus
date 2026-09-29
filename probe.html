@@ -1,0 +1,177 @@
+<!doctype html>
+<html lang="es">
+  <head>
+    <meta charset="utf-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1" />
+    <title>Twitch++ · sonda de features</title>
+    <style>
+      :root { color-scheme: dark; --bg:#0e0e10; --fg:#efeff1; --dim:#adadb8; --line:#2a2a2d; --ok:#00d4aa; --bad:#ff5c5c; --warn:#ffb020; --brand:#9147ff; }
+      * { box-sizing: border-box; }
+      body { margin:0; background:#000; color:var(--fg); font:14px/1.5 "Inter",-apple-system,"Segoe UI",Roboto,sans-serif; }
+      header { padding:16px 20px; border-bottom:1px solid var(--line); display:flex; gap:14px; align-items:center; flex-wrap:wrap; }
+      h1 { font-size:15px; margin:0; }
+      h1 span { color:var(--brand); }
+      .grow { flex:1; }
+      main { display:grid; grid-template-columns: minmax(320px, 1fr) minmax(380px, 1.2fr); gap:0; height:calc(100vh - 61px); }
+      section { padding:16px 20px; overflow:auto; }
+      section + section { border-left:1px solid var(--line); }
+      button { background:#1f1f23; color:var(--fg); border:1px solid #3a3a3d; border-radius:6px; padding:6px 10px; font:inherit; font-size:12.5px; cursor:pointer; }
+      button:hover { border-color:var(--brand); }
+      button.primary { background:var(--brand); border-color:var(--brand); color:#fff; font-weight:600; }
+      button:disabled { opacity:.5; cursor:default; }
+      textarea { width:100%; height:38vh; margin-top:10px; background:#060606; color:var(--fg); border:1px solid var(--line); border-radius:8px; padding:10px; font:12px/1.5 ui-monospace,Menlo,monospace; resize:vertical; }
+      ol { margin:12px 0 0; padding-left:20px; color:var(--dim); font-size:12.5px; }
+      ol li { margin:4px 0; }
+      code { background:#1f1f23; padding:1px 5px; border-radius:4px; font-size:12px; }
+      pre { background:#060606; border:1px solid var(--line); border-radius:8px; padding:10px; overflow:auto; font:11.5px/1.5 ui-monospace,Menlo,monospace; max-height:34vh; }
+      table { width:100%; border-collapse:collapse; font-size:12px; margin-top:10px; }
+      th, td { text-align:left; padding:5px 6px; border-bottom:1px solid #1b1b1b; }
+      th { color:var(--dim); font-weight:600; text-transform:uppercase; font-size:10px; letter-spacing:.06em; }
+      td.mono { font-family:ui-monospace,Menlo,monospace; color:var(--dim); }
+      .ok { color:var(--ok); } .bad { color:var(--bad); } .warn { color:var(--warn); }
+      .stats { display:flex; gap:14px; margin:10px 0; flex-wrap:wrap; font-size:12.5px; color:var(--dim); }
+      .stats b { color:var(--fg); }
+      .note { color:var(--dim); font-size:12px; margin-top:10px; }
+      iframe { width:100%; height:0; border:0; opacity:0; pointer-events:none; }
+    </style>
+  </head>
+  <body>
+    <header>
+      <h1>Twitch++ <span>sonda</span></h1>
+      <span class="grow"></span>
+      <button id="load">Cargar snapshot y analizar</button>
+      <button id="download" disabled>Descargar informe</button>
+      <button id="copy" disabled>Copiar informe</button>
+    </header>
+
+    <main>
+      <section>
+        <p class="note">
+          Pega un volcado del HTML de una página de Twitch para ver qué features y qué selectores siguen
+          funcionando <em>hoy</em>, sin tocar tu navegador ni tu configuración.
+        </p>
+        <textarea id="html" spellcheck="false" placeholder="Pega aquí el contenido de document.documentElement.outerHTML de twitch.tv…"></textarea>
+        <ol>
+          <li>En twitch.tv abre la consola (F12) y ejecuta <code>copy(document.documentElement.outerHTML)</code>.</li>
+          <li>Vuelve aquí y pégalo (Ctrl+V) en el cuadro de arriba.</li>
+          <li>Pulsa <b>Cargar snapshot y analizar</b>.</li>
+        </ol>
+        <p class="note">
+          El script se ejecuta dentro de un iframe aislado: no toca nada de tu sesión. Si algo falla, el
+          informe sale con los selectores exactos a arreglar en <code>catalog.json</code>.
+        </p>
+      </section>
+
+      <section>
+        <div class="stats" id="stats">Sin analizar.</div>
+        <div id="results"></div>
+        <pre id="raw" hidden></pre>
+      </section>
+    </main>
+
+    <iframe id="frame" title="snapshot"></iframe>
+
+    <script>
+      const frame = document.getElementById('frame');
+      const input = document.getElementById('html');
+      const results = document.getElementById('results');
+      const stats = document.getElementById('stats');
+      const raw = document.getElementById('raw');
+      let last = '';
+
+      document.getElementById('load').addEventListener('click', () => {
+        const html = input.value.trim();
+        if (!html.length) {
+          stats.textContent = 'Pega primero un volcado del HTML.';
+          return;
+        }
+        run(html);
+      });
+
+      document.getElementById('copy').addEventListener('click', () => {
+        navigator.clipboard?.writeText(last).then(
+          () => (document.getElementById('copy').textContent = 'Copiado'),
+          () => (document.getElementById('copy').textContent = 'Falla el portapapeles'),
+        );
+      });
+
+      document.getElementById('download').addEventListener('click', () => {
+        const url = URL.createObjectURL(new Blob([last], { type: 'text/plain' }));
+        const link = document.createElement('a');
+        link.href = url;
+        link.download = 'twpp-informe.txt';
+        link.click();
+        URL.revokeObjectURL(url);
+      });
+
+      function run(html) {
+        stats.textContent = 'Analizando…';
+        results.innerHTML = '';
+        raw.hidden = true;
+
+        // Los <script> del snapshot no aportan nada para probar selectores y
+        // ensucian la consola: se quitan antes de inyectarlo.
+        const inert = html.replace(/<script[\s\S]*?<\/script>/gi, '').replace(/<link[^>]*rel=["']?(preload|modulepreload|prefetch)["']?[^>]*>/gi, '');
+
+        frame.onload = () => {
+          try {
+            const api = frame.contentWindow.TwitchPP;
+            if (!api) throw new Error('el bundle no arrancó (revisa que dist/ esté junto a esta página)');
+            report(api.diagnostics.probe());
+          } catch (error) {
+            stats.innerHTML = '<span class="bad">No se pudo analizar: ' + escape(error.message) + '</span>';
+          }
+        };
+        frame.srcdoc = inert + '<script src="dist/twitch-plus-plus.user.js"><\/script>';
+      }
+
+      function report(data) {
+        const summary = data.summary;
+        stats.innerHTML =
+          '<span>features <b class="' +
+          (summary.featuresOk === summary.featuresTotal ? 'ok' : 'warn') +
+          '">' + summary.featuresOk + '/' + summary.featuresTotal + '</b></span>' +
+          '<span>selectores <b class="' + (summary.selectorsOk === summary.selectorsTotal ? 'ok' : 'bad') + '">' +
+          summary.selectorsOk + '/' + summary.selectorsTotal + '</b></span>' +
+          '<span>errores <b class="' + (data.errors.length ? 'bad' : 'ok') + '">' + data.errors.length + '</b></span>';
+
+        const brokenFeatures = data.features.filter((f) => f.errors > 0);
+        const brokenSelectors = data.selectors.filter((row) => !row.ok);
+
+        let html = '';
+        if (brokenFeatures.length) html += table('Features con errores', ['feature', 'errores'], brokenFeatures.map((f) => row([f.id, String(f.errors)])));
+        if (brokenSelectors.length)
+          html += table('Selectores sin resolver', ['clave', 'candidatos', 'falla desde'], brokenSelectors.map((r) => row([r.key, String(r.total), r.matched || '—'])));
+        if (data.errors.length) html += table('Errores', ['ámbito', 'mensaje'], data.errors.slice(0, 12).map((e) => row([e.scope, e.message])));
+        if (!html) html = '<p class="ok">Todo correcto con este snapshot.</p>';
+
+        html += '<details><summary>Ver todo (' + data.features.length + ' features, ' + data.selectors.length + ' selectores)</summary>';
+        html += table('Features', ['id', 'activa', 'con tick', 'bloqueada', 'errores'], data.features.map((f) => row([f.id, tick(f.active), dash(f.hasTick), tick(f.blocked), String(f.errors)])));
+        html += table('Selectores', ['clave', 'ok', 'selector que funciona', 'candidatos'], data.selectors.map((r) => row([r.key, tick(r.ok), r.matched || '—', String(r.total)])));
+        html += '</details>';
+
+        results.innerHTML = html;
+        last = buildReport(data);
+        raw.hidden = false;
+        raw.textContent = last;
+        document.getElementById('copy').disabled = false;
+        document.getElementById('download').disabled = false;
+      }
+
+      function buildReport(data) {
+        const lines = ['Twitch++ · informe de sonda', `fecha: ${data.at}`, `url: ${data.url}`, ''];
+        for (const f of data.features) lines.push(`feature ${f.id}: ${f.errors ? 'ERRORES ' + f.errors : 'ok'}${f.blocked ? ' (bloqueada)' : ''}`);
+        for (const r of data.selectors) lines.push(`selector ${r.key}: ${r.ok ? 'ok (' + r.matched + ')' : 'SIN RESOLVER'}`);
+        for (const e of data.errors) lines.push(`error ${e.scope}: ${e.message}`);
+        return lines.join('\n');
+      }
+
+      const tick = (value) => (value ? '<span class="ok">sí</span>' : '<span class="bad">no</span>');
+      const dash = (value) => (value ? 'sí' : '<span class="dim">—</span>');
+      const row = (cells) => `<tr>${cells.map((c) => `<td class="mono">${c}</td>`).join('')}</tr>`;
+      const head = (cells) => `<tr>${cells.map((c) => `<th>${c}</th>`).join('')}</tr>`;
+      const table = (title, cells, rows) => `<h3>${title}</h3><table>${head(cells)}${rows.join('')}</table>`;
+      const escape = (value) => String(value).replace(/[&<>]/g, (c) => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;' })[c]);
+    </script>
+  </body>
+</html>

@@ -7,10 +7,12 @@ import { log, warn } from './log.js';
 import { CONFIG_VERSION, migrate } from './migrations.js';
 
 const KEY = 'twpp.config';
+const LEGACY_KEYS = ['twpp'];
 
 const schema = new Map();
 const listeners = new Set();
 let cache = null;
+let importedFromLegacy = null;
 
 function coerce(value, type) {
   switch (type) {
@@ -39,8 +41,8 @@ export function declare(key, type, fallback) {
 
 export function all() {
   if (cache) return cache;
-  const raw = getValue(KEY, null);
-  const migrated = migrate(raw && typeof raw === 'object' ? raw : null);
+  const migrated = migrate(readConfig());
+  importedFromLegacy = importedFromLegacy || { imported: false, from: null };
 
   const next = {};
   let repaired = 0;
@@ -60,7 +62,30 @@ export function all() {
   if (repaired) warn('claves reparadas:', repaired);
 
   cache = next;
+  if (importedFromLegacy.imported) {
+    log(`configuración migrada desde "${importedFromLegacy.from}"`);
+    persist();
+  }
   return cache;
+}
+
+/** Lee la config actual y, si no hay, la del script de un solo archivo (v1). */
+function readConfig() {
+  const current = getValue(KEY, null);
+  if (current && typeof current === 'object') return current;
+
+  for (const legacy of LEGACY_KEYS) {
+    const old = getValue(legacy, null);
+    if (!old || typeof old !== 'object' || Array.isArray(old)) continue;
+    importedFromLegacy = { imported: true, from: legacy };
+    return { ...old, _v: Number.isFinite(old._v) ? old._v : 0 };
+  }
+  return current;
+}
+
+/** `true` si esta sesión importó la configuración del script anterior. */
+export function migratedFrom() {
+  return importedFromLegacy?.imported ? importedFromLegacy.from : null;
 }
 
 function clone(value) {
