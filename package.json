@@ -34,8 +34,8 @@
     "build": "node scripts/build.mjs",
     "watch": "node scripts/build.mjs --watch",
     "lint": "node scripts/lint.mjs",
-    "test": "node --test \"test/*.test.mjs\"",
-    "verify": "node scripts/lint.mjs && node scripts/build.mjs && node --test \"test/*.test.mjs\"",
+    "test": "node --test",
+    "verify": "node scripts/lint.mjs && node scripts/build.mjs && node --test",
     "bump": "node scripts/bump.mjs",
     "release": "node scripts/bump.mjs && node scripts/build.mjs"
   }

@@ -32,7 +32,7 @@ jobs:
           node scripts/bump.mjs "${{ inputs.level }}" "${{ inputs.notes }}"
           node scripts/lint.mjs
           node scripts/build.mjs
-          node --test "test/*.test.mjs"
+          node --test
 
       - name: Commit
         run: |

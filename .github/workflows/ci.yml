@@ -25,4 +25,4 @@ jobs:
         run: git diff --exit-code dist/
 
       - name: Tests
-        run: node --test "test/*.test.mjs"
+        run: node --test
