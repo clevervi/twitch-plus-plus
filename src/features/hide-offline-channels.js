@@ -16,8 +16,12 @@ function isOffline(card) {
 // canal o reconectar el canal se refleja sin recargar.
 function sweep() {
   for (const card of selectAll('sideNav.card')) {
-    if (card.getAttribute(ATTR) === '1') continue;
-    card.setAttribute(ATTR, isOffline(card) ? '1' : '0');
+    const offline = isOffline(card);
+    if (offline) {
+      card.setAttribute(ATTR, '1');
+    } else {
+      card.setAttribute(ATTR, '0');
+    }
   }
 }
 
@@ -34,7 +38,8 @@ defineFeature({
   css: `
     %SCOPE% [data-a-target="side-nav-card"][data-twpp-offline="1"],
     %SCOPE% .side-nav-card[data-twpp-offline="1"] { display: none !important; }
-  `,  tick: sweep,
+  `,
+  tick: sweep,
   onEnable: sweep,
   onDisable: clear,
   onRoute: clear,

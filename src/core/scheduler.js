@@ -8,7 +8,7 @@ import { log } from './log.js';
 import { tickAll } from './registry.js';
 import { emit } from './bus.js';
 
-const HEARTBEAT = 1000;
+const HEARTBEAT = 400;
 
 let timer = null;
 let observer = null;
@@ -36,9 +36,23 @@ export function request() {
 
 function observe() {
   if (observer || typeof MutationObserver !== 'function') return;
-  const signal = throttle(() => request(), 600);
+  const signal = throttle(() => request(), 400);
   observer = new MutationObserver(signal);
-  observer.observe(document.body, { childList: true, subtree: true });
+  
+  // Observar áreas específicas sin profundidad extrema
+  const targets = [
+    document.querySelector('[data-a-target="side-nav-bar"]'),
+    document.querySelector('[data-a-target="video-player"]'),
+    document.querySelector('[data-a-target="chat-room-component-layout"]'),
+  ].filter(Boolean);
+  
+  // Observar estos con subtree limitado
+  for (const target of targets) {
+    observer.observe(target, { childList: true, subtree: true });
+  }
+  
+  // Observar body solo para detectar si se recrea algún contenedor principal
+  observer.observe(document.body, { childList: true, subtree: false });
 }
 
 export function start() {

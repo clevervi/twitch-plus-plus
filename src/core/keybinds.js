@@ -28,9 +28,9 @@ function isKeyPart(part) {
   return /^f([1-9]|1[0-2])$/.test(part);
 }
 
-/** `Alt+P` → {alt:true,…,key:'p'} · cualquier basura → null */
+/** `Alt+Shift+P` → {alt:true,shift:true,…,key:'p'} · cualquier basura → null */
 function parseKeybind(str) {
-  if (!str) return null;
+  if (typeof str !== 'string' || !str.trim()) return null;
   const parts = String(str)
     .split('+')
     .map((part) => part.trim().toLowerCase())
@@ -89,6 +89,7 @@ export function bindGlobal(run) {
         if (!matchKeybind(parseKeybind(keybinds[id]), event)) continue;
         if (isTypingTarget(event.target) && id !== 'panel') continue;
         event.preventDefault();
+        event.stopPropagation();
         run(id);
         return;
       }

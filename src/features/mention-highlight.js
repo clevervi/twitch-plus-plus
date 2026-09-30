@@ -3,6 +3,7 @@ import { defineFeature } from '../core/registry.js';
 import { chatContainer, chatLines, currentUsername, messageText } from '../core/twitch.js';
 
 const CLASS = 'twpp-mention';
+const ATTR = 'data-twpp-mention';
 let username = null;
 let pattern = null;
 
@@ -21,13 +22,17 @@ function sweep() {
   const container = chatContainer();
   if (!container) return;
   for (const line of chatLines(container)) {
-    if (line.classList.contains(CLASS)) continue;
+    if (line.hasAttribute(ATTR)) continue;
+    line.setAttribute(ATTR, '1');
     if (pattern.test(messageText(line))) line.classList.add(CLASS);
   }
 }
 
 function clear() {
-  for (const line of document.querySelectorAll(`.${CLASS}`)) line.classList.remove(CLASS);
+  for (const line of document.querySelectorAll(`.${CLASS}`)) {
+    line.classList.remove(CLASS);
+    line.removeAttribute(ATTR);
+  }
 }
 
 defineFeature({
@@ -53,5 +58,8 @@ defineFeature({
   onRoute() {
     username = null;
     pattern = null;
+    document.querySelectorAll(`[${ATTR}]`).forEach(el => {
+      el.removeAttribute(ATTR);
+    });
   },
 });

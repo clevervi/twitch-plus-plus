@@ -10,7 +10,7 @@ const RESERVED = new Set([
 
 export function channelFromHref(href) {
   if (!href || !href.startsWith('/') || href.startsWith('//')) return null;
-  const first = href.split(/[/?#]/).filter(Boolean)[0];
+  const first = href.split(/[\/?​#]/).filter(Boolean)[0];
   if (!first || RESERVED.has(first.toLowerCase())) return null;
   return decodeURIComponent(first).toLowerCase();
 }
@@ -39,7 +39,7 @@ export function thumbnailUrl(channel, width = 440) {
 }
 
 export function currentChannel() {
-  return (location.pathname.match(/^\/([^/]+)/) || [])[1] || '';
+  return (location.pathname.match(/^\/([^\/]+)/) || [])[1] || '';
 }
 
 /**
@@ -85,7 +85,7 @@ export function currentUsername() {
   const img = qs('img', toggle);
   if (img && img.alt) return img.alt.trim();
   const label = toggle.getAttribute('aria-label') || '';
-  const match = label.match(/^(.+?)['’]s\s+user\s+menu/i) || label.match(/^User menu\s*[-–]\s*(.+)/i);
+  const match = label.match(/^(.+?)[''\u2019]s\s+user\s+menu/i) || label.match(/^User menu\s*[-–]\s*(.+)/i);
   return match ? match[1].trim() : null;
 }
 
@@ -108,14 +108,56 @@ export function messageText(message) {
   return (body ? body.textContent : message.textContent) || '';
 }
 
-/** Contador de viewers parseado a número (soporta 1,2 K / 12,3 mil). */
+/**
+ * Contador de viewers parseado a número.
+ * Soporta: "1.2K", "12.3K", "1.2M", "1,2 mil", "1.234", etc.
+ */
 export function viewerCount() {
   const node = select('viewerCount');
   if (!node) return null;
   const text = (node.textContent || '').trim();
-  const mil = /k|mil|\sK\b/i.test(text);
-  const digits = text.replace(/[^\d]/g, '');
-  if (!digits) return null;
-  const value = parseInt(digits, 10);
-  return mil ? value * 1000 : value;
+  return parseViewerText(text);
+}
+
+/**
+ * Parsea texto de viewers con multiplicadores (K, M, mil).
+ * Maneja separadores decimales y de miles correctamente.
+ */
+export function parseViewerText(txt) {
+  if (!txt) return null;
+
+  const t = txt.toLowerCase().replace(/\s+/g, '');
+  const m = t.match(/^([\d.,]+)\s*(mil|k|m|b)?$/);
+  if (!m) return null;
+
+  let num = m[1];
+  const suf = m[2] || '';
+
+  // Decidir si coma/punto es decimal o miles
+  const lastComma = num.lastIndexOf(',');
+  const lastDot = num.lastIndexOf('.');
+
+  if (lastComma > -1 && lastDot > -1) {
+    // Ambos presentes: la última ocurrencia es el decimal
+    if (lastComma > lastDot) {
+      num = num.replace(/\./g, '').replace(',', '.');
+    } else {
+      num = num.replace(/,/g, '');
+    }
+  } else if (lastComma > -1) {
+    // Solo coma: si son 3 dígitos después, es miles; si no, es decimal
+    const after = num.length - lastComma - 1;
+    if (after === 3) num = num.replace(/,/g, '');
+    else num = num.replace(',', '.');
+  } else if (lastDot > -1) {
+    // Solo punto: si son 3 dígitos después y hay más números, es miles
+    const after = num.length - lastDot - 1;
+    if (after === 3 && num.length > 4) num = num.replace(/\./g, '');
+  }
+
+  const base = parseFloat(num);
+  if (!isFinite(base)) return null;
+
+  const mult = { mil: 1e3, k: 1e3, m: 1e6, b: 1e9 }[suf] || 1;
+  return Math.round(base * mult);
 }

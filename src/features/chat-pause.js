@@ -10,6 +10,7 @@ import { show as toast } from '../core/toast.js';
 
 const state = {
   active: false,
+  mode: null, // 'native' | 'scroll' | null
   el: null,
   top: 0,
   userScrolling: false,
@@ -87,6 +88,7 @@ export const ChatPause = {
     if (native) {
       native.click();
       state.active = true;
+      state.mode = 'native';
       state.native = native;
       toast('Chat pausado');
       return true;
@@ -94,14 +96,18 @@ export const ChatPause = {
     if (!attach()) return false;
     state.top = state.el.scrollTop;
     state.active = true;
+    state.mode = 'scroll';
     toast('Chat pausado');
     return true;
   },
 
   resume() {
-    if (state.native && state.native.isConnected) state.native.click();
+    if (state.mode === 'native' && state.native && state.native.isConnected) {
+      state.native.click();
+    }
     state.native = null;
     state.active = false;
+    state.mode = null;
     detach();
     toast('Chat reanudado');
     return true;
@@ -114,15 +120,18 @@ export const ChatPause = {
   /** Lo llama el scheduler: reconcilia con Twitch y recoloca el scroll si recreó el contenedor. */
   ensure() {
     if (!state.active) return;
-    if (state.native) {
-      if (state.native.isConnected && nativeSaysPaused(state.native)) return;
+    if (state.mode === 'native') {
+      if (state.native && state.native.isConnected && nativeSaysPaused(state.native)) return;
       state.native = null;
       state.active = false;
+      state.mode = null;
       return;
     }
-    if (!state.el || !state.el.isConnected) {
-      attach();
-      if (state.el) state.top = state.el.scrollTop;
+    if (state.mode === 'scroll') {
+      if (!state.el || !state.el.isConnected) {
+        attach();
+        if (state.el) state.top = state.el.scrollTop;
+      }
     }
   },
 };

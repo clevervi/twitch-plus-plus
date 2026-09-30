@@ -15,7 +15,7 @@ import { get as storeGet } from '../core/store.js';
 const EXTENSION_HINT = /extension|ext-twitch|\/extensions\/|extension-panel|twitch-ext-/i;
 
 const KNOWN_PLAYER_ICONS =
-  /Icon-(Settings|Gear|Volume|Fullscreen|Theater|Pause|Play|Mute|Unmute|Rewind|Forward|Quality|Clip|Share|Subscribe|Follow|Bits|Prime|Notifications|Messages|Search|Menu|Close|Chevron|Arrow|Drops|Points|Reward|Emote|Mod|Chat|Crown|Heart|Rerun|Pin|Mute-User|Bit|Hype|Extension|Collapse|Expand|Info|Rec|Resume|Exit)/i;
+  /Icon-(Settings|Gear|Volume|Fullscreen|Theater|Pause|Play|Mute|Unmute|Rewind|Forward|Quality|Clip|Share|Subscribe|Follow|Bits|Prime|Notifications|Messages|Search|Menu|Close|Chevron|Arrow|Drops|Picture)/i;
 
 const known = new Set();
 const removed = new Set();
@@ -24,11 +24,13 @@ function kill(element) {
   if (!element || removed.has(element)) return;
   removed.add(element);
   element.style.setProperty('display', 'none', 'important');
+  element.style.setProperty('pointer-events', 'none', 'important');
 }
 
 function restore() {
   for (const node of removed) {
     node.style?.removeProperty('display');
+    node.style?.removeProperty('pointer-events');
   }
   removed.clear();
 }

@@ -1,14 +1,14 @@
 /** Contador real de viewers + chatters activos por ventana deslizante. */
 import { defineFeature } from '../core/registry.js';
 import { get as storeGet } from '../core/store.js';
-import { chatContainer, chatLines, usernameOf, viewerCount } from '../core/twitch.js';
+import { chatContainer, chatLines, usernameOf, messageText, viewerCount } from '../core/twitch.js';
 
 const chatters = new Map();
-const counted = new WeakSet();
 let badge = null;
 let lastUpdate = 0;
 
 const UPDATE_EVERY = 4000;
+const COUNTED_ATTR = 'data-twpp-counted';
 
 function windowMs() {
   const seconds = Number(storeGet('viewerWindow'));
@@ -29,8 +29,8 @@ function sweep() {
   if (!container) return;
   const now = Date.now();
   for (const line of chatLines(container)) {
-    if (counted.has(line)) continue;
-    counted.add(line);
+    if (line.hasAttribute(COUNTED_ATTR)) continue;
+    line.setAttribute(COUNTED_ATTR, '1');
     const user = usernameOf(line);
     if (user) chatters.set(user, now);
   }
@@ -43,7 +43,7 @@ function sweep() {
 function ensureBadge() {
   if (badge && badge.isConnected) return badge;
   const target = document.querySelector(
-    'strong[data-a-target="animated-channel-viewers-count"], [data-test-selector="viewer-count"], .channel-info-bar__viewers',
+    'strong[data-a-target="animated-channel-viewers-count"], [data-test-selector="viewer-count"], .channel-info-bar__viewers, span[data-a-target="animated-channel-viewers-count"]',
   );
   if (!target || !target.parentElement) return null;
 
@@ -131,5 +131,8 @@ defineFeature({
     chatters.clear();
     lastUpdate = 0;
     badge = null;
+    document.querySelectorAll(`[${COUNTED_ATTR}]`).forEach(el => {
+      el.removeAttribute(COUNTED_ATTR);
+    });
   },
 });
