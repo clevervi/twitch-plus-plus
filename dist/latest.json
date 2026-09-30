@@ -1,7 +1,7 @@
 {
-  "version": "2.2.1",
+  "version": "2.2.2",
   "script": "https://raw.githubusercontent.com/clevervi/twitch-plus-plus/main/dist/twitch-plus-plus.user.js",
   "homepage": "https://github.com/clevervi/twitch-plus-plus",
-  "publishedAt": "2026-09-30T18:38:12.290Z",
-  "notes": "Menú inteligente: detecta posición en pantalla y abre hacia abajo o arriba sin salirse del viewport; selectores actualizados para español y nuevo editor de chat"
+  "publishedAt": "2026-09-30T18:49:23.996Z",
+  "notes": "Fix: auto-claim points ya no abre el menu de potenciadores y solo pulsa el cofre de bonificacion"
 }

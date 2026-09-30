@@ -56,13 +56,12 @@ const BASE = {
     '[data-a-target="community-points-summary"]',
   ],
   'claimBonus': [
-    'button[aria-label*="Bonus" i]',
     'button[aria-label*="bonificación" i]',
-    'button[aria-label*="reclamar" i]',
+    'button[aria-label*="Bonus" i]',
     'button[aria-label="Claim Bonus"]',
+    'button[aria-label="Reclamar bonificación"]',
     '.claimable-bonus__icon',
     '[data-test-selector="claimable-bonus-icon"]',
-    '[data-test-selector="community-points-summary"] button',
   ],
   'pauseChat': [
     'button[aria-label*="Pause" i]',

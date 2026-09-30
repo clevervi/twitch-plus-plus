@@ -44,3 +44,7 @@
 ## 2.2.1 — 2026-09-30
 
 - Menú inteligente: detecta posición en pantalla y abre hacia abajo o arriba sin salirse del viewport; selectores actualizados para español y nuevo editor de chat
+
+## 2.2.2 — 2026-09-30
+
+- Fix: auto-claim points ya no abre el menu de potenciadores y solo pulsa el cofre de bonificacion

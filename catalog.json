@@ -1,7 +1,7 @@
 {
   "schema": 1,
-  "revision": 2,
-  "note": "Selectores multi-idioma (ES/EN), soporte para editor Slate/ContentEditable en chat.input y enlaces de canales en sidebar.",
+  "revision": 3,
+  "note": "Corregido selector de claimBonus para evitar abrir el menú nativo de recompensas de Twitch.",
   "selectors": {
     "chat.container": [
       "[data-test-selector=\"chat-scrollable-area__message-container\"]",
@@ -50,13 +50,12 @@
       ".channel-info-bar__viewers"
     ],
     "claimBonus": [
-      "button[aria-label*=\"Bonus\" i]",
       "button[aria-label*=\"bonificación\" i]",
-      "button[aria-label*=\"reclamar\" i]",
+      "button[aria-label*=\"Bonus\" i]",
       "button[aria-label=\"Claim Bonus\"]",
+      "button[aria-label=\"Reclamar bonificación\"]",
       ".claimable-bonus__icon",
-      "[data-test-selector=\"claimable-bonus-icon\"]",
-      "[data-test-selector=\"community-points-summary\"] button"
+      "[data-test-selector=\"claimable-bonus-icon\"]"
     ],
     "pauseChat": [
       "button[aria-label*=\"Pause\" i]",

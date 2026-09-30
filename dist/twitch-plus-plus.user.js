@@ -1,7 +1,7 @@
 // ==UserScript==
 // @name         Twitch++
 // @namespace    https://github.com/clevervi
-// @version      2.2.1
+// @version      2.2.2
 // @description  Twitch limpio, modular y autoactualizable: OLED, sidebar, chat, analítica de viewers, auto Channel Points y pausa de chat.
 // @author       clevervi
 // @license      MIT
@@ -316,13 +316,12 @@ const BASE = {
     '[data-a-target="community-points-summary"]',
   ],
   'claimBonus': [
-    'button[aria-label*="Bonus" i]',
     'button[aria-label*="bonificación" i]',
-    'button[aria-label*="reclamar" i]',
+    'button[aria-label*="Bonus" i]',
     'button[aria-label="Claim Bonus"]',
+    'button[aria-label="Reclamar bonificación"]',
     '.claimable-bonus__icon',
     '[data-test-selector="claimable-bonus-icon"]',
-    '[data-test-selector="community-points-summary"] button',
   ],
   'pauseChat': [
     'button[aria-label*="Pause" i]',
@@ -1007,7 +1006,7 @@ return {
 /* ---- src/core/version.js ---- */
 const __m8 = (function () {
 /** Sustituido en build. Fuente única de verdad: package.json + header del userscript. */
-const VERSION = '2.2.1';
+const VERSION = '2.2.2';
 const REPO_URL = 'https://github.com/clevervi/twitch-plus-plus';
 const RAW_URL = 'https://raw.githubusercontent.com/clevervi/twitch-plus-plus/main';
 const BRANCH = 'main';
@@ -1944,7 +1943,8 @@ const { get: storeGet } = __m5;
 
 
 
-const CLAIM_HINT = /claim|reclamar|reclama|abholen|réclamer/i;
+const CLAIM_HINT = /bonificaci[oó]n|bonus/i;
+const FORBIDDEN_HINT = /saldo|balance|potenciador|reward|recompensa/i;
 
 let lastClick = 0;
 
@@ -1953,13 +1953,33 @@ function cooldown() {
   return (Number.isFinite(seconds) ? seconds : 2.5) * 1000;
 }
 
+function isClaimButton(btn) {
+  if (!btn) return false;
+  const target = btn.tagName === 'BUTTON' ? btn : btn.closest('button');
+  if (!target) return false;
+
+  const label = (target.getAttribute('aria-label') || target.textContent || '').trim();
+  // Nunca pulsar el botón del menú de saldo / potenciadores de Twitch
+  if (FORBIDDEN_HINT.test(label)) return false;
+
+  // Es el cofre si tiene el icono o el texto específico de bonificación
+  if (target.querySelector('.claimable-bonus__icon, [data-test-selector="claimable-bonus-icon"]')) return true;
+  if (target.classList.contains('claimable-bonus__icon')) return true;
+  if (CLAIM_HINT.test(label)) return true;
+
+  return false;
+}
+
 function findButton() {
   const direct = select('claimBonus');
-  if (direct) return direct.tagName === 'BUTTON' ? direct : qs('button', direct) || direct;
+  if (direct) {
+    const btn = direct.tagName === 'BUTTON' ? direct : direct.closest('button') || qs('button', direct);
+    if (btn && isClaimButton(btn)) return btn;
+  }
 
   for (const summary of selectAll('channelPoints')) {
     for (const button of summary.querySelectorAll('button')) {
-      if (CLAIM_HINT.test(button.getAttribute('aria-label') || button.textContent || '')) return button;
+      if (isClaimButton(button)) return button;
     }
   }
   return null;

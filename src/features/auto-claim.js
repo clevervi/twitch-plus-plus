@@ -6,7 +6,8 @@ import { select, selectAll } from '../core/selectors.js';
 import { show as toast } from '../core/toast.js';
 import { get as storeGet } from '../core/store.js';
 
-const CLAIM_HINT = /claim|reclamar|reclama|abholen|réclamer/i;
+const CLAIM_HINT = /bonificaci[oó]n|bonus/i;
+const FORBIDDEN_HINT = /saldo|balance|potenciador|reward|recompensa/i;
 
 let lastClick = 0;
 
@@ -15,13 +16,33 @@ function cooldown() {
   return (Number.isFinite(seconds) ? seconds : 2.5) * 1000;
 }
 
+function isClaimButton(btn) {
+  if (!btn) return false;
+  const target = btn.tagName === 'BUTTON' ? btn : btn.closest('button');
+  if (!target) return false;
+
+  const label = (target.getAttribute('aria-label') || target.textContent || '').trim();
+  // Nunca pulsar el botón del menú de saldo / potenciadores de Twitch
+  if (FORBIDDEN_HINT.test(label)) return false;
+
+  // Es el cofre si tiene el icono o el texto específico de bonificación
+  if (target.querySelector('.claimable-bonus__icon, [data-test-selector="claimable-bonus-icon"]')) return true;
+  if (target.classList.contains('claimable-bonus__icon')) return true;
+  if (CLAIM_HINT.test(label)) return true;
+
+  return false;
+}
+
 function findButton() {
   const direct = select('claimBonus');
-  if (direct) return direct.tagName === 'BUTTON' ? direct : qs('button', direct) || direct;
+  if (direct) {
+    const btn = direct.tagName === 'BUTTON' ? direct : direct.closest('button') || qs('button', direct);
+    if (btn && isClaimButton(btn)) return btn;
+  }
 
   for (const summary of selectAll('channelPoints')) {
     for (const button of summary.querySelectorAll('button')) {
-      if (CLAIM_HINT.test(button.getAttribute('aria-label') || button.textContent || '')) return button;
+      if (isClaimButton(button)) return button;
     }
   }
   return null;
