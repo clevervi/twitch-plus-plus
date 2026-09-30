@@ -1,4 +1,6 @@
-/** Punto de entrada del userscript. */
+/**
+ * Punto de entrada del userscript.
+ */
 import { diagnostics, setFeature, start } from './app.js';
 import { VERSION } from './core/version.js';
 

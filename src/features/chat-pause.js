@@ -18,6 +18,8 @@ const state = {
   onUser: null,
   userTimer: null,
   native: null,
+  lastX: 0,
+  lastY: 0,
 };
 
 function nativeButton() {
@@ -121,10 +123,16 @@ export const ChatPause = {
   ensure() {
     if (!state.active) return;
     if (state.mode === 'native') {
-      if (state.native && state.native.isConnected && nativeSaysPaused(state.native)) return;
+      const current = nativeButton();
+      if (current && nativeSaysPaused(current)) {
+        state.native = current;   // actualiza la referencia
+        return;
+      }
+      // El botón nativo desapareció o ya no dice "Resume": Twitch desbloqueó el chat
       state.native = null;
       state.active = false;
       state.mode = null;
+      detach();
       return;
     }
     if (state.mode === 'scroll') {
@@ -133,5 +141,11 @@ export const ChatPause = {
         if (state.el) state.top = state.el.scrollTop;
       }
     }
+  },
+
+  /** Llamado por UI para actualizar proximidad del FAB. */
+  recordMousePos(x, y) {
+    state.lastX = x;
+    state.lastY = y;
   },
 };
