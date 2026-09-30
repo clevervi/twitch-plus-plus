@@ -88,8 +88,8 @@ export function bindGlobal(run) {
         if (!keybinds[id]) continue;
         if (!matchKeybind(parseKeybind(keybinds[id]), event)) continue;
         if (isTypingTarget(event.target) && id !== 'panel') continue;
-        event.preventDefault();
-        event.stopPropagation();
+        event.preventDefault?.();
+        event.stopPropagation?.();
         run(id);
         return;
       }

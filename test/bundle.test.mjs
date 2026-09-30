@@ -117,7 +117,7 @@ test('escribir un atajo lo guarda y un atajo inválido se descarta', () => {
   const sandbox = boot();
   const shadow = shadowOf(sandbox);
   const input = shadow.querySelector('.kb-input[data-kb="panel"]');
-  assert.equal(input.value, 'Alt+O');
+  assert.equal(input.value, 'Alt+Shift+T');
 
   input.value = 'Ctrl+Shift+K';
   shadow.fire('blur', { target: input });

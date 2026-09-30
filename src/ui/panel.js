@@ -208,7 +208,7 @@ function build() {
             <button class="action-btn" data-action="reset">Reset</button>
           </div>
         </div>
-        <footer class="foot">Alt+O panel · Alt+P pausa de chat</footer>
+        <footer class="foot">Alt+Shift+T panel · Alt+Shift+P pausa de chat</footer>
       </section>
       <button class="fab" id="fab" title="Twitch++">++</button>
     </div>`;
@@ -302,9 +302,13 @@ function bind() {
   });
 
   if (typeof window !== 'undefined' && window.addEventListener) {
-    window.addEventListener('resize', () => {
-      applyPlacement(get('fabRight'), get('fabBottom'));
-    });
+    window.addEventListener(
+      'resize',
+      () => {
+        applyPlacement(get('fabRight'), get('fabBottom'));
+      },
+      { passive: true },
+    );
   }
 
   fab.addEventListener('click', () => {
@@ -468,7 +472,7 @@ export function sync() {
   pause.textContent = ChatPause.isActive() ? 'Reanudar chat' : 'Pausar chat';
   pause.classList.toggle('on', ChatPause.isActive());
   fab.classList.toggle('active', ChatPause.isActive());
-  fab.title = ChatPause.isActive() ? 'Twitch++ — chat pausado' : 'Twitch++ (Alt+O)';
+  fab.title = ChatPause.isActive() ? 'Twitch++ — chat pausado' : 'Twitch++ (Alt+Shift+T)';
 }
 
 async function runUpdateCheck() {

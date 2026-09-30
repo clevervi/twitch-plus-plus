@@ -6,7 +6,7 @@ import { select, selectAll } from '../core/selectors.js';
 import { show as toast } from '../core/toast.js';
 import { get as storeGet } from '../core/store.js';
 
-const CLAIM_HINT = /bonificaci[oó]n|bonus/i;
+const CLAIM_HINT = /bonificaci[oó]n|b[oóô]nus|bonus|бонус|claim|reclamar|resgatar|abholen|réclamer/i;
 const FORBIDDEN_HINT = /saldo|balance|potenciador|reward|recompensa/i;
 
 let lastClick = 0;
@@ -16,7 +16,7 @@ function cooldown() {
   return (Number.isFinite(seconds) ? seconds : 2.5) * 1000;
 }
 
-function isClaimButton(btn) {
+export function isClaimButton(btn) {
   if (!btn) return false;
   const target = btn.tagName === 'BUTTON' ? btn : btn.closest('button');
   if (!target) return false;

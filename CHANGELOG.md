@@ -1,5 +1,21 @@
 # Changelog
 
+## 2.2.3 — 2026-09-30
+
+- **Multi-idioma en auto-claim**: soporte ampliado para inglés (`claim bonus`), español (`reclamar bonificación`), portugués (`resgatar bônus`), alemán (`bonus abholen`), francés (`réclamer un bonus`) y ruso (`забрать бонус`).
+- **UI & Performance**: listener de `resize` del panel con `{ passive: true }` para transiciones fluidas.
+- **Test suite**: 5 nuevos tests unitarios en `test/auto-claim.test.mjs` validando la discriminación de botones y la protección contra aperturas accidentales del menú de recompensas.
+
+## 2.2.2 — 2026-09-30
+
+- **Fix auto-claim**: evita pulsar el menú nativo de saldo/potenciadores de Twitch mediante `FORBIDDEN_HINT` y comprobación del icono de cofre.
+- **Selectores actualizados**: eliminación de selectores genéricos de botón en `community-points-summary`.
+
+## 2.2.1 — 2026-09-30
+
+- **Menú inteligente**: detecta posición en pantalla y abre hacia abajo o arriba sin salirse del viewport.
+- **Selectores actualizados**: soporte para editor de chat Slate y selectores en español.
+
 ## 2.2.0
 
 - **FAB draggable**: el botón `++` se puede arrastrar a cualquier posición de la pantalla; la posición se guarda entre sesiones. Ya no tapa los botones de Twitch (Channel Points, emotes, etc.).
@@ -40,11 +56,3 @@
 ## 1.3.0
 
 - Versión anterior (script de un solo archivo): OLED, sidebar compacta, ocultar offline, buscador de chat, miniaturas, analítica de viewers, auto Channel Points y pausa de chat.
-
-## 2.2.1 — 2026-09-30
-
-- Menú inteligente: detecta posición en pantalla y abre hacia abajo o arriba sin salirse del viewport; selectores actualizados para español y nuevo editor de chat
-
-## 2.2.2 — 2026-09-30
-
-- Fix: auto-claim points ya no abre el menu de potenciadores y solo pulsa el cofre de bonificacion

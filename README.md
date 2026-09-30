@@ -24,7 +24,7 @@ npm run watch      # reconstruye al guardar
 
 3. Las futuras actualizaciones se descargarán automáticamente gracias a `@updateURL`.
 
-Atajos por defecto: `Alt+O` abre el panel, `Alt+P` pausa el chat, `Alt+Shift+X` desactiva todo (válvula de escape).
+Atajos por defecto: `Alt+Shift+T` abre el panel, `Alt+Shift+P` pausa el chat, `Alt+Shift+X` desactiva todo (válvula de escape).
 
 ## Cuando Twitch cambia el DOM: la sonda
 

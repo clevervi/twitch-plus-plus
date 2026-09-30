@@ -1,7 +1,7 @@
 {
-  "version": "2.2.2",
+  "version": "2.2.3",
   "script": "https://raw.githubusercontent.com/clevervi/twitch-plus-plus/main/dist/twitch-plus-plus.user.js",
   "homepage": "https://github.com/clevervi/twitch-plus-plus",
-  "publishedAt": "2026-09-30T18:49:23.996Z",
-  "notes": "Fix: auto-claim points ya no abre el menu de potenciadores y solo pulsa el cofre de bonificacion"
+  "publishedAt": "2026-09-30T23:12:04.053Z",
+  "notes": "**Multi-idioma en auto-claim**: soporte ampliado para inglés (`claim bonus`), español (`reclamar bonificación`), portugués (`resgatar bônus`), alemán (`bonus abholen`), francés (`réclamer un bonus`) y ruso (`забрать бонус`).\n**UI & Performance**: listener de `resize` del panel con `{ passive: true }` para transiciones fluidas.\n**Test suite**: 5 nuevos tests unitarios en `test/auto-claim.test.mjs` validando la discriminación de botones y la protección contra aperturas accidentales del menú de recompensas."
 }

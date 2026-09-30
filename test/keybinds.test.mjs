@@ -62,7 +62,7 @@ test('bindGlobal exige la combinación exacta y no roba teclas al escribir', asy
   const calls = [];
   bindGlobal((id) => calls.push(id));
 
-  const key = (overrides) => ({ key: 'O', altKey: false, ctrlKey: false, shiftKey: false, metaKey: false, preventDefault() {}, ...overrides });
+  const key = (overrides) => ({ key: 'O', altKey: false, ctrlKey: false, shiftKey: false, metaKey: false, preventDefault() {}, stopPropagation() {}, ...overrides });
 
   stub.window.fire('keydown', key({ altKey: true }));
   assert.deepEqual(calls, ['panel'], 'Alt+O dispara');

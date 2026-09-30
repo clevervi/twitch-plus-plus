@@ -1,15 +1,15 @@
 // ==UserScript==
 // @name         Twitch++
 // @namespace    https://github.com/clevervi
-// @version      2.2.2
+// @version      2.2.3
 // @description  Twitch limpio, modular y autoactualizable: OLED, sidebar, chat, analítica de viewers, auto Channel Points y pausa de chat.
 // @author       clevervi
 // @license      MIT
 // @homepageURL  https://github.com/clevervi/twitch-plus-plus/blob/main/README.md
 // @supportURL   https://github.com/clevervi/twitch-plus-plus/issues
 // @downloadURL  https://raw.githubusercontent.com/clevervi/twitch-plus-plus/main/dist/twitch-plus-plus.user.js
-// @updateURL    https://raw.githubusercontent.com/clevervi/twitch-plus-plus/main/dist/latest.json
-// @icon         data:image/svg+xml;utf8,<svg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 32 32'><rect width='32' height='32' rx='8' fill='%239147ff'/><text x='16' y='23' text-anchor='middle' font-family='sans-serif' font-size='17' font-weight='700' fill='%23ffffff'>%2B%2B</text></svg>
+// @updateURL    https://raw.githubusercontent.com/clevervi/twitch-plus-plus/main/dist/twitch-plus-plus.user.js
+// @icon         data:image/svg+xml;utf8,<svg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 32 32'><rect width='32' height='32' rx='8' fill='%239147ff'/><text x='16' y='23' text-anchor='middle' font-size='20' font-weight='800' fill='%23fff' letter-spacing='-1'>++</text></svg>
 // @match        https://*.twitch.tv/*
 // @grant        GM_getValue
 // @grant        GM_setValue
@@ -280,8 +280,6 @@ const BASE = {
     'div[contenteditable="true"][data-a-target="chat-input"]',
     '.chat-input__textarea-container textarea',
     '.chat-input textarea',
-    'div[data-slate-editor="true"]',
-    '.chat-wysiwyg-input__editor',
     '.chat-input__textarea [contenteditable="true"]',
     '[data-a-target="chat-input"] textarea',
   ],
@@ -300,8 +298,6 @@ const BASE = {
     'a[data-test-selector="followed-channel"]',
     'a[data-test-selector="recommended-channel"]',
     'a.side-nav-card__link',
-    '.side-nav-card a',
-    'a.side-nav-card',
   ],
   'player': ['[data-a-target="video-player"]', '.video-player', '.persistent-player'],
   'topNav': ['[data-a-target="top-nav-container"]', '.top-nav'],
@@ -316,20 +312,16 @@ const BASE = {
     '[data-a-target="community-points-summary"]',
   ],
   'claimBonus': [
-    'button[aria-label*="bonificación" i]',
-    'button[aria-label*="Bonus" i]',
     'button[aria-label="Claim Bonus"]',
     'button[aria-label="Reclamar bonificación"]',
     '.claimable-bonus__icon',
     '[data-test-selector="claimable-bonus-icon"]',
   ],
   'pauseChat': [
-    'button[aria-label*="Pause" i]',
-    'button[aria-label*="Pausar" i]',
-    'button[aria-label="Pause Chat"]',
-    'button[aria-label="Pausar chat"]',
     'button[data-a-target="chat-pause-button"]',
     '[data-test-selector="chat-pause-button"]',
+    'button[aria-label="Pause Chat"]',
+    'button[aria-label="Pausar chat"]',
   ],
   'upNext': ['[data-a-target="up-next-queue"]', '.up-next-queue', '[data-test-selector="up-next-queue"]'],
   'stories': ['[data-a-target="stories-tray"]', '.stories-tray', '[data-test-selector="stories-tray"]'],
@@ -1006,7 +998,7 @@ return {
 /* ---- src/core/version.js ---- */
 const __m8 = (function () {
 /** Sustituido en build. Fuente única de verdad: package.json + header del userscript. */
-const VERSION = '2.2.2';
+const VERSION = '2.2.3';
 const REPO_URL = 'https://github.com/clevervi/twitch-plus-plus';
 const RAW_URL = 'https://raw.githubusercontent.com/clevervi/twitch-plus-plus/main';
 const BRANCH = 'main';
@@ -1328,9 +1320,9 @@ function isKeyPart(part) {
   return /^f([1-9]|1[0-2])$/.test(part);
 }
 
-/** `Alt+P` → {alt:true,…,key:'p'} · cualquier basura → null */
+/** `Alt+Shift+P` → {alt:true,shift:true,…,key:'p'} · cualquier basura → null */
 function parseKeybind(str) {
-  if (!str) return null;
+  if (typeof str !== 'string' || !str.trim()) return null;
   const parts = String(str)
     .split('+')
     .map((part) => part.trim().toLowerCase())
@@ -1388,7 +1380,8 @@ function bindGlobal(run) {
         if (!keybinds[id]) continue;
         if (!matchKeybind(parseKeybind(keybinds[id]), event)) continue;
         if (isTypingTarget(event.target) && id !== 'panel') continue;
-        event.preventDefault();
+        event.preventDefault?.();
+        event.stopPropagation?.();
         run(id);
         return;
       }
@@ -1592,7 +1585,7 @@ const { emit: emit } = __m0;
 
 
 
-const HEARTBEAT = 1000;
+const HEARTBEAT = 400;
 
 let timer = null;
 let observer = null;
@@ -1620,9 +1613,23 @@ function request() {
 
 function observe() {
   if (observer || typeof MutationObserver !== 'function') return;
-  const signal = throttle(() => request(), 600);
+  const signal = throttle(() => request(), 400);
   observer = new MutationObserver(signal);
-  observer.observe(document.body, { childList: true, subtree: true });
+  
+  // Observar áreas específicas sin profundidad extrema
+  const targets = [
+    document.querySelector('[data-a-target="side-nav-bar"]'),
+    document.querySelector('[data-a-target="video-player"]'),
+    document.querySelector('[data-a-target="chat-room-component-layout"]'),
+  ].filter(Boolean);
+  
+  // Observar estos con subtree limitado
+  for (const target of targets) {
+    observer.observe(target, { childList: true, subtree: true });
+  }
+  
+  // Observar body solo para detectar si se recrea algún contenedor principal
+  observer.observe(document.body, { childList: true, subtree: false });
 }
 
 function start() {
@@ -1805,6 +1812,7 @@ const { show: toast } = __m16;
 
 const state = {
   active: false,
+  mode: null, // 'native' | 'scroll' | null
   el: null,
   top: 0,
   userScrolling: false,
@@ -1882,6 +1890,7 @@ const ChatPause = {
     if (native) {
       native.click();
       state.active = true;
+      state.mode = 'native';
       state.native = native;
       toast('Chat pausado');
       return true;
@@ -1889,14 +1898,18 @@ const ChatPause = {
     if (!attach()) return false;
     state.top = state.el.scrollTop;
     state.active = true;
+    state.mode = 'scroll';
     toast('Chat pausado');
     return true;
   },
 
   resume() {
-    if (state.native && state.native.isConnected) state.native.click();
+    if (state.mode === 'native' && state.native && state.native.isConnected) {
+      state.native.click();
+    }
     state.native = null;
     state.active = false;
+    state.mode = null;
     detach();
     toast('Chat reanudado');
     return true;
@@ -1909,15 +1922,24 @@ const ChatPause = {
   /** Lo llama el scheduler: reconcilia con Twitch y recoloca el scroll si recreó el contenedor. */
   ensure() {
     if (!state.active) return;
-    if (state.native) {
-      if (state.native.isConnected && nativeSaysPaused(state.native)) return;
+    if (state.mode === 'native') {
+      const current = nativeButton();
+      if (current && nativeSaysPaused(current)) {
+        state.native = current;   // actualiza la referencia
+        return;
+      }
+      // El botón nativo desapareció o ya no dice "Resume": Twitch desbloqueó el chat
       state.native = null;
       state.active = false;
+      state.mode = null;
+      detach();
       return;
     }
-    if (!state.el || !state.el.isConnected) {
-      attach();
-      if (state.el) state.top = state.el.scrollTop;
+    if (state.mode === 'scroll') {
+      if (!state.el || !state.el.isConnected) {
+        attach();
+        if (state.el) state.top = state.el.scrollTop;
+      }
     }
   },
 };
@@ -1943,7 +1965,7 @@ const { get: storeGet } = __m5;
 
 
 
-const CLAIM_HINT = /bonificaci[oó]n|bonus/i;
+const CLAIM_HINT = /bonificaci[oó]n|b[oóô]nus|bonus|бонус|claim|reclamar|resgatar|abholen|réclamer/i;
 const FORBIDDEN_HINT = /saldo|balance|potenciador|reward|recompensa/i;
 
 let lastClick = 0;
@@ -2010,7 +2032,7 @@ defineFeature({
   },
 });
 return {
-
+  isClaimButton: isClaimButton,
 };
 })();
 
@@ -2031,7 +2053,7 @@ const RESERVED = new Set([
 
 function channelFromHref(href) {
   if (!href || !href.startsWith('/') || href.startsWith('//')) return null;
-  const first = href.split(/[/?#]/).filter(Boolean)[0];
+  const first = href.split(/[\/?​#]/).filter(Boolean)[0];
   if (!first || RESERVED.has(first.toLowerCase())) return null;
   return decodeURIComponent(first).toLowerCase();
 }
@@ -2060,7 +2082,7 @@ function thumbnailUrl(channel, width = 440) {
 }
 
 function currentChannel() {
-  return (location.pathname.match(/^\/([^/]+)/) || [])[1] || '';
+  return (location.pathname.match(/^\/([^\/]+)/) || [])[1] || '';
 }
 
 /**
@@ -2106,7 +2128,7 @@ function currentUsername() {
   const img = qs('img', toggle);
   if (img && img.alt) return img.alt.trim();
   const label = toggle.getAttribute('aria-label') || '';
-  const match = label.match(/^(.+?)['’]s\s+user\s+menu/i) || label.match(/^User menu\s*[-–]\s*(.+)/i);
+  const match = label.match(/^(.+?)[''\u2019]s\s+user\s+menu/i) || label.match(/^User menu\s*[-–]\s*(.+)/i);
   return match ? match[1].trim() : null;
 }
 
@@ -2129,16 +2151,58 @@ function messageText(message) {
   return (body ? body.textContent : message.textContent) || '';
 }
 
-/** Contador de viewers parseado a número (soporta 1,2 K / 12,3 mil). */
+/**
+ * Contador de viewers parseado a número.
+ * Soporta: "1.2K", "12.3K", "1.2M", "1,2 mil", "1.234", etc.
+ */
 function viewerCount() {
   const node = select('viewerCount');
   if (!node) return null;
   const text = (node.textContent || '').trim();
-  const mil = /k|mil|\sK\b/i.test(text);
-  const digits = text.replace(/[^\d]/g, '');
-  if (!digits) return null;
-  const value = parseInt(digits, 10);
-  return mil ? value * 1000 : value;
+  return parseViewerText(text);
+}
+
+/**
+ * Parsea texto de viewers con multiplicadores (K, M, mil).
+ * Maneja separadores decimales y de miles correctamente.
+ */
+function parseViewerText(txt) {
+  if (!txt) return null;
+
+  const t = txt.toLowerCase().replace(/\s+/g, '');
+  const m = t.match(/^([\d.,]+)\s*(mil|k|m|b)?$/);
+  if (!m) return null;
+
+  let num = m[1];
+  const suf = m[2] || '';
+
+  // Decidir si coma/punto es decimal o miles
+  const lastComma = num.lastIndexOf(',');
+  const lastDot = num.lastIndexOf('.');
+
+  if (lastComma > -1 && lastDot > -1) {
+    // Ambos presentes: la última ocurrencia es el decimal
+    if (lastComma > lastDot) {
+      num = num.replace(/\./g, '').replace(',', '.');
+    } else {
+      num = num.replace(/,/g, '');
+    }
+  } else if (lastComma > -1) {
+    // Solo coma: si son 3 dígitos después, es miles; si no, es decimal
+    const after = num.length - lastComma - 1;
+    if (after === 3) num = num.replace(/,/g, '');
+    else num = num.replace(',', '.');
+  } else if (lastDot > -1) {
+    // Solo punto: si son 3 dígitos después y hay más números, es miles
+    const after = num.length - lastDot - 1;
+    if (after === 3 && num.length > 4) num = num.replace(/\./g, '');
+  }
+
+  const base = parseFloat(num);
+  if (!isFinite(base)) return null;
+
+  const mult = { mil: 1e3, k: 1e3, m: 1e6, b: 1e9 }[suf] || 1;
+  return Math.round(base * mult);
 }
 return {
   channelFromHref: channelFromHref,
@@ -2155,6 +2219,7 @@ return {
   chatContainer: chatContainer,
   messageText: messageText,
   viewerCount: viewerCount,
+  parseViewerText: parseViewerText,
 };
 })();
 
@@ -2718,7 +2783,7 @@ const { get: storeGet } = __m5;
 const EXTENSION_HINT = /extension|ext-twitch|\/extensions\/|extension-panel|twitch-ext-/i;
 
 const KNOWN_PLAYER_ICONS =
-  /Icon-(Settings|Gear|Volume|Fullscreen|Theater|Pause|Play|Mute|Unmute|Rewind|Forward|Quality|Clip|Share|Subscribe|Follow|Bits|Prime|Notifications|Messages|Search|Menu|Close|Chevron|Arrow|Drops|Points|Reward|Emote|Mod|Chat|Crown|Heart|Rerun|Pin|Mute-User|Bit|Hype|Extension|Collapse|Expand|Info|Rec|Resume|Exit)/i;
+  /Icon-(Settings|Gear|Volume|Fullscreen|Theater|Pause|Play|Mute|Unmute|Rewind|Forward|Quality|Clip|Share|Subscribe|Follow|Bits|Prime|Notifications|Messages|Search|Menu|Close|Chevron|Arrow|Drops|Picture)/i;
 
 const known = new Set();
 const removed = new Set();
@@ -2727,11 +2792,13 @@ function kill(element) {
   if (!element || removed.has(element)) return;
   removed.add(element);
   element.style.setProperty('display', 'none', 'important');
+  element.style.setProperty('pointer-events', 'none', 'important');
 }
 
 function restore() {
   for (const node of removed) {
     node.style?.removeProperty('display');
+    node.style?.removeProperty('pointer-events');
   }
   removed.clear();
 }
@@ -2884,8 +2951,12 @@ function isOffline(card) {
 // canal o reconectar el canal se refleja sin recargar.
 function sweep() {
   for (const card of selectAll('sideNav.card')) {
-    if (card.getAttribute(ATTR) === '1') continue;
-    card.setAttribute(ATTR, isOffline(card) ? '1' : '0');
+    const offline = isOffline(card);
+    if (offline) {
+      card.setAttribute(ATTR, '1');
+    } else {
+      card.setAttribute(ATTR, '0');
+    }
   }
 }
 
@@ -2902,7 +2973,8 @@ defineFeature({
   css: `
     %SCOPE% [data-a-target="side-nav-card"][data-twpp-offline="1"],
     %SCOPE% .side-nav-card[data-twpp-offline="1"] { display: none !important; }
-  `,  tick: sweep,
+  `,
+  tick: sweep,
   onEnable: sweep,
   onDisable: clear,
   onRoute: clear,
@@ -2922,6 +2994,7 @@ const { chatContainer: chatContainer, chatLines: chatLines, currentUsername: cur
 
 
 const CLASS = 'twpp-mention';
+const ATTR = 'data-twpp-mention';
 let username = null;
 let pattern = null;
 
@@ -2940,13 +3013,17 @@ function sweep() {
   const container = chatContainer();
   if (!container) return;
   for (const line of chatLines(container)) {
-    if (line.classList.contains(CLASS)) continue;
+    if (line.hasAttribute(ATTR)) continue;
+    line.setAttribute(ATTR, '1');
     if (pattern.test(messageText(line))) line.classList.add(CLASS);
   }
 }
 
 function clear() {
-  for (const line of document.querySelectorAll(`.${CLASS}`)) line.classList.remove(CLASS);
+  for (const line of document.querySelectorAll(`.${CLASS}`)) {
+    line.classList.remove(CLASS);
+    line.removeAttribute(ATTR);
+  }
 }
 
 defineFeature({
@@ -2972,6 +3049,9 @@ defineFeature({
   onRoute() {
     username = null;
     pattern = null;
+    document.querySelectorAll(`[${ATTR}]`).forEach(el => {
+      el.removeAttribute(ATTR);
+    });
   },
 });
 return {
@@ -3381,15 +3461,20 @@ const PANEL_CSS = `
   .fab {
     width: 26px; height: 26px; border: none; border-radius: 50%;
     background: #9147ff; color: #fff; font-size: 11px; font-weight: 800;
-    letter-spacing: -1px; cursor: pointer; opacity: .18; padding: 0;
+    letter-spacing: -1px; cursor: pointer; padding: 0;
     box-shadow: 0 3px 10px rgba(0,0,0,.4);
-    transition: opacity .25s ease, transform .18s ease, background .18s ease;
+    opacity: 0; pointer-events: none;
+    transform: scale(.85);
+    transition: opacity .22s ease, transform .22s ease, background .18s ease;
   }
-  .fab:hover { opacity: 1; transform: scale(1.15); background: #a970ff; }
-  .fab.awake { opacity: .55; }
-  .fab.active { background: #ff5c5c; opacity: .9; }
-  .fab.dragging { cursor: grabbing !important; opacity: .8; transform: scale(1.1); }
-  .fab.flash { opacity: .65; }
+  .fab.reveal {
+    opacity: .5; pointer-events: auto; transform: scale(1);
+  }
+  .fab.reveal:hover {
+    opacity: 1; transform: scale(1.15);
+  }
+  .fab.active { background: #ff5c5c; opacity: 1; pointer-events: auto; transform: scale(1); }
+  .fab.dragging { cursor: grabbing !important; opacity: .8; transform: scale(1.1); pointer-events: auto; }
   .panel {
     width: 300px; max-height: 80vh; display: flex; flex-direction: column;
     background: #0e0e10; border: 1px solid #2a2a2d; border-radius: 10px;
@@ -3756,7 +3841,7 @@ function build() {
             <button class="action-btn" data-action="reset">Reset</button>
           </div>
         </div>
-        <footer class="foot">Alt+O panel · Alt+P pausa de chat</footer>
+        <footer class="foot">Alt+Shift+T panel · Alt+Shift+P pausa de chat</footer>
       </section>
       <button class="fab" id="fab" title="Twitch++">++</button>
     </div>`;
@@ -3850,9 +3935,13 @@ function bind() {
   });
 
   if (typeof window !== 'undefined' && window.addEventListener) {
-    window.addEventListener('resize', () => {
-      applyPlacement(get('fabRight'), get('fabBottom'));
-    });
+    window.addEventListener(
+      'resize',
+      () => {
+        applyPlacement(get('fabRight'), get('fabBottom'));
+      },
+      { passive: true },
+    );
   }
 
   fab.addEventListener('click', () => {
@@ -4016,7 +4105,7 @@ function sync() {
   pause.textContent = ChatPause.isActive() ? 'Reanudar chat' : 'Pausar chat';
   pause.classList.toggle('on', ChatPause.isActive());
   fab.classList.toggle('active', ChatPause.isActive());
-  fab.title = ChatPause.isActive() ? 'Twitch++ — chat pausado' : 'Twitch++ (Alt+O)';
+  fab.title = ChatPause.isActive() ? 'Twitch++ — chat pausado' : 'Twitch++ (Alt+Shift+T)';
 }
 
 async function runUpdateCheck() {
@@ -4177,8 +4266,8 @@ declare('autoUpdate', 'bool', true);
 declare('debug', 'bool', false);
 
 function registerKeybinds() {
-  registerKeybind('panel', 'Abrir panel', 'Alt+O');
-  registerKeybind('chatPause', 'Pausar chat', 'Alt+P');
+  registerKeybind('panel', 'Abrir panel', 'Alt+Shift+T');
+  registerKeybind('chatPause', 'Pausar chat', 'Alt+Shift+P');
   registerKeybind('pauseAll', 'Desactivar todo', 'Alt+Shift+X');
 }
 
@@ -4200,7 +4289,7 @@ function runAction(id) {
 
 async function networkTasks() {
   // Fuera de twitch.tv (p.ej. la sonda de probe.html) no hay nada que buscar y
-  // un catálogo remoto contaminaría lameasurement.
+  // un catálogo remoto contaminaría la medición.
   if (!/(^|\.)twitch\.tv$/i.test(location.hostname)) return;
   try {
     await refreshCatalog();
@@ -4306,7 +4395,9 @@ const __m39 = (function () {
 const { diagnostics: diagnostics, setFeature: setFeature, start: start } = __m38;
 const { VERSION: VERSION } = __m8;
 
-/** Punto de entrada del userscript. */
+/**
+ * Punto de entrada del userscript.
+ */
 
 
 
