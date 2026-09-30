@@ -15,7 +15,7 @@ export function show(message, duration = 1800) {
     return;
   }
   const node = document.createElement('div');
-  node.className = 'twpp-toast';
+  node.className = 'toast';
   node.textContent = String(message);
   host.appendChild(node);
   requestAnimationFrame(() => node.classList.add('in'));

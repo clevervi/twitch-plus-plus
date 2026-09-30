@@ -4,7 +4,7 @@ import { setDebug, trackedErrors } from '../core/log.js';
 import { all as allFeatures, apply, applyAll, SECTIONS, statuses } from '../core/registry.js';
 import { report } from '../core/report.js';
 import { brokenSelectors, selectorReport } from '../core/selectors.js';
-import { exportJSON, get, importJSON, reset as resetStore, set, setMany } from '../core/store.js';
+import { declare, exportJSON, get, importJSON, reset as resetStore, set, setMany } from '../core/store.js';
 import { list as keybindList, setCombo } from '../core/keybinds.js';
 import { setHost as setToastHost, show as toast } from '../core/toast.js';
 import { clearCache, refresh as refreshCatalog, status as catalogStatus } from '../core/catalog.js';
@@ -13,6 +13,9 @@ import { ChatPause } from '../features/chat-pause.js';
 import { VERSION } from '../core/version.js';
 import { PANEL_CSS } from './panel-css.js';
 import { PRESETS, PRESET_LABELS, idsOf } from './presets.js';
+
+declare('fabRight', 'number', 14);
+declare('fabBottom', 'number', 56);
 
 let host = null;
 let shadow = null;
@@ -132,7 +135,7 @@ function build() {
   if (built) return;
   host = document.createElement('div');
   host.id = 'twpp-host';
-  host.style.cssText = 'position:fixed;right:14px;bottom:14px;z-index:2147483000;';
+  host.style.cssText = `position:fixed;right:${get('fabRight')}px;bottom:${get('fabBottom')}px;z-index:2147483000;`;
   shadow = host.attachShadow({ mode: 'open' });
   shadow.innerHTML = `<style>${PANEL_CSS}</style>
     <div class="wrap">
@@ -153,7 +156,7 @@ function build() {
         <div class="body" id="body">${sectionsHtml()}</div>
         <div class="note" id="note" hidden></div>
         <div class="actions">
-          <button class="action-btn" id="pause">Pausar chat</button>
+          <button class="action-btn" id="pause" data-action="pause">Pausar chat</button>
           <div class="action-row">
             <button class="action-btn" data-action="update">Buscar actualización</button>
             <button class="action-btn" data-action="catalog">Recargar catálogo</button>
@@ -179,6 +182,7 @@ function build() {
   bind();
   built = true;
   sync();
+  flashFab();
   scheduleIdle();
 }
 
@@ -207,7 +211,48 @@ function readSetting(input) {
 }
 
 function bind() {
-  fab.addEventListener('click', () => togglePanel());
+  // --- FAB draggable: distingue click (toggle panel) de drag (mover) ---
+  let dragFlag = false;
+
+  fab.addEventListener('mousedown', (ev) => {
+    if (ev.button !== 0) return;
+    dragFlag = false;
+    const startX = ev.clientX;
+    const startY = ev.clientY;
+    const rect = host.getBoundingClientRect();
+    const origRight = window.innerWidth - rect.right;
+    const origBottom = window.innerHeight - rect.bottom;
+
+    const onMove = (e) => {
+      const dx = e.clientX - startX;
+      const dy = e.clientY - startY;
+      if (!dragFlag && Math.abs(dx) < 5 && Math.abs(dy) < 5) return;
+      dragFlag = true;
+      fab.classList.add('dragging');
+      const maxR = window.innerWidth - 40;
+      const maxB = window.innerHeight - 40;
+      host.style.right = `${Math.max(0, Math.min(maxR, origRight - dx))}px`;
+      host.style.bottom = `${Math.max(0, Math.min(maxB, origBottom - dy))}px`;
+    };
+
+    const onUp = () => {
+      document.removeEventListener('mousemove', onMove);
+      document.removeEventListener('mouseup', onUp);
+      fab.classList.remove('dragging');
+      if (dragFlag) {
+        set('fabRight', parseFloat(host.style.right) || 14);
+        set('fabBottom', parseFloat(host.style.bottom) || 56);
+      }
+    };
+
+    document.addEventListener('mousemove', onMove);
+    document.addEventListener('mouseup', onUp);
+  });
+
+  fab.addEventListener('click', () => {
+    if (dragFlag) { dragFlag = false; return; }
+    togglePanel();
+  });
 
   shadow.addEventListener('change', (event) => {
     const toggle = event.target.closest('input[type="checkbox"][data-key]');
@@ -311,6 +356,15 @@ function scheduleIdle() {
     if (panel && !panel.hidden) return;
     fab?.classList.remove('awake');
   }, 4000);
+}
+
+function flashFab() {
+  if (!fab) return;
+  fab.classList.add('flash');
+  setTimeout(() => {
+    if (panel && !panel.hidden) return;
+    fab.classList.remove('flash');
+  }, 2500);
 }
 
 export function isOpen() {

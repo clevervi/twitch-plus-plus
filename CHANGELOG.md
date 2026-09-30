@@ -1,5 +1,13 @@
 # Changelog
 
+## 2.2.0
+
+- **FAB draggable**: el botón `++` se puede arrastrar a cualquier posición de la pantalla; la posición se guarda entre sesiones. Ya no tapa los botones de Twitch (Channel Points, emotes, etc.).
+- **Posición por defecto corregida**: el FAB arranca en `bottom:56px` en vez de `bottom:14px`, evitando la zona de botones del chat.
+- **Flash de bienvenida**: al cargar la página el FAB aparece brevemente (2.5 s) para que el usuario sepa que está activo.
+- **Fix: toasts invisibles**: la clase CSS del shadow DOM no coincidía con la que creaba el JS (`toast` vs `twpp-toast`).
+- **Fix: botón Pausar chat roto**: faltaba el atributo `data-action="pause"` y el click handler no lo reconocía.
+
 ## 2.1.0
 
 - `probe.html`: pega un volcado del DOM de Twitch y el script se ejecuta contra él en un iframe aislado, diciendo qué features fallan y qué selectores dejan de resolver. Es la herramienta para arreglar cambios de Twitch sin depurar en vivo.

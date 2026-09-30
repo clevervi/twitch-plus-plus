@@ -1,14 +1,14 @@
 // ==UserScript==
 // @name         Twitch++
-// @namespace    https://github.com/twitchplusplus
-// @version      2.1.0
+// @namespace    https://github.com/clevervi
+// @version      2.2.0
 // @description  Twitch limpio, modular y autoactualizable: OLED, sidebar, chat, analítica de viewers, auto Channel Points y pausa de chat.
-// @author       Twitch++
+// @author       clevervi
 // @license      MIT
-// @homepageURL  https://github.com/twitchplusplus/twitch-plus-plus/blob/main/README.md
-// @supportURL   https://github.com/twitchplusplus/twitch-plus-plus/issues
-// @downloadURL  https://raw.githubusercontent.com/twitchplusplus/twitch-plus-plus/main/dist/twitch-plus-plus.user.js
-// @updateURL    https://raw.githubusercontent.com/twitchplusplus/twitch-plus-plus/main/dist/latest.json
+// @homepageURL  https://github.com/clevervi/twitch-plus-plus/blob/main/README.md
+// @supportURL   https://github.com/clevervi/twitch-plus-plus/issues
+// @downloadURL  https://raw.githubusercontent.com/clevervi/twitch-plus-plus/main/dist/twitch-plus-plus.user.js
+// @updateURL    https://raw.githubusercontent.com/clevervi/twitch-plus-plus/main/dist/latest.json
 // @icon         data:image/svg+xml;utf8,<svg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 32 32'><rect width='32' height='32' rx='8' fill='%239147ff'/><text x='16' y='23' text-anchor='middle' font-family='sans-serif' font-size='17' font-weight='700' fill='%23ffffff'>%2B%2B</text></svg>
 // @match        https://*.twitch.tv/*
 // @grant        GM_getValue
@@ -978,9 +978,9 @@ return {
 /* ---- src/core/version.js ---- */
 const __m8 = (function () {
 /** Sustituido en build. Fuente única de verdad: package.json + header del userscript. */
-const VERSION = '2.1.0';
-const REPO_URL = 'https://github.com/twitchplusplus/twitch-plus-plus';
-const RAW_URL = 'https://raw.githubusercontent.com/twitchplusplus/twitch-plus-plus/main';
+const VERSION = '2.2.0';
+const REPO_URL = 'https://github.com/clevervi/twitch-plus-plus';
+const RAW_URL = 'https://raw.githubusercontent.com/clevervi/twitch-plus-plus/main';
 const BRANCH = 'main';
 const CATALOG_URL = `${RAW_URL}/catalog.json`;
 const LATEST_URL = `${RAW_URL}/dist/latest.json`;
@@ -1661,7 +1661,7 @@ function show(message, duration = 1800) {
     return;
   }
   const node = document.createElement('div');
-  node.className = 'twpp-toast';
+  node.className = 'toast';
   node.textContent = String(message);
   host.appendChild(node);
   requestAnimationFrame(() => node.classList.add('in'));
@@ -3331,6 +3331,8 @@ const PANEL_CSS = `
   .fab:hover { opacity: 1; transform: scale(1.15); background: #a970ff; }
   .fab.awake { opacity: .55; }
   .fab.active { background: #ff5c5c; opacity: .9; }
+  .fab.dragging { cursor: grabbing !important; opacity: .8; transform: scale(1.1); }
+  .fab.flash { opacity: .65; }
   .panel {
     width: 300px; max-height: 80vh; display: flex; flex-direction: column;
     background: #0e0e10; border: 1px solid #2a2a2d; border-radius: 10px;
@@ -3477,7 +3479,7 @@ const { setDebug: setDebug, trackedErrors: trackedErrors } = __m2;
 const { all: allFeatures, apply: apply, applyAll: applyAll, SECTIONS: SECTIONS, statuses: statuses } = __m6;
 const { report: report } = __m13;
 const { brokenSelectors: brokenSelectors, selectorReport: selectorReport } = __m3;
-const { exportJSON: exportJSON, get: get, importJSON: importJSON, reset: resetStore, set: set, setMany: setMany } = __m5;
+const { declare: declare, exportJSON: exportJSON, get: get, importJSON: importJSON, reset: resetStore, set: set, setMany: setMany } = __m5;
 const { list: keybindList, setCombo: setCombo } = __m11;
 const { setHost: setToastHost, show: toast } = __m16;
 const { clearCache: clearCache, refresh: refreshCatalog, status: catalogStatus } = __m9;
@@ -3502,6 +3504,9 @@ const { PRESETS: PRESETS, PRESET_LABELS: PRESET_LABELS, idsOf: idsOf } = __m36;
 
 
 
+
+declare('fabRight', 'number', 14);
+declare('fabBottom', 'number', 56);
 
 let host = null;
 let shadow = null;
@@ -3621,7 +3626,7 @@ function build() {
   if (built) return;
   host = document.createElement('div');
   host.id = 'twpp-host';
-  host.style.cssText = 'position:fixed;right:14px;bottom:14px;z-index:2147483000;';
+  host.style.cssText = `position:fixed;right:${get('fabRight')}px;bottom:${get('fabBottom')}px;z-index:2147483000;`;
   shadow = host.attachShadow({ mode: 'open' });
   shadow.innerHTML = `<style>${PANEL_CSS}</style>
     <div class="wrap">
@@ -3642,7 +3647,7 @@ function build() {
         <div class="body" id="body">${sectionsHtml()}</div>
         <div class="note" id="note" hidden></div>
         <div class="actions">
-          <button class="action-btn" id="pause">Pausar chat</button>
+          <button class="action-btn" id="pause" data-action="pause">Pausar chat</button>
           <div class="action-row">
             <button class="action-btn" data-action="update">Buscar actualización</button>
             <button class="action-btn" data-action="catalog">Recargar catálogo</button>
@@ -3668,6 +3673,7 @@ function build() {
   bind();
   built = true;
   sync();
+  flashFab();
   scheduleIdle();
 }
 
@@ -3696,7 +3702,48 @@ function readSetting(input) {
 }
 
 function bind() {
-  fab.addEventListener('click', () => togglePanel());
+  // --- FAB draggable: distingue click (toggle panel) de drag (mover) ---
+  let dragFlag = false;
+
+  fab.addEventListener('mousedown', (ev) => {
+    if (ev.button !== 0) return;
+    dragFlag = false;
+    const startX = ev.clientX;
+    const startY = ev.clientY;
+    const rect = host.getBoundingClientRect();
+    const origRight = window.innerWidth - rect.right;
+    const origBottom = window.innerHeight - rect.bottom;
+
+    const onMove = (e) => {
+      const dx = e.clientX - startX;
+      const dy = e.clientY - startY;
+      if (!dragFlag && Math.abs(dx) < 5 && Math.abs(dy) < 5) return;
+      dragFlag = true;
+      fab.classList.add('dragging');
+      const maxR = window.innerWidth - 40;
+      const maxB = window.innerHeight - 40;
+      host.style.right = `${Math.max(0, Math.min(maxR, origRight - dx))}px`;
+      host.style.bottom = `${Math.max(0, Math.min(maxB, origBottom - dy))}px`;
+    };
+
+    const onUp = () => {
+      document.removeEventListener('mousemove', onMove);
+      document.removeEventListener('mouseup', onUp);
+      fab.classList.remove('dragging');
+      if (dragFlag) {
+        set('fabRight', parseFloat(host.style.right) || 14);
+        set('fabBottom', parseFloat(host.style.bottom) || 56);
+      }
+    };
+
+    document.addEventListener('mousemove', onMove);
+    document.addEventListener('mouseup', onUp);
+  });
+
+  fab.addEventListener('click', () => {
+    if (dragFlag) { dragFlag = false; return; }
+    togglePanel();
+  });
 
   shadow.addEventListener('change', (event) => {
     const toggle = event.target.closest('input[type="checkbox"][data-key]');
@@ -3800,6 +3847,15 @@ function scheduleIdle() {
     if (panel && !panel.hidden) return;
     fab?.classList.remove('awake');
   }, 4000);
+}
+
+function flashFab() {
+  if (!fab) return;
+  fab.classList.add('flash');
+  setTimeout(() => {
+    if (panel && !panel.hidden) return;
+    fab.classList.remove('flash');
+  }, 2500);
 }
 
 function isOpen() {

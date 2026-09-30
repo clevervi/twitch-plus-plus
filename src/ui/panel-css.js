@@ -24,6 +24,8 @@ export const PANEL_CSS = `
   .fab:hover { opacity: 1; transform: scale(1.15); background: #a970ff; }
   .fab.awake { opacity: .55; }
   .fab.active { background: #ff5c5c; opacity: .9; }
+  .fab.dragging { cursor: grabbing !important; opacity: .8; transform: scale(1.1); }
+  .fab.flash { opacity: .65; }
   .panel {
     width: 300px; max-height: 80vh; display: flex; flex-direction: column;
     background: #0e0e10; border: 1px solid #2a2a2d; border-radius: 10px;

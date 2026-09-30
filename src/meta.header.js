@@ -1,9 +1,9 @@
 // ==UserScript==
 // @name         Twitch++
-// @namespace    https://github.com/twitchplusplus
+// @namespace    https://github.com/clevervi
 // @version      %VERSION%
 // @description  Twitch limpio, modular y autoactualizable: OLED, sidebar, chat, analítica de viewers, auto Channel Points y pausa de chat.
-// @author       Twitch++
+// @author       clevervi
 // @license      MIT
 // @homepageURL  %REPO%/blob/main/README.md
 // @supportURL   %REPO%/issues
