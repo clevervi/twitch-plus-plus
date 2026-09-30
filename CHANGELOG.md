@@ -40,3 +40,7 @@
 ## 1.3.0
 
 - Versión anterior (script de un solo archivo): OLED, sidebar compacta, ocultar offline, buscador de chat, miniaturas, analítica de viewers, auto Channel Points y pausa de chat.
+
+## 2.2.1 — 2026-09-30
+
+- Menú inteligente: detecta posición en pantalla y abre hacia abajo o arriba sin salirse del viewport; selectores actualizados para español y nuevo editor de chat

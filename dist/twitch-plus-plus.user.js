@@ -1,7 +1,7 @@
 // ==UserScript==
 // @name         Twitch++
 // @namespace    https://github.com/clevervi
-// @version      2.2.0
+// @version      2.2.1
 // @description  Twitch limpio, modular y autoactualizable: OLED, sidebar, chat, analítica de viewers, auto Channel Points y pausa de chat.
 // @author       clevervi
 // @license      MIT
@@ -275,12 +275,34 @@ const BASE = {
   ],
   'chat.line': ['[data-a-target="chat-line-message"]', '.chat-line__message'],
   'chat.username': ['.chat-line__username', '[data-a-target="chat-message-username"]'],
-  'chat.input': ['.chat-input__textarea-container textarea', '.chat-input textarea', '[data-a-target="chat-input"] textarea'],
+  'chat.input': [
+    '[data-a-target="chat-input"]',
+    'div[contenteditable="true"][data-a-target="chat-input"]',
+    '.chat-input__textarea-container textarea',
+    '.chat-input textarea',
+    'div[data-slate-editor="true"]',
+    '.chat-wysiwyg-input__editor',
+    '.chat-input__textarea [contenteditable="true"]',
+    '[data-a-target="chat-input"] textarea',
+  ],
   'sideNav.root': ['[data-a-target="side-nav-bar"]', '.side-nav', '[data-test-selector="side-nav"]'],
   'sideNav.card': ['[data-a-target="side-nav-card"]', '.side-nav-card'],
   'sideNav.group': ['nav .tw-transition-group', '.side-nav__section'],
-  'sideNav.more': ['[data-a-target="side-nav-more"]', '.side-nav__more'],
-  'sideNav.link': ['[data-a-target="side-nav-link"]', '.side-nav-card__link'],
+  'sideNav.more': [
+    '[data-a-target="side-nav-more"]',
+    'button[data-a-target="side-nav-show-more-button"]',
+    '[data-test-selector="ShowMore"] button',
+    '.side-nav__more',
+    'button.side-nav-show-more',
+  ],
+  'sideNav.link': [
+    '[data-a-target="side-nav-link"]',
+    'a[data-test-selector="followed-channel"]',
+    'a[data-test-selector="recommended-channel"]',
+    'a.side-nav-card__link',
+    '.side-nav-card a',
+    'a.side-nav-card',
+  ],
   'player': ['[data-a-target="video-player"]', '.video-player', '.persistent-player'],
   'topNav': ['[data-a-target="top-nav-container"]', '.top-nav'],
   'viewerCount': [
@@ -294,13 +316,20 @@ const BASE = {
     '[data-a-target="community-points-summary"]',
   ],
   'claimBonus': [
+    'button[aria-label*="Bonus" i]',
+    'button[aria-label*="bonificación" i]',
+    'button[aria-label*="reclamar" i]',
     'button[aria-label="Claim Bonus"]',
     '.claimable-bonus__icon',
     '[data-test-selector="claimable-bonus-icon"]',
+    '[data-test-selector="community-points-summary"] button',
   ],
   'pauseChat': [
+    'button[aria-label*="Pause" i]',
+    'button[aria-label*="Pausar" i]',
     'button[aria-label="Pause Chat"]',
     'button[aria-label="Pausar chat"]',
+    'button[data-a-target="chat-pause-button"]',
     '[data-test-selector="chat-pause-button"]',
   ],
   'upNext': ['[data-a-target="up-next-queue"]', '.up-next-queue', '[data-test-selector="up-next-queue"]'],
@@ -978,7 +1007,7 @@ return {
 /* ---- src/core/version.js ---- */
 const __m8 = (function () {
 /** Sustituido en build. Fuente única de verdad: package.json + header del userscript. */
-const VERSION = '2.2.0';
+const VERSION = '2.2.1';
 const REPO_URL = 'https://github.com/clevervi/twitch-plus-plus';
 const RAW_URL = 'https://raw.githubusercontent.com/clevervi/twitch-plus-plus/main';
 const BRANCH = 'main';
@@ -3308,7 +3337,15 @@ const __m35 = (function () {
 const PANEL_CSS = `
   :host { all: initial; }
   * { box-sizing: border-box; font-family: "Inter","Roobert",-apple-system,"Segoe UI",Roboto,sans-serif; }
-  .wrap { display: flex; flex-direction: column; align-items: flex-end; gap: 10px; }
+  .wrap { display: flex; flex-direction: column; gap: 10px; }
+  .wrap.open-up { flex-direction: column; }
+  .wrap.open-down { flex-direction: column-reverse; }
+  .wrap.align-right { align-items: flex-end; }
+  .wrap.align-left { align-items: flex-start; }
+  .wrap.open-up .panel { transform-origin: bottom right; }
+  .wrap.open-up.align-left .panel { transform-origin: bottom left; }
+  .wrap.open-down .panel { transform-origin: top right; }
+  .wrap.open-down.align-left .panel { transform-origin: top left; }
   .toasts {
     position: fixed; right: 14px; bottom: 52px;
     display: flex; flex-direction: column; gap: 6px;
@@ -3622,11 +3659,51 @@ function sectionsHtml() {
   return html;
 }
 
+function applyPlacement(right, bottom) {
+  if (!host) return;
+  const winW = (typeof window !== 'undefined' ? window.innerWidth : 1200) || 1200;
+  const winH = (typeof window !== 'undefined' ? window.innerHeight : 800) || 800;
+
+  const isTop = bottom > winH / 2;
+  const isLeft = right > winW / 2;
+
+  const wrap = shadow?.querySelector('.wrap');
+  if (wrap) {
+    wrap.classList.toggle('open-down', isTop);
+    wrap.classList.toggle('open-up', !isTop);
+    wrap.classList.toggle('align-left', isLeft);
+    wrap.classList.toggle('align-right', !isLeft);
+  }
+
+  if (isTop) {
+    const topPx = Math.max(0, winH - bottom - 26);
+    host.style.top = `${topPx}px`;
+    host.style.bottom = 'auto';
+  } else {
+    host.style.bottom = `${Math.max(0, bottom)}px`;
+    host.style.top = 'auto';
+  }
+
+  if (isLeft) {
+    const leftPx = Math.max(0, winW - right - 26);
+    host.style.left = `${leftPx}px`;
+    host.style.right = 'auto';
+  } else {
+    host.style.right = `${Math.max(0, right)}px`;
+    host.style.left = 'auto';
+  }
+
+  if (panel) {
+    const availH = isTop ? (bottom - 20) : (winH - bottom - 36);
+    panel.style.maxHeight = `${Math.max(220, Math.min(650, availH))}px`;
+  }
+}
+
 function build() {
   if (built) return;
   host = document.createElement('div');
   host.id = 'twpp-host';
-  host.style.cssText = `position:fixed;right:${get('fabRight')}px;bottom:${get('fabBottom')}px;z-index:2147483000;`;
+  host.style.cssText = 'position:fixed;z-index:2147483000;';
   shadow = host.attachShadow({ mode: 'open' });
   shadow.innerHTML = `<style>${PANEL_CSS}</style>
     <div class="wrap">
@@ -3670,6 +3747,7 @@ function build() {
   noteBox = node('note');
   setToastHost(node('toasts'));
 
+  applyPlacement(get('fabRight'), get('fabBottom'));
   bind();
   built = true;
   sync();
@@ -3710,35 +3788,52 @@ function bind() {
     dragFlag = false;
     const startX = ev.clientX;
     const startY = ev.clientY;
-    const rect = host.getBoundingClientRect();
-    const origRight = window.innerWidth - rect.right;
-    const origBottom = window.innerHeight - rect.bottom;
+    const origRight = get('fabRight');
+    const origBottom = get('fabBottom');
 
     const onMove = (e) => {
       const dx = e.clientX - startX;
       const dy = e.clientY - startY;
-      if (!dragFlag && Math.abs(dx) < 5 && Math.abs(dy) < 5) return;
+      if (!dragFlag && Math.abs(dx) < 4 && Math.abs(dy) < 4) return;
       dragFlag = true;
       fab.classList.add('dragging');
-      const maxR = window.innerWidth - 40;
-      const maxB = window.innerHeight - 40;
-      host.style.right = `${Math.max(0, Math.min(maxR, origRight - dx))}px`;
-      host.style.bottom = `${Math.max(0, Math.min(maxB, origBottom - dy))}px`;
+      const winW = (typeof window !== 'undefined' ? window.innerWidth : 1200) || 1200;
+      const winH = (typeof window !== 'undefined' ? window.innerHeight : 800) || 800;
+      const maxR = winW - 32;
+      const maxB = winH - 32;
+      const newRight = Math.max(0, Math.min(maxR, origRight - dx));
+      const newBottom = Math.max(0, Math.min(maxB, origBottom - dy));
+      applyPlacement(newRight, newBottom);
     };
 
-    const onUp = () => {
+    const onUp = (e) => {
       document.removeEventListener('mousemove', onMove);
       document.removeEventListener('mouseup', onUp);
       fab.classList.remove('dragging');
       if (dragFlag) {
-        set('fabRight', parseFloat(host.style.right) || 14);
-        set('fabBottom', parseFloat(host.style.bottom) || 56);
+        const dx = e.clientX - startX;
+        const dy = e.clientY - startY;
+        const winW = (typeof window !== 'undefined' ? window.innerWidth : 1200) || 1200;
+        const winH = (typeof window !== 'undefined' ? window.innerHeight : 800) || 800;
+        const maxR = winW - 32;
+        const maxB = winH - 32;
+        const finalRight = Math.round(Math.max(0, Math.min(maxR, origRight - dx)));
+        const finalBottom = Math.round(Math.max(0, Math.min(maxB, origBottom - dy)));
+        set('fabRight', finalRight);
+        set('fabBottom', finalBottom);
+        applyPlacement(finalRight, finalBottom);
       }
     };
 
     document.addEventListener('mousemove', onMove);
     document.addEventListener('mouseup', onUp);
   });
+
+  if (typeof window !== 'undefined' && window.addEventListener) {
+    window.addEventListener('resize', () => {
+      applyPlacement(get('fabRight'), get('fabBottom'));
+    });
+  }
 
   fab.addEventListener('click', () => {
     if (dragFlag) { dragFlag = false; return; }
@@ -3867,6 +3962,7 @@ function togglePanel(force) {
   const open = typeof force === 'boolean' ? force : panel.hidden;
   panel.hidden = !open;
   if (open) {
+    applyPlacement(get('fabRight'), get('fabBottom'));
     fab.classList.add('awake');
     clearTimeout(idleTimer);
   } else {

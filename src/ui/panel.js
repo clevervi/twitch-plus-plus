@@ -131,11 +131,51 @@ function sectionsHtml() {
   return html;
 }
 
+function applyPlacement(right, bottom) {
+  if (!host) return;
+  const winW = (typeof window !== 'undefined' ? window.innerWidth : 1200) || 1200;
+  const winH = (typeof window !== 'undefined' ? window.innerHeight : 800) || 800;
+
+  const isTop = bottom > winH / 2;
+  const isLeft = right > winW / 2;
+
+  const wrap = shadow?.querySelector('.wrap');
+  if (wrap) {
+    wrap.classList.toggle('open-down', isTop);
+    wrap.classList.toggle('open-up', !isTop);
+    wrap.classList.toggle('align-left', isLeft);
+    wrap.classList.toggle('align-right', !isLeft);
+  }
+
+  if (isTop) {
+    const topPx = Math.max(0, winH - bottom - 26);
+    host.style.top = `${topPx}px`;
+    host.style.bottom = 'auto';
+  } else {
+    host.style.bottom = `${Math.max(0, bottom)}px`;
+    host.style.top = 'auto';
+  }
+
+  if (isLeft) {
+    const leftPx = Math.max(0, winW - right - 26);
+    host.style.left = `${leftPx}px`;
+    host.style.right = 'auto';
+  } else {
+    host.style.right = `${Math.max(0, right)}px`;
+    host.style.left = 'auto';
+  }
+
+  if (panel) {
+    const availH = isTop ? (bottom - 20) : (winH - bottom - 36);
+    panel.style.maxHeight = `${Math.max(220, Math.min(650, availH))}px`;
+  }
+}
+
 function build() {
   if (built) return;
   host = document.createElement('div');
   host.id = 'twpp-host';
-  host.style.cssText = `position:fixed;right:${get('fabRight')}px;bottom:${get('fabBottom')}px;z-index:2147483000;`;
+  host.style.cssText = 'position:fixed;z-index:2147483000;';
   shadow = host.attachShadow({ mode: 'open' });
   shadow.innerHTML = `<style>${PANEL_CSS}</style>
     <div class="wrap">
@@ -179,6 +219,7 @@ function build() {
   noteBox = node('note');
   setToastHost(node('toasts'));
 
+  applyPlacement(get('fabRight'), get('fabBottom'));
   bind();
   built = true;
   sync();
@@ -219,35 +260,52 @@ function bind() {
     dragFlag = false;
     const startX = ev.clientX;
     const startY = ev.clientY;
-    const rect = host.getBoundingClientRect();
-    const origRight = window.innerWidth - rect.right;
-    const origBottom = window.innerHeight - rect.bottom;
+    const origRight = get('fabRight');
+    const origBottom = get('fabBottom');
 
     const onMove = (e) => {
       const dx = e.clientX - startX;
       const dy = e.clientY - startY;
-      if (!dragFlag && Math.abs(dx) < 5 && Math.abs(dy) < 5) return;
+      if (!dragFlag && Math.abs(dx) < 4 && Math.abs(dy) < 4) return;
       dragFlag = true;
       fab.classList.add('dragging');
-      const maxR = window.innerWidth - 40;
-      const maxB = window.innerHeight - 40;
-      host.style.right = `${Math.max(0, Math.min(maxR, origRight - dx))}px`;
-      host.style.bottom = `${Math.max(0, Math.min(maxB, origBottom - dy))}px`;
+      const winW = (typeof window !== 'undefined' ? window.innerWidth : 1200) || 1200;
+      const winH = (typeof window !== 'undefined' ? window.innerHeight : 800) || 800;
+      const maxR = winW - 32;
+      const maxB = winH - 32;
+      const newRight = Math.max(0, Math.min(maxR, origRight - dx));
+      const newBottom = Math.max(0, Math.min(maxB, origBottom - dy));
+      applyPlacement(newRight, newBottom);
     };
 
-    const onUp = () => {
+    const onUp = (e) => {
       document.removeEventListener('mousemove', onMove);
       document.removeEventListener('mouseup', onUp);
       fab.classList.remove('dragging');
       if (dragFlag) {
-        set('fabRight', parseFloat(host.style.right) || 14);
-        set('fabBottom', parseFloat(host.style.bottom) || 56);
+        const dx = e.clientX - startX;
+        const dy = e.clientY - startY;
+        const winW = (typeof window !== 'undefined' ? window.innerWidth : 1200) || 1200;
+        const winH = (typeof window !== 'undefined' ? window.innerHeight : 800) || 800;
+        const maxR = winW - 32;
+        const maxB = winH - 32;
+        const finalRight = Math.round(Math.max(0, Math.min(maxR, origRight - dx)));
+        const finalBottom = Math.round(Math.max(0, Math.min(maxB, origBottom - dy)));
+        set('fabRight', finalRight);
+        set('fabBottom', finalBottom);
+        applyPlacement(finalRight, finalBottom);
       }
     };
 
     document.addEventListener('mousemove', onMove);
     document.addEventListener('mouseup', onUp);
   });
+
+  if (typeof window !== 'undefined' && window.addEventListener) {
+    window.addEventListener('resize', () => {
+      applyPlacement(get('fabRight'), get('fabBottom'));
+    });
+  }
 
   fab.addEventListener('click', () => {
     if (dragFlag) { dragFlag = false; return; }
@@ -376,6 +434,7 @@ export function togglePanel(force) {
   const open = typeof force === 'boolean' ? force : panel.hidden;
   panel.hidden = !open;
   if (open) {
+    applyPlacement(get('fabRight'), get('fabBottom'));
     fab.classList.add('awake');
     clearTimeout(idleTimer);
   } else {

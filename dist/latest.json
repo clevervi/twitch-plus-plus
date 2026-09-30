@@ -1,7 +1,7 @@
 {
-  "version": "2.2.0",
+  "version": "2.2.1",
   "script": "https://raw.githubusercontent.com/clevervi/twitch-plus-plus/main/dist/twitch-plus-plus.user.js",
   "homepage": "https://github.com/clevervi/twitch-plus-plus",
-  "publishedAt": "2026-09-30T17:58:07.873Z",
-  "notes": "**FAB draggable**: el botón `++` se puede arrastrar a cualquier posición de la pantalla; la posición se guarda entre sesiones. Ya no tapa los botones de Twitch (Channel Points, emotes, etc.).\n**Posición por defecto corregida**: el FAB arranca en `bottom:56px` en vez de `bottom:14px`, evitando la zona de botones del chat.\n**Flash de bienvenida**: al cargar la página el FAB aparece brevemente (2.5 s) para que el usuario sepa que está activo.\n**Fix: toasts invisibles**: la clase CSS del shadow DOM no coincidía con la que creaba el JS (`toast` vs `twpp-toast`).\n**Fix: botón Pausar chat roto**: faltaba el atributo `data-action=\"pause\"` y el click handler no lo reconocía."
+  "publishedAt": "2026-09-30T18:38:12.290Z",
+  "notes": "Menú inteligente: detecta posición en pantalla y abre hacia abajo o arriba sin salirse del viewport; selectores actualizados para español y nuevo editor de chat"
 }

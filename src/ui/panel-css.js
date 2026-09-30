@@ -1,7 +1,15 @@
 export const PANEL_CSS = `
   :host { all: initial; }
   * { box-sizing: border-box; font-family: "Inter","Roobert",-apple-system,"Segoe UI",Roboto,sans-serif; }
-  .wrap { display: flex; flex-direction: column; align-items: flex-end; gap: 10px; }
+  .wrap { display: flex; flex-direction: column; gap: 10px; }
+  .wrap.open-up { flex-direction: column; }
+  .wrap.open-down { flex-direction: column-reverse; }
+  .wrap.align-right { align-items: flex-end; }
+  .wrap.align-left { align-items: flex-start; }
+  .wrap.open-up .panel { transform-origin: bottom right; }
+  .wrap.open-up.align-left .panel { transform-origin: bottom left; }
+  .wrap.open-down .panel { transform-origin: top right; }
+  .wrap.open-down.align-left .panel { transform-origin: top left; }
   .toasts {
     position: fixed; right: 14px; bottom: 52px;
     display: flex; flex-direction: column; gap: 6px;

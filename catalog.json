@@ -1,7 +1,7 @@
 {
   "schema": 1,
-  "revision": 1,
-  "note": "Selectores base del script. Sube `revision` al añadir o corregir selectores: los usuarios los recogen sin reinstalar.",
+  "revision": 2,
+  "note": "Selectores multi-idioma (ES/EN), soporte para editor Slate/ContentEditable en chat.input y enlaces de canales en sidebar.",
   "selectors": {
     "chat.container": [
       "[data-test-selector=\"chat-scrollable-area__message-container\"]",
@@ -15,13 +15,34 @@
       ".chat-line__username",
       "[data-a-target=\"chat-message-username\"]"
     ],
+    "chat.input": [
+      "[data-a-target=\"chat-input\"]",
+      "div[contenteditable=\"true\"][data-a-target=\"chat-input\"]",
+      ".chat-input__textarea-container textarea",
+      ".chat-input textarea",
+      "div[data-slate-editor=\"true\"]",
+      ".chat-wysiwyg-input__editor",
+      ".chat-input__textarea [contenteditable=\"true\"]",
+      "[data-a-target=\"chat-input\"] textarea"
+    ],
     "sideNav.card": [
       "[data-a-target=\"side-nav-card\"]",
       ".side-nav-card"
     ],
     "sideNav.link": [
       "[data-a-target=\"side-nav-link\"]",
-      ".side-nav-card__link"
+      "a[data-test-selector=\"followed-channel\"]",
+      "a[data-test-selector=\"recommended-channel\"]",
+      "a.side-nav-card__link",
+      ".side-nav-card a",
+      "a.side-nav-card"
+    ],
+    "sideNav.more": [
+      "[data-a-target=\"side-nav-more\"]",
+      "button[data-a-target=\"side-nav-show-more-button\"]",
+      "[data-test-selector=\"ShowMore\"] button",
+      ".side-nav__more",
+      "button.side-nav-show-more"
     ],
     "viewerCount": [
       "strong[data-a-target=\"animated-channel-viewers-count\"]",
@@ -29,13 +50,20 @@
       ".channel-info-bar__viewers"
     ],
     "claimBonus": [
+      "button[aria-label*=\"Bonus\" i]",
+      "button[aria-label*=\"bonificación\" i]",
+      "button[aria-label*=\"reclamar\" i]",
       "button[aria-label=\"Claim Bonus\"]",
       ".claimable-bonus__icon",
-      "[data-test-selector=\"claimable-bonus-icon\"]"
+      "[data-test-selector=\"claimable-bonus-icon\"]",
+      "[data-test-selector=\"community-points-summary\"] button"
     ],
     "pauseChat": [
+      "button[aria-label*=\"Pause\" i]",
+      "button[aria-label*=\"Pausar\" i]",
       "button[aria-label=\"Pause Chat\"]",
       "button[aria-label=\"Pausar chat\"]",
+      "button[data-a-target=\"chat-pause-button\"]",
       "[data-test-selector=\"chat-pause-button\"]"
     ]
   },
