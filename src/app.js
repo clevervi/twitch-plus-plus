@@ -31,8 +31,8 @@ declare('autoUpdate', 'bool', true);
 declare('debug', 'bool', false);
 
 function registerKeybinds() {
-  registerKeybind('panel', 'Abrir panel', 'Alt+O');
-  registerKeybind('chatPause', 'Pausar chat', 'Alt+P');
+  registerKeybind('panel', 'Abrir panel', 'Alt+Shift+T');
+  registerKeybind('chatPause', 'Pausar chat', 'Alt+Shift+P');
   registerKeybind('pauseAll', 'Desactivar todo', 'Alt+Shift+X');
 }
 
@@ -54,7 +54,7 @@ function runAction(id) {
 
 async function networkTasks() {
   // Fuera de twitch.tv (p.ej. la sonda de probe.html) no hay nada que buscar y
-  // un catálogo remoto contaminaría lameasurement.
+  // un catálogo remoto contaminaría la medición.
   if (!/(^|\.)twitch\.tv$/i.test(location.hostname)) return;
   try {
     await refreshCatalog();
