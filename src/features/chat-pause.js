@@ -18,8 +18,6 @@ const state = {
   onUser: null,
   userTimer: null,
   native: null,
-  lastX: 0,
-  lastY: 0,
 };
 
 function nativeButton() {
@@ -141,11 +139,5 @@ export const ChatPause = {
         if (state.el) state.top = state.el.scrollTop;
       }
     }
-  },
-
-  /** Llamado por UI para actualizar proximidad del FAB. */
-  recordMousePos(x, y) {
-    state.lastX = x;
-    state.lastY = y;
   },
 };
