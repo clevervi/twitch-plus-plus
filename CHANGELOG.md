@@ -3,8 +3,12 @@
 ## 2.2.3 — 2026-09-30
 
 - **Multi-idioma en auto-claim**: soporte ampliado para inglés (`claim bonus`), español (`reclamar bonificación`), portugués (`resgatar bônus`), alemán (`bonus abholen`), francés (`réclamer un bonus`) y ruso (`забрать бонус`).
-- **UI & Performance**: listener de `resize` del panel con `{ passive: true }` para transiciones fluidas.
-- **Test suite**: 5 nuevos tests unitarios en `test/auto-claim.test.mjs` validando la discriminación de botones y la protección contra aperturas accidentales del menú de recompensas.
+- **Fix controles del reproductor (BUG A)**: ampliación completa de `KNOWN_PLAYER_ICONS`, protección `SAFE_BUTTON_LABEL` para botones estándar de Twitch y cambio de `extensionHeuristic` a `default: false`.
+- **Fix miniaturas de sidebar (BUG B)**: limpieza estricta en `mouseleave` y `inject`, validación de proximidad vertical card-tooltip y acotación de `sideNav.group` a la barra lateral.
+- **Fix botón flotante FAB (BUG C)**: restaurada la opacidad base `.22` y `pointer-events: auto`, asegurando que el botón `++` siempre sea visible e interactivo.
+- **Fix analytics (BUG D)**: reseteo de `counted` en `onRoute()` y `teardown()` en `viewer-analytics.js`.
+- **UI & Performance**: listener de `resize` del panel con `{ passive: true }` y sincronización de atajos por defecto (`Alt+Shift+T` / `Alt+Shift+P`).
+- **Test suite**: 64 tests unitarios pasando al 100% (añadidos `test/player-extensions.test.mjs`, `test/sidebar.test.mjs` y `test/auto-claim.test.mjs`).
 
 ## 2.2.2 — 2026-09-30
 

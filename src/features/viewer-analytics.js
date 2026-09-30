@@ -4,7 +4,7 @@ import { get as storeGet } from '../core/store.js';
 import { chatContainer, chatLines, usernameOf, viewerCount } from '../core/twitch.js';
 
 const chatters = new Map();
-const counted = new WeakSet();
+let counted = new WeakSet();
 let badge = null;
 let lastUpdate = 0;
 
@@ -87,6 +87,7 @@ function teardown() {
   badge?.remove();
   badge = null;
   chatters.clear();
+  counted = new WeakSet();
 }
 
 defineFeature({
@@ -129,6 +130,7 @@ defineFeature({
   onDisable: teardown,
   onRoute() {
     chatters.clear();
+    counted = new WeakSet();
     lastUpdate = 0;
     badge = null;
   },

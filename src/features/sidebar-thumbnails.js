@@ -1,5 +1,4 @@
 /** Miniaturas de canal al pasar el ratón por una card de la sidebar. */
-import { qs } from '../core/dom.js';
 import { log } from '../core/log.js';
 import { defineFeature } from '../core/registry.js';
 import { selectAll } from '../core/selectors.js';
@@ -35,12 +34,27 @@ function preloadVisible(limit = 8) {
   for (const channel of visibleChannels(limit)) preload(channel);
 }
 
+function cleanup() {
+  for (const node of document.querySelectorAll('img.twpp-sidebar-thumb')) node.remove();
+}
+
 function inject(card, channel) {
   const local = generation;
   waitForHoverDialog().then((dialog) => {
     if (!dialog || !dialog.isConnected || local !== generation) return;
-    const existing = qs('img.twpp-sidebar-thumb', dialog);
-    if (existing) existing.remove();
+
+    // Verificar que el diálogo de hover está alineado verticalmente con la card
+    const cardRect = card.getBoundingClientRect();
+    const dialogRect = dialog.getBoundingClientRect();
+    if (cardRect.height > 0 && dialogRect.height > 0) {
+      const cardCenterY = cardRect.top + cardRect.height / 2;
+      const dialogCenterY = dialogRect.top + dialogRect.height / 2;
+      if (Math.abs(cardCenterY - dialogCenterY) > 160) return;
+    }
+
+    // Limpieza global de cualquier miniatura previa
+    cleanup();
+
     const image = document.createElement('img');
     image.className = 'twpp-sidebar-thumb';
     image.decoding = 'async';
@@ -63,18 +77,21 @@ function bind(card) {
     timer = setTimeout(() => preload(channel), 120);
     inject(card, channel);
   });
-  card.addEventListener('mouseleave', () => clearTimeout(timer));
+  card.addEventListener('mouseleave', () => {
+    generation += 1;
+    clearTimeout(timer);
+    setTimeout(cleanup, 50);
+  });
 }
 
 function sweep() {
-  for (const card of selectAll('sideNav.card')) bind(card);
-  for (const group of selectAll('sideNav.group')) {
-    for (const child of group.children) bind(child);
+  for (const card of selectAll('sideNav.card')) {
+    if (channelFromCard(card)) bind(card);
   }
 }
 
 function teardown() {
-  for (const node of document.querySelectorAll('img.twpp-sidebar-thumb')) node.remove();
+  cleanup();
   cache.clear();
 }
 

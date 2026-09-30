@@ -285,7 +285,7 @@ const BASE = {
   ],
   'sideNav.root': ['[data-a-target="side-nav-bar"]', '.side-nav', '[data-test-selector="side-nav"]'],
   'sideNav.card': ['[data-a-target="side-nav-card"]', '.side-nav-card'],
-  'sideNav.group': ['nav .tw-transition-group', '.side-nav__section'],
+  'sideNav.group': ['[data-a-target="side-nav-bar"] .tw-transition-group', '.side-nav .tw-transition-group', '.side-nav__section'],
   'sideNav.more': [
     '[data-a-target="side-nav-more"]',
     'button[data-a-target="side-nav-show-more-button"]',
@@ -2782,8 +2782,17 @@ const { get: storeGet } = __m5;
 
 const EXTENSION_HINT = /extension|ext-twitch|\/extensions\/|extension-panel|twitch-ext-/i;
 
-const KNOWN_PLAYER_ICONS =
-  /Icon-(Settings|Gear|Volume|Fullscreen|Theater|Pause|Play|Mute|Unmute|Rewind|Forward|Quality|Clip|Share|Subscribe|Follow|Bits|Prime|Notifications|Messages|Search|Menu|Close|Chevron|Arrow|Drops|Picture)/i;
+const KNOWN_PLAYER_ICONS = new RegExp(
+  'Icon-(Settings|Gear|Volume|Fullscreen|Theater|Pause|Play|Mute|Unmute|Rewind|Forward|' +
+    'Quality|Clip|Share|Subscribe|Follow|Bits|Prime|Notifications|Messages|Search|Menu|Close|' +
+    'Chevron|Arrow|Drops|Points|Reward|Emote|Mod|Chat|Crown|Heart|Rerun|Pin|Mute-User|Bit|' +
+    'Hype|Extension|Collapse|Expand|Info|Rec|Resume|Exit|Picture|PictureInPicture|RewindLive|' +
+    'PlaybackSettings|Live|Cast|Airplay|Subtitles|AudioTrack)',
+  'i',
+);
+
+const SAFE_BUTTON_LABEL =
+  /pantalla|fullscreen|teatro|theater|volumen|volume|silenciar|mute|pausa|pause|reproducir|play|ajustes|settings|calidad|quality|clip|compartir|share|subt[ií]tulos|captions/i;
 
 const known = new Set();
 const removed = new Set();
@@ -2838,6 +2847,8 @@ function unknownButtonSweep() {
   for (const player of selectAll('player')) {
     for (const button of qsAll('button', player)) {
       if (removed.has(button)) continue;
+      const label = (button.getAttribute('aria-label') || button.getAttribute('title') || '').trim();
+      if (SAFE_BUTTON_LABEL.test(label)) continue;
       const svg = button.querySelector('svg');
       const signature = (svg?.getAttribute('class') || '').match(/\bIcon-[A-Za-z0-9_-]+\b/);
       if (!signature) continue;
@@ -2863,7 +2874,7 @@ defineFeature({
   default: true,
   interval: 1500,
   settings: [
-    { key: 'extensionHeuristic', label: 'Ocultar botones desconocidos del player', type: 'bool', default: true },
+    { key: 'extensionHeuristic', label: 'Ocultar botones desconocidos del player', type: 'bool', default: false },
     { key: 'extensionExtras', label: 'Iconos extra a ocultar (separados por coma)', type: 'text', placeholder: 'Icon-Promo, Icon-Quest' },
   ],
   css: `
@@ -3125,7 +3136,6 @@ return {
 
 /* ---- src/features/sidebar-thumbnails.js ---- */
 const __m31 = (function () {
-const { qs: qs } = __m10;
 const { log: log } = __m2;
 const { defineFeature: defineFeature } = __m6;
 const { selectAll: selectAll } = __m3;
@@ -3133,7 +3143,6 @@ const { get: storeGet } = __m5;
 const { channelFromCard: channelFromCard, thumbnailUrl: thumbnailUrl, visibleChannels: visibleChannels, waitForHoverDialog: waitForHoverDialog } = __m20;
 
 /** Miniaturas de canal al pasar el ratón por una card de la sidebar. */
-
 
 
 
@@ -3169,12 +3178,27 @@ function preloadVisible(limit = 8) {
   for (const channel of visibleChannels(limit)) preload(channel);
 }
 
+function cleanup() {
+  for (const node of document.querySelectorAll('img.twpp-sidebar-thumb')) node.remove();
+}
+
 function inject(card, channel) {
   const local = generation;
   waitForHoverDialog().then((dialog) => {
     if (!dialog || !dialog.isConnected || local !== generation) return;
-    const existing = qs('img.twpp-sidebar-thumb', dialog);
-    if (existing) existing.remove();
+
+    // Verificar que el diálogo de hover está alineado verticalmente con la card
+    const cardRect = card.getBoundingClientRect();
+    const dialogRect = dialog.getBoundingClientRect();
+    if (cardRect.height > 0 && dialogRect.height > 0) {
+      const cardCenterY = cardRect.top + cardRect.height / 2;
+      const dialogCenterY = dialogRect.top + dialogRect.height / 2;
+      if (Math.abs(cardCenterY - dialogCenterY) > 160) return;
+    }
+
+    // Limpieza global de cualquier miniatura previa
+    cleanup();
+
     const image = document.createElement('img');
     image.className = 'twpp-sidebar-thumb';
     image.decoding = 'async';
@@ -3197,18 +3221,21 @@ function bind(card) {
     timer = setTimeout(() => preload(channel), 120);
     inject(card, channel);
   });
-  card.addEventListener('mouseleave', () => clearTimeout(timer));
+  card.addEventListener('mouseleave', () => {
+    generation += 1;
+    clearTimeout(timer);
+    setTimeout(cleanup, 50);
+  });
 }
 
 function sweep() {
-  for (const card of selectAll('sideNav.card')) bind(card);
-  for (const group of selectAll('sideNav.group')) {
-    for (const child of group.children) bind(child);
+  for (const card of selectAll('sideNav.card')) {
+    if (channelFromCard(card)) bind(card);
   }
 }
 
 function teardown() {
-  for (const node of document.querySelectorAll('img.twpp-sidebar-thumb')) node.remove();
+  cleanup();
   cache.clear();
 }
 
@@ -3285,7 +3312,7 @@ const { chatContainer: chatContainer, chatLines: chatLines, usernameOf: username
 
 
 const chatters = new Map();
-const counted = new WeakSet();
+let counted = new WeakSet();
 let badge = null;
 let lastUpdate = 0;
 
@@ -3368,6 +3395,7 @@ function teardown() {
   badge?.remove();
   badge = null;
   chatters.clear();
+  counted = new WeakSet();
 }
 
 defineFeature({
@@ -3410,6 +3438,7 @@ defineFeature({
   onDisable: teardown,
   onRoute() {
     chatters.clear();
+    counted = new WeakSet();
     lastUpdate = 0;
     badge = null;
   },
@@ -3463,18 +3492,15 @@ const PANEL_CSS = `
     background: #9147ff; color: #fff; font-size: 11px; font-weight: 800;
     letter-spacing: -1px; cursor: pointer; padding: 0;
     box-shadow: 0 3px 10px rgba(0,0,0,.4);
-    opacity: 0; pointer-events: none;
-    transform: scale(.85);
+    opacity: .22; pointer-events: auto;
+    transform: scale(1);
     transition: opacity .22s ease, transform .22s ease, background .18s ease;
   }
-  .fab.reveal {
-    opacity: .5; pointer-events: auto; transform: scale(1);
-  }
-  .fab.reveal:hover {
-    opacity: 1; transform: scale(1.15);
-  }
-  .fab.active { background: #ff5c5c; opacity: 1; pointer-events: auto; transform: scale(1); }
-  .fab.dragging { cursor: grabbing !important; opacity: .8; transform: scale(1.1); pointer-events: auto; }
+  .fab:hover, .fab.reveal:hover { opacity: 1; transform: scale(1.15); background: #a970ff; }
+  .fab.awake, .fab.reveal { opacity: .6; pointer-events: auto; transform: scale(1); }
+  .fab.flash { opacity: .75; pointer-events: auto; transform: scale(1.05); }
+  .fab.active { background: #ff5c5c; opacity: .95; pointer-events: auto; }
+  .fab.dragging { cursor: grabbing !important; opacity: .85; transform: scale(1.1); pointer-events: auto; }
   .panel {
     width: 300px; max-height: 80vh; display: flex; flex-direction: column;
     background: #0e0e10; border: 1px solid #2a2a2d; border-radius: 10px;

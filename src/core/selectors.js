@@ -25,7 +25,7 @@ const BASE = {
   ],
   'sideNav.root': ['[data-a-target="side-nav-bar"]', '.side-nav', '[data-test-selector="side-nav"]'],
   'sideNav.card': ['[data-a-target="side-nav-card"]', '.side-nav-card'],
-  'sideNav.group': ['nav .tw-transition-group', '.side-nav__section'],
+  'sideNav.group': ['[data-a-target="side-nav-bar"] .tw-transition-group', '.side-nav .tw-transition-group', '.side-nav__section'],
   'sideNav.more': [
     '[data-a-target="side-nav-more"]',
     'button[data-a-target="side-nav-show-more-button"]',

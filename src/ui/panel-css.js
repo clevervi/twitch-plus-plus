@@ -27,18 +27,15 @@ export const PANEL_CSS = `
     background: #9147ff; color: #fff; font-size: 11px; font-weight: 800;
     letter-spacing: -1px; cursor: pointer; padding: 0;
     box-shadow: 0 3px 10px rgba(0,0,0,.4);
-    opacity: 0; pointer-events: none;
-    transform: scale(.85);
+    opacity: .22; pointer-events: auto;
+    transform: scale(1);
     transition: opacity .22s ease, transform .22s ease, background .18s ease;
   }
-  .fab.reveal {
-    opacity: .5; pointer-events: auto; transform: scale(1);
-  }
-  .fab.reveal:hover {
-    opacity: 1; transform: scale(1.15);
-  }
-  .fab.active { background: #ff5c5c; opacity: 1; pointer-events: auto; transform: scale(1); }
-  .fab.dragging { cursor: grabbing !important; opacity: .8; transform: scale(1.1); pointer-events: auto; }
+  .fab:hover, .fab.reveal:hover { opacity: 1; transform: scale(1.15); background: #a970ff; }
+  .fab.awake, .fab.reveal { opacity: .6; pointer-events: auto; transform: scale(1); }
+  .fab.flash { opacity: .75; pointer-events: auto; transform: scale(1.05); }
+  .fab.active { background: #ff5c5c; opacity: .95; pointer-events: auto; }
+  .fab.dragging { cursor: grabbing !important; opacity: .85; transform: scale(1.1); pointer-events: auto; }
   .panel {
     width: 300px; max-height: 80vh; display: flex; flex-direction: column;
     background: #0e0e10; border: 1px solid #2a2a2d; border-radius: 10px;

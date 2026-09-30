@@ -14,8 +14,17 @@ import { get as storeGet } from '../core/store.js';
 
 const EXTENSION_HINT = /extension|ext-twitch|\/extensions\/|extension-panel|twitch-ext-/i;
 
-const KNOWN_PLAYER_ICONS =
-  /Icon-(Settings|Gear|Volume|Fullscreen|Theater|Pause|Play|Mute|Unmute|Rewind|Forward|Quality|Clip|Share|Subscribe|Follow|Bits|Prime|Notifications|Messages|Search|Menu|Close|Chevron|Arrow|Drops|Picture)/i;
+const KNOWN_PLAYER_ICONS = new RegExp(
+  'Icon-(Settings|Gear|Volume|Fullscreen|Theater|Pause|Play|Mute|Unmute|Rewind|Forward|' +
+    'Quality|Clip|Share|Subscribe|Follow|Bits|Prime|Notifications|Messages|Search|Menu|Close|' +
+    'Chevron|Arrow|Drops|Points|Reward|Emote|Mod|Chat|Crown|Heart|Rerun|Pin|Mute-User|Bit|' +
+    'Hype|Extension|Collapse|Expand|Info|Rec|Resume|Exit|Picture|PictureInPicture|RewindLive|' +
+    'PlaybackSettings|Live|Cast|Airplay|Subtitles|AudioTrack)',
+  'i',
+);
+
+const SAFE_BUTTON_LABEL =
+  /pantalla|fullscreen|teatro|theater|volumen|volume|silenciar|mute|pausa|pause|reproducir|play|ajustes|settings|calidad|quality|clip|compartir|share|subt[ií]tulos|captions/i;
 
 const known = new Set();
 const removed = new Set();
@@ -70,6 +79,8 @@ function unknownButtonSweep() {
   for (const player of selectAll('player')) {
     for (const button of qsAll('button', player)) {
       if (removed.has(button)) continue;
+      const label = (button.getAttribute('aria-label') || button.getAttribute('title') || '').trim();
+      if (SAFE_BUTTON_LABEL.test(label)) continue;
       const svg = button.querySelector('svg');
       const signature = (svg?.getAttribute('class') || '').match(/\bIcon-[A-Za-z0-9_-]+\b/);
       if (!signature) continue;
@@ -95,7 +106,7 @@ defineFeature({
   default: true,
   interval: 1500,
   settings: [
-    { key: 'extensionHeuristic', label: 'Ocultar botones desconocidos del player', type: 'bool', default: true },
+    { key: 'extensionHeuristic', label: 'Ocultar botones desconocidos del player', type: 'bool', default: false },
     { key: 'extensionExtras', label: 'Iconos extra a ocultar (separados por coma)', type: 'text', placeholder: 'Icon-Promo, Icon-Quest' },
   ],
   css: `
