@@ -12,11 +12,17 @@ npm run watch      # reconstruye al guardar
 
 ## Instalación
 
-1. Publica el repo (o forkéalo) y ajusta `repository.url` en `package.json` para que apunte a tu usuario.
-2. `npm run build`.
-3. En Tampermonkey → *Create new script* → pega el contenido de `dist/twitch-plus-plus.user.js`.
-   - O usa la URL directa: `https://raw.githubusercontent.com/<tu-usuario>/twitch-plus-plus/main/dist/twitch-plus-plus.user.js` con `@require`.
-4. Desde ese momento las actualizaciones salen solas por `@updateURL`.
+1. **Instalación directa con un clic (Tampermonkey)**:
+   - Abre este enlace en tu navegador (con Tampermonkey instalado):
+     **[Instalar Twitch++](https://raw.githubusercontent.com/clevervi/twitch-plus-plus/main/dist/twitch-plus-plus.user.js)**
+   - Tampermonkey detectará automáticamente el script y te mostrará el botón **Instalar** (o **Actualizar**).
+
+2. **O instalación manual**:
+   - En Tampermonkey → *Crear nuevo script* (+).
+   - Borra la plantilla y pega el contenido completo de [`dist/twitch-plus-plus.user.js`](https://raw.githubusercontent.com/clevervi/twitch-plus-plus/main/dist/twitch-plus-plus.user.js).
+   - Guarda con `Ctrl+S`.
+
+3. Las futuras actualizaciones se descargarán automáticamente gracias a `@updateURL`.
 
 Atajos por defecto: `Alt+O` abre el panel, `Alt+P` pausa el chat, `Alt+Shift+X` desactiva todo (válvula de escape).
 
