@@ -29,14 +29,14 @@ jobs:
 
       - name: Comprobar que la repo está sana y las notas existen
         run: |
+          # verify incluye bundle.test.mjs, que ya comprueba que el @version del
+          # bundle coincide con package.json y que no quedan placeholders.
           npm run verify
           node scripts/release-notes.mjs > notas.md
-          echo "--- notas ---"
-          cat notas.md
-          echo "----------------"
           version="$(node -p "require('./package.json').version")"
-          echo "version en package.json: $version"
-          echo "version en el bundle: $(grep -oP '@version\s+\K[0-9.]+' dist/twitch-plus-plus.user.js)"
+          echo "--- notas de v${version} ---"
+          cat notas.md
+          echo "------------------------"
 
       - name: Etiqueta y release
         if: ${{ !inputs.dry-run }}
