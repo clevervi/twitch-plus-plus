@@ -24,5 +24,11 @@ jobs:
       - name: El bundle no debe tener drifted
         run: git diff --exit-code dist/
 
+      - name: El YAML de .github debe ser válido
+        run: |
+          for f in $(find .github -name '*.yml'); do
+            ruby -ryaml -e "YAML.load_file(ARGV[0])" "$f" || { echo "YAML invalido: $f"; exit 1; }
+          done
+
       - name: Tests
         run: node --test

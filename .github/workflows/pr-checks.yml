@@ -3,6 +3,10 @@ name: PR Checks
 on:
   pull_request:
     types: [opened, edited, reopened, synchronize, labeled, unlabeled]
+    # El workflow Release abre sus propios PRs: no llevan issue porque el
+    # propio trabajo ya estaba revisado cuando se pidió el release.
+    branches-ignore:
+      - "release/**"
 
 permissions:
   contents: read
