@@ -2829,6 +2829,8 @@ const { chatContainer: chatContainer, chatLines: chatLines, messageText: message
 let bar = null;
 let matches = [];
 let cursor = -1;
+/** Mensaje puntual en el contador, que se limpia al siguiente cambio. */
+let aviso = '';
 
 function clearMarks() {
   for (const line of document.querySelectorAll('.twpp-chat-hidden, .twpp-chat-dim, .twpp-chat-match, .twpp-chat-current')) {
@@ -2843,8 +2845,17 @@ function updateCounter() {
   if (!bar) return;
   const counter = qs('.twpp-search-count', bar);
   if (!counter) return;
+  if (aviso) {
+    counter.textContent = aviso;
+    return;
+  }
   const total = matches.length;
   counter.textContent = total ? `${cursor + 1}/${total}` : '';
+}
+
+function avisar(texto) {
+  aviso = texto;
+  updateCounter();
 }
 
 function jump(step) {
@@ -2857,15 +2868,48 @@ function jump(step) {
   updateCounter();
 }
 
+/** Patrón más largo que se acepta. */
+const MAX_PATRON = 200;
+
+/**
+ * Patrones con cuantificador anidado, que son los que hacen backtracking
+ * exponencial: `(a+)+`, `(a*)*`, `(a|a)+`. Un grupo que se repite y dentro
+ * del grupo hay otro cuantificador, o una alternancia repetida.
+ *
+ * No es una lista exhaustiva y no pretende serlo: el que escribe el patrón no
+ * es un atacante, es alguien copiando una expresión de internet. Esto corta
+ * los casos reales, no todos los posibles.
+ */
+const CUANTIFICADO = /[+*]|\{\d+,\d*\}/;
+const NESTADO = /\((?:\?[:=!]?)?[^()]*[+*][^()]*\)[+*{]/;
+const NESTADO_ALTERNATIVA = /\([^()]*\|[^()]*\)[+*{]/;
+const REPETICION_AGRUPADA = /\((?:\?[:=!]?)?[^()]*\)\{\d+,\}/;
+
+function patronPeligroso(query) {
+  if (NESTADO.test(query)) return true;
+  if (NESTADO_ALTERNATIVA.test(query) && CUANTIFICADO.test(query)) return true;
+  if (REPETICION_AGRUPADA.test(query)) return true;
+  return false;
+}
+
+/**
+ * Compila la búsqueda.
+ *
+ * Nada de esto interrumpe un `regex.test()` que ya está corriendo: si el
+ * patrón es malo, el daño está hecho cuando se vuelve a mirar el reloj. Por
+ * eso el corte es ANTES de compilar, no durante la búsqueda.
+ */
 function buildMatcher(query) {
-  if (storeGet('chatSearchRegex')) {
-    try {
-      return new RegExp(query, 'i');
-    } catch {
-      return query.toLowerCase();
-    }
+  const texto = query.toLowerCase();
+  if (!storeGet('chatSearchRegex')) return { texto, regex: null, rechazado: '' };
+  if (query.length > MAX_PATRON) return { texto, regex: null, rechazado: 'patrón demasiado largo' };
+  if (patronPeligroso(query)) return { texto, regex: null, rechazado: 'patrón con repetir exponencial' };
+  try {
+    return { texto, regex: new RegExp(query, 'i'), rechazado: '' };
+  } catch {
+    // Patrón inválido: se cae a texto plano, que es lo que se hacía antes.
+    return { texto, regex: null, rechazado: '' };
   }
-  return query.toLowerCase();
 }
 
 function apply({ keepCursor = false } = {}) {
@@ -2873,6 +2917,7 @@ function apply({ keepCursor = false } = {}) {
   if (!input) return;
   const raw = input.value.trim();
   const prevCursor = cursor;
+  aviso = '';
   clearMarks();
   if (!raw) return;
 
@@ -2880,11 +2925,13 @@ function apply({ keepCursor = false } = {}) {
   if (!container) return;
 
   const mode = storeGet('chatSearchMode') === 'dim' ? 'dim' : 'hide';
-  const match = buildMatcher(raw);
+  const matcher = buildMatcher(raw);
   const lines = chatLines(container);
+  if (matcher.rechazado) avisar(`Búsqueda rechazada: ${matcher.rechazado}`);
 
   for (const line of lines) {
-    const hit = match instanceof RegExp ? match.test(messageText(line)) : messageText(line).toLowerCase().includes(match);
+    const texto = messageText(line);
+    const hit = matcher.regex ? matcher.regex.test(texto) : texto.toLowerCase().includes(matcher.texto);
     if (!hit) {
       line.classList.add(mode === 'dim' ? 'twpp-chat-dim' : 'twpp-chat-hidden');
       continue;
@@ -3002,7 +3049,7 @@ defineFeature({
   onRoute: destroy,
 });
 return {
-
+  buildMatcher: buildMatcher,
 };
 })();
 
