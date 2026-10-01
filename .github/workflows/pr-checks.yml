@@ -12,6 +12,10 @@ permissions:
 jobs:
   validate:
     name: Validar convenciones del PR
+    # Dependabot no puede abrir issues, así que sus PR nunca llevan
+    # `Closes #N`. Se salta solo este actor; `verify` sigue siendo
+    # obligatorio para todos en la regla de `main`.
+    if: github.actor != 'dependabot[bot]'
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v4
