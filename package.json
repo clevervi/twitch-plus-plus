@@ -35,9 +35,14 @@
     "watch": "node scripts/build.mjs --watch",
     "lint": "node scripts/lint.mjs",
     "lint:lang": "node tools/check-language.mjs",
-    "test": "node --test",
-    "verify": "node scripts/lint.mjs && node tools/check-language.mjs && node scripts/build.mjs && node --test",
+    "test": "node --test test/*.test.mjs",
+    "test:browser": "node --test test/browser/*.test.mjs",
+    "test:all": "npm run test && npm run test:browser",
+    "verify": "node scripts/lint.mjs && node tools/check-language.mjs && node scripts/build.mjs && node --test test/*.test.mjs",
     "bump": "node scripts/bump.mjs",
     "release": "node scripts/bump.mjs && node scripts/build.mjs"
+  },
+  "devDependencies": {
+    "playwright": "1.62.0"
   }
 }

@@ -1,0 +1,89 @@
+<!doctype html>
+<html lang="es">
+<head>
+  <meta charset="utf-8">
+  <title>Fixture de Twitch</title>
+  <!--
+    El bundle inyecta su CSS en document-start, antes de que exista <body>, y
+    el <style> que crea lleva los estilos de las features. Si este fixture no
+    tuviera <head>, el style acabaría colgado del propio Document, que es
+    válido pero frágil. La página real de Twitch siempre trae <head>, así que
+    la fixture también.
+  -->
+  <style>
+    /* Imita lo mínimo de la maquetación de Twitch para que los selectores
+       del script enganchen algo. Los valores concretos no importan: lo que se
+       comprueba es que el script encuentre cada cosa donde espera. */    * { box-sizing: border-box; }
+    body { margin: 0; font: 14px/1.4 system-ui, sans-serif; background: #0e0e10; color: #efeff1; }
+    .layout { display: flex; min-height: 100vh; }
+    .sidenav { width: 240px; flex: 0 0 240px; background: #18181b; padding: 10px; }
+    .main { flex: 1; display: flex; flex-direction: column; }
+    .player { position: relative; aspect-ratio: 16/9; background: #000; }
+    .chat { width: 340px; flex: 0 0 340px; background: #18181b; display: flex; flex-direction: column; }
+    .chat-scrollable-area__message-container { flex: 1; overflow-y: auto; padding: 8px; }
+    .chat-line__message { margin: 4px 0; }
+    .chat-line__username { font-weight: 700; color: #bfbfbf; margin-right: 6px; }
+    .chat-input { display: flex; gap: 6px; padding: 8px; }
+    .chat-input textarea { flex: 1; min-height: 40px; background: #0e0e10; color: #efeff1; border: 1px solid #3a3a3d; border-radius: 4px; }
+    .side-nav-card { display: block; padding: 6px; border-radius: 4px; }
+    .tw-transition-group { margin-bottom: 8px; }
+    [data-a-target="top-nav-container"] { display: flex; justify-content: flex-end; gap: 8px; padding: 8px; }
+  </style>
+  <!--
+    El bundle se carga como un script normal, en el <head>, que es lo más
+    cercano a `@run-at document-start` que se puede sin `addInitScript`.
+
+    Probar con `addInitScript` parece más fiel pero no funciona: se ejecuta
+    antes de que exista cualquier nodo del documento, y entonces
+    `document.head` y `document.documentElement` son los dos null. El bundle
+    aborta en `bootStyles()` y el script entero no arranca. Se comprobó que
+    colgar el <style> del propio nodo Document tampoco vale: impide que el
+    analizador construya la página.
+  -->
+  <script src="./bundle.js"></script>
+</head>
+<body>
+  <div data-a-target="top-nav-container">
+    <button data-a-target="user-menu-button">Perfil</button>
+  </div>
+
+  <div class="layout">
+    <nav data-a-target="side-nav-bar" aria-label="Primary navigation">
+      <div class="tw-transition-group">
+        <a class="side-nav-card" data-a-target="side-nav-card" href="/ibai">
+          <span>ibai</span>
+          <span data-a-target="side-nav-card__metadata">1,2 mil</span>
+        </a>
+        <a class="side-nav-card" data-a-target="side-nav-card" href="/auronplay">
+          <span>auronplay</span>
+        </a>
+      </div>
+      <a data-a-target="side-nav-more" href="/directory/category/99">Más</a>
+    </nav>
+
+    <main class="main">
+      <div data-a-target="video-player" class="player">
+        <video style="width:100%;height:100%"></video>
+        <div class="player-controls"></div>
+      </div>
+    </main>
+
+    <aside data-a-target="chat-room-component-layout" class="chat">
+      <div class="chat-scrollable-area__message-container">
+        <div class="chat-line__message" data-a-target="chat-line-message">
+          <span class="chat-line__username">viewer1</span>Hola a todos
+        </div>
+        <div class="chat-line__message" data-a-target="chat-line-message">
+          <span class="chat-line__username">viewer2</span>Buenas
+        </div>
+      </div>
+      <div class="chat-input">
+        <div class="chat-input__textarea-container">
+          <textarea data-a-target="chat-input" placeholder="Enviar mensaje"></textarea>
+        </div>
+        <button data-a-target="chat-send-button">Enviar</button>
+      </div>
+    </aside>
+  </div>
+</body>
+</html>

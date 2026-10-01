@@ -3,6 +3,10 @@ name: CI
 on:
   push:
     branches: [main]
+  # Sin `paths`: la regla de `main` exige la comprobación `verify`, y si este
+  # workflow no se dispara en un pull request, ese check nunca se reporta y el
+  # PR queda bloqueado sin importar qué toca. Un PR que solo cambia el README
+  # tiene que poder mergearse.
   pull_request:
   workflow_dispatch:
 
@@ -29,3 +33,27 @@ jobs:
           for f in $(find .github -name '*.yml'); do
             ruby -ryaml -e "YAML.load_file(ARGV[0])" "$f" || { echo "YAML inválido: $f"; exit 1; }
           done
+
+  # Job aparte, y a propósito. La suite de navegador necesita descargar
+  # Chromium, que pesa, así que no va en `npm run verify`: quien clone el repo
+  # y escriba código no tiene que instalar 300 MB para trabajar.
+  #
+  # No es un check obligatorio de la regla de `main`, solo lo es `verify`. Por
+  # eso puede fallar sin bloquear el merge, y por eso los paths NO se filtran
+  # en el disparador: si el workflow entero no se dispara, `verify` tampoco.
+  navegador:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 20
+
+      - name: Instalar dependencias
+        run: npm install --no-audit --no-fund
+
+      - name: Instalar Chromium
+        run: npx playwright install --with-deps chromium
+
+      - name: Suite de navegador
+        run: npm run build && npm run test:browser

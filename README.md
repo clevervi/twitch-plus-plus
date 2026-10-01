@@ -5,9 +5,11 @@ Userscript de Tampermonkey para limpiar Twitch: tema OLED, sidebar compacta, cha
 La diferencia con un userscript de un solo archivo: **el código vive en este repo** (módulos, tests, CI) y el script se **construye y se actualiza solo**. Además, el repo publica un *catálogo* de selectores y features experimentales que el script recoge por red: cuando Twitch cambia el DOM, se arregla desde aquí sin obligar a reinstalar nada.
 
 ```
-npm run verify     # lint + build + tests (sin dependencias, sin npm install)
+npm run verify     # lint + idioma + build + tests (sin dependencias, sin npm install)
 npm run build      # genera dist/twitch-plus-plus.user.js y dist/latest.json
 npm run watch      # reconstruye al guardar
+npm test           # 143 tests unitarios
+npm run test:browser   # 15 tests en Chromium real (necesita npm install)
 ```
 
 ## Instalación
@@ -176,6 +178,27 @@ Copia la anterior sobre la instalada y guarda. La configuración no se toca al i
 Si tu feature depende del DOM, añade su clave al registro de `src/core/selectors.js`: así `probe.html` te avisa cuando Twitch la rompa.
 
 El bundler (`scripts/build.mjs`, sin dependencias) solo entiende un subconjunto de ESM a propósito: `import { a, b as c } from './x.js'`, `export const|function|class`, `export { a }` y `export { a } from './x.js'`. Cualquier otra forma hace fallar el build, y un import que no exista en el destino también.
+
+## Tests en un navegador de verdad
+
+`tools/dom-stub.mjs` es un DOM de mentira: sabe clases, atributos e `id`, pero **no sabe estilos, ni medidas, ni `pointer-events`, ni nada de layout**. Por eso hay una suite aparte con Chromium.
+
+```bash
+npm install && npx playwright install chromium
+npm run test:browser
+```
+
+Qué comprueba y por qué no lo hace `npm run test`:
+
+- Que el botón flotante tiene tamaño real, no está en `display: none` ni `visibility: hidden`, tiene opacidad suficiente y **acepta el clic**. Se lee el estilo **computado**, no la cadena CSS.
+- Que un clic en el botón abre el panel.
+- Que los selectores clave resuelven contra una página con la estructura de Twitch.
+
+Es exactamente el agujero por el que se coló el bug del botón invisible durante semanas: la cadena CSS era correcta y aun así no se veía. Un DOM de mentira no lo detecta; un navegador sí.
+
+**La suite no prueba Twitch real.** Es una SPA detrás de login que cambia sin avisar. La fixture `test/browser/fixtures/twitch.html` imita la estructura mínima, y el navegador navega a `twitch.tv` con todo el tráfico servido desde la fixture, para que la comprobación de dominio del script (`app.js`) pase **sin relajarla**.
+
+Va en un job de CI aparte porque descargar Chromium pesa. `npm run verify` sigue funcionando sin `npm install`, que es lo que hace que trabajar en el repo sea rápido.
 
 ## Depuración
 
