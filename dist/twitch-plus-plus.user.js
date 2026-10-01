@@ -404,36 +404,87 @@ const FORBIDDEN = /[{};@]|url\(|expression\(|javascript:|\\|\/\*/i;
 const state = new Map();
 for (const [key, list] of Object.entries(BASE)) state.set(key, { local: list, remote: [] });
 
-/** Salud por clave: cuál candidato sigue funcionando y cuánto falla. */
-const health = new Map();
+/**
+ * Salud POR CANDIDATO, no por clave.
+ *
+ * Con la salud por clave no se puede distinguir "el candidato remoto funciona"
+ * de "funciona el local". Y como los remotos se prueban siempre primero, un
+ * selector nuevo del catálogo que acierta una vez se queda como campeón para
+ * siempre, aunque sea el elemento equivocado.
+ *
+ * Cada candidato lleva su propio historial: aciertos, fallos, y sobre todo la
+ * racha de fallos seguidos, que es lo que permite degradarlo sin esperar.
+ */
+const MAX_RACHA_FALLOS = 3;
+
+const salud = new Map();
+
+function ficha(key, selector) {
+  let porClave = salud.get(key);
+  if (!porClave) {
+    porClave = new Map();
+    salud.set(key, porClave);
+  }
+  let ficha = porClave.get(selector);
+  if (!ficha) {
+    ficha = { selector, aciertos: 0, fallos: 0, rachaFallos: 0, ultimoAcierto: 0, coincidencias: 0 };
+    porClave.set(selector, ficha);
+  }
+  return ficha;
+}
+
+/** Un candidato con racha de fallos ya no es de fiar. */
+function degradado(ficha) {
+  return ficha.rachaFallos >= MAX_RACHA_FALLOS;
+}
+
+/**
+ * Ordena los candidatos por confianza, no por llegada.
+ *
+ * 1. Los que ya han acertado, por número de aciertos. Es la prueba de que el
+ *    candidato engancha lo que debe.
+ * 2. Los que no tienen historial, en su orden original. Sin datos no se
+ *    inventa nada: el comportamiento del primer arranque es idéntico al de
+ *    siempre, con los remotos delante.
+ * 3. Los que llevan tres fallos seguidos, al final. Siguen probándose, pero
+ *    ya no pueden tapar a los que funcionan.
+ */
+function ordenar(fichas) {
+  const probados = [];
+  const nuevos = [];
+  const caidos = [];
+  fichas.forEach((registro) => {
+    if (degradado(registro)) caidos.push(registro);
+    else if (registro.aciertos > 0) probados.push(registro);
+    else nuevos.push(registro);
+  });
+  probados.sort((a, b) => b.aciertos - a.aciertos);
+  return [...probados, ...nuevos, ...caidos].map((registro) => registro.selector);
+}
 
 function list(key) {
   const entry = state.get(key);
   if (!entry) return [];
-  return entry.remote.concat(entry.local);
+  const todos = entry.remote.concat(entry.local);
+  // `ordenar` trabaja con las fichas, no con las cadenas: el criterio es el
+  // historial de cada candidato, que vive en la ficha.
+  return ordenar(todos.map((selector) => ficha(key, selector)));
 }
 
-function note(key, matched) {
-  let entry = health.get(key);
-  if (!entry) {
-    entry = { hits: 0, misses: 0, ok: null, matched: null, lastHitAt: 0, lastMissAt: 0 };
-    health.set(key, entry);
-  }
-  const hit = !!matched;
-  if (entry.ok === hit) {
-    if (hit) entry.matched = matched;
-    return;
-  }
-  const now = Date.now();
-  if (hit) {
-    entry.hits += 1;
-    entry.lastHitAt = now;
-    entry.matched = matched;
+function anotar(key, selector, acierto, coincidencias = 1) {
+  // El registro se llama `registro` y no `ficha` a propósito: `const ficha =
+  // ficha(...)` se referencia a sí mismo en el inicializador y revienta con
+  // ReferenceError por zona muerta temporal.
+  const registro = ficha(key, selector);
+  if (acierto) {
+    registro.aciertos += 1;
+    registro.rachaFallos = 0;
+    registro.ultimoAcierto = Date.now();
+    registro.coincidencias = Math.max(registro.coincidencias, coincidencias);
   } else {
-    entry.misses += 1;
-    entry.lastMissAt = now;
+    registro.fallos += 1;
+    registro.rachaFallos += 1;
   }
-  entry.ok = hit;
 }
 
 function candidates(key) {
@@ -441,34 +492,41 @@ function candidates(key) {
 }
 
 function select(key, root = document, { track = true } = {}) {
-  for (const selector of list(key)) {
+  const candidatos = list(key);
+  for (const selector of candidatos) {
     try {
       const found = root.querySelector(selector);
       if (found) {
-        if (track) note(key, selector);
+        if (track) anotar(key, selector, true);
+        // Los que están por detrás cuentan como fallo: no resolvieron, y con
+        // el tiempo un candidato que siempre encaja primero deja de hacerlo.
+        for (const otro of candidatos) {
+          if (otro !== selector && track) anotar(key, otro, false);
+        }
         return found;
       }
+      if (track) anotar(key, selector, false);
     } catch {
       /* candidato inválido: se ignora */
     }
   }
-  if (track) note(key, null);
   return null;
 }
 
 function selectAll(key, root = document) {
-  for (const selector of list(key)) {
+  const candidatos = list(key);
+  for (const selector of candidatos) {
     try {
-      const found = root.querySelectorAll(selector);
-      if (found && found.length) {
-        note(key, selector);
-        return Array.from(found);
+      const encontrados = root.querySelectorAll(selector);
+      if (encontrados && encontrados.length) {
+        anotar(key, selector, true, encontrados.length);
+        return Array.from(encontrados);
       }
     } catch {
       /* ignorar */
     }
+    anotar(key, selector, false);
   }
-  note(key, null);
   return [];
 }
 
@@ -543,18 +601,37 @@ function snapshot() {
 /**
  * Estado de todas las claves: qué selector sigue funcionando y cuáles han
  * dejado de existir. Es el dato que dice "qué se rompió" sin adivinar.
+ *
+ * Ahora incluye el detalle por candidato, que es lo que permite ver por qué
+ * uno funciona mejor que otro: cuántos aciertos lleva, si está degradado, y
+ * cuántos elementos encuentra cuando encuentra.
  */
 function selectorReport(root = document) {
   return [...state.keys()].map((key) => {
-    const matched = select(key, root, { track: false });
-    const stats = health.get(key) || { hits: 0, misses: 0 };
+    const entry = state.get(key);
+    // `ok` significa "resuelve contra este DOM", que es lo que necesita saber
+    // quien lee el informe. Se resuelve con track:false para no contaminar el
+    // historial con una comprobación de diagnóstico.
+    const ok = select(key, root, { track: false }) !== null;
+    const porCandidato = list(key).map((selector) => {
+      const registro = salud.get(key)?.get(selector);
+      return {
+        selector,
+        remoto: entry.remote.includes(selector),
+        aciertos: registro?.aciertos ?? 0,
+        fallos: registro?.fallos ?? 0,
+        degradado: registro ? degradado(registro) : false,
+        ultimoAcierto: registro?.ultimoAcierto ?? 0,
+      };
+    });
+    const elegido = porCandidato.find((c) => c.aciertos > 0 && !c.degradado) || porCandidato[0] || null;
     return {
       key,
-      ok: !!matched,
-      matched: stats.matched,
-      total: list(key).length,
-      remote: state.get(key).remote.length,
-      misses: stats.misses,
+      ok,
+      candidato: elegido?.selector ?? null,
+      total: porCandidato.length,
+      remoto: entry.remote.length,
+      candidatos: porCandidato,
     };
   });
 }
@@ -563,8 +640,24 @@ function brokenSelectors(root = document) {
   return selectorReport(root).filter((row) => !row.ok);
 }
 
+/** Claves cuyo candidato ganador es remoto, para ver qué ha cambiado de golpe. */
+function promovidosRemotamente() {
+  const out = [];
+  for (const [key, porCandidato] of salud) {
+    const ganador = [...porCandidato.values()]
+      .filter((f) => f.aciertos > 0 && !degradado(f))
+      .sort((a, b) => b.aciertos - a.aciertos)[0];
+    if (!ganador) continue;
+    const entry = state.get(key);
+    if (ganador.selector && entry?.remote.includes(ganador.selector) && entry.local.length) {
+      out.push({ key, candidato: ganador.selector, aciertos: ganador.aciertos });
+    }
+  }
+  return out;
+}
+
 function resetHealth() {
-  health.clear();
+  salud.clear();
 }
 return {
   candidates: candidates,
@@ -576,6 +669,7 @@ return {
   snapshot: snapshot,
   selectorReport: selectorReport,
   brokenSelectors: brokenSelectors,
+  promovidosRemotamente: promovidosRemotamente,
   resetHealth: resetHealth,
 };
 })();
@@ -1737,7 +1831,7 @@ const { capabilities: capabilities } = __m1;
 const { trackedErrors: trackedErrors } = __m2;
 const { snapshot: perfSnapshot } = __m10;
 const { statuses: statuses } = __m6;
-const { brokenSelectors: brokenSelectors } = __m3;
+const { brokenSelectors: brokenSelectors, promovidosRemotamente: promovidosRemotamente } = __m3;
 const { VERSION: VERSION } = __m8;
 
 /** Informe de una línea por dato, pensado para pegar en un issue. */
@@ -1755,6 +1849,11 @@ function report() {
   const blocked = list.filter((feature) => feature.enabled && !feature.active).map((feature) => feature.id);
   const failing = list.filter((feature) => feature.failures > 0).map((feature) => `${feature.id} (${feature.failures})`);
   const dead = brokenSelectors().map((row) => row.key);
+  // Solo las claves donde el catálogo remoto ha cambiado el ganador. Es la
+  // información que hace falta para decidir si un fix del repo era acertado.
+  const promovidos = promovidosRemotamente()
+    .map((p) => `${p.key}=${p.candidato}`)
+    .join(', ');
   const catalog = catalogStatus();
   const apis = capabilities();
   const perf = perfSnapshot();
@@ -1770,6 +1869,7 @@ function report() {
     `features bloqueadas por condición: ${blocked.join(', ') || '—'}`,
     `features con errores: ${failing.join(', ') || '—'}`,
     `selectores sin resolver: ${dead.join(', ') || '—'}`,
+    `ganadores remotos: ${promovidos || 'ninguno'}`,
     `APIs ausentes: ${apis.ausentes.join(', ') || 'ninguna'}`,
     `catálogo: rev. ${catalog.revision || 'local'}${catalog.remote ? '' : ' (sin remoto)'}${catalog.error ? ` — ${catalog.error}` : ''}`,
   ];
