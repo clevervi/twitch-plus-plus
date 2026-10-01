@@ -60,3 +60,7 @@
 ## 1.3.0
 
 - Versión anterior (script de un solo archivo): OLED, sidebar compacta, ocultar offline, buscador de chat, miniaturas, analítica de viewers, auto Channel Points y pausa de chat.
+
+## 2.2.4 — 2026-10-01
+
+- Fix tooltip miniatura sidebar en layout moderno, aspect ratio 16:9 estricto, optimizaciones de CPU y sync de ajustes en panel
