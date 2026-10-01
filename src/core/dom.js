@@ -1,12 +1,17 @@
+import { contar } from './perf.js';
+
 export function $(selector, root = document) {
+  contar('consultas');
   return root.querySelector(selector);
 }
 
 export function $$(selector, root = document) {
+  contar('consultas');
   return Array.from(root.querySelectorAll(selector));
 }
 
 export function qsAll(selector, root = document) {
+  contar('consultas');
   try {
     return Array.from(root.querySelectorAll(selector));
   } catch {
@@ -15,6 +20,7 @@ export function qsAll(selector, root = document) {
 }
 
 export function qs(selector, root = document) {
+  contar('consultas');
   try {
     return root.querySelector(selector);
   } catch {
