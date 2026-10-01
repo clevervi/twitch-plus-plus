@@ -1,7 +1,7 @@
 // ==UserScript==
 // @name         Twitch++
 // @namespace    https://github.com/clevervi
-// @version      2.2.10
+// @version      2.2.11
 // @description  Twitch limpio, modular y autoactualizable: OLED, sidebar, chat, analítica de viewers, auto Channel Points y pausa de chat.
 // @author       clevervi
 // @license      MIT
@@ -1126,7 +1126,7 @@ return {
 /* ---- src/core/version.js ---- */
 const __m8 = (function () {
 /** Sustituido en build. Fuente única de verdad: package.json + header del userscript. */
-const VERSION = '2.2.10';
+const VERSION = '2.2.11';
 const REPO_URL = 'https://github.com/clevervi/twitch-plus-plus';
 const RAW_URL = 'https://raw.githubusercontent.com/clevervi/twitch-plus-plus/main';
 const BRANCH = 'main';
