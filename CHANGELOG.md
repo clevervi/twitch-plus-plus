@@ -102,3 +102,14 @@
 - **La CI se desincronizó de `npm run verify`**: `ci.yml` repetía los pasos a mano y se quedó sin el detector de idioma, que no se ejecutó en ningún pull request. Ahora delega en `verify`, y hay un test que falla si vuelven a separarse.
 - **Correcciones de proceso**: el validador de PR lee las etiquetas desde la API en vez del payload del evento, y no se aplica a los PR de Dependabot, que no pueden llevar issue.
 - **Tests**: 122 unitarios en verde, antes 99.
+
+## 2.2.12 — 2026-10-01
+
+- **El buscador de chat ya no cuelga la pestaña**: con la opción de expresión regular, lo que escribías se pasaba tal cual a `new RegExp` y se ejecutaba contra cada línea del chat, en cada tecla y cada 1,2 segundos. Un patrón como `(a+)+$` compilaba bien y luego se pasaba minutos calculando, y eso congela la pestaña de Twitch entera. Ahora los cuantificadores anidados y los patrones de más de 200 caracteres se rechazan antes de compilar, y el buscador avisa en el contador.
+- **El contraste OLED alto ya no pone texto blanco sobre el tema claro**: la feature no dependía de `Tema OLED`, así que con Twitch en tema claro seguía aplicando su CSS y ponía `--color-text-base` a blanco sobre fondo blanco. Ahora comparte su misma condición.
+- **Desactivar y volver a activar `Sin extensiones` vuelve a funcionar**: el registro de elementos ocultados nunca se limpiaba, así que al reencender la feature los iframes y overlays de extensión se quedaban visibles para siempre. Además, al desactivar ya no se borra el estilo que tenía Twitch, sino que se restaura.
+- **El catálogo remoto deja de ganar por llegar antes**: un selector del repo que acertaba una vez se quedaba como campeón para siempre. Ahora el orden lo marca el historial de cada candidato, y tres fallos seguidos lo degradan.
+- **Diagnóstico de rendimiento**: `TwitchPP.diagnostics.perf()` devuelve ticks, consultas al DOM, ráfagas de mutación y tiempo de arranque.
+- **Suite de navegador**: 15 tests en Chromium real que leen estilos computados, para lo que el DOM stub no puede comprobar. No forma parte de `npm run verify`, que sigue funcionando sin instalar nada.
+- **Las notas del CHANGELOG se leen de un archivo**: en Windows, el texto con acentos que pasa por la línea de comandos llegaba estropeado.
+- **Tests**: 182 en verde, antes 143.
