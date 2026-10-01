@@ -92,3 +92,13 @@
 - **Diagnóstico de APIs**: `TwitchPP.diagnostics.apis()` y la línea «APIs ausentes» en `report()`.
 - **Matriz de compatibilidad** en el README, con lo verificado y lo supuesto.
 - **Tests**: 88 unitarios en verde.
+
+## 2.2.11 — 2026-10-01
+
+- **Botón flotante siempre visible**: la regla base de `.fab` era `opacity: 0` y `pointer-events: none`, así que el botón `++` no se veía ni se podía pulsar salvo que el ratón estuviera a menos de 140 px. Ahora está presente a `.3` y siempre pulsable; `awake` y `near` suben opacidad en lugar de hacerlo aparecer.
+- **La sonda no dejaba la configuración sucia**: `probe()` encendía todas las features y las restauraba al final, sin protección. Una excepción a mitad dejaba el panel con todo encendido y persistido, justo en la herramienta que sirve para recuperar la configuración. Ahora restaura en un `finally`.
+- **Temporizador huérfano en miniaturas**: `sidebar-thumbnails` programaba un `setTimeout` de 2 s sin guardar el identificador, y `teardown()` no lo podía cancelar. Apagar la feature antes de los dos segundos dejaba el precargado vivo, pidiendo imágenes al CDN de Twitch con la feature apagada.
+- **Diagnóstico de rendimiento**: `TwitchPP.diagnostics.perf()` devuelve ticks, media de ticks por segundo, consultas al DOM, ráfagas de mutación y tiempo de arranque. `report()` incluye dos líneas nuevas con las cifras.
+- **La CI se desincronizó de `npm run verify`**: `ci.yml` repetía los pasos a mano y se quedó sin el detector de idioma, que no se ejecutó en ningún pull request. Ahora delega en `verify`, y hay un test que falla si vuelven a separarse.
+- **Correcciones de proceso**: el validador de PR lee las etiquetas desde la API en vez del payload del evento, y no se aplica a los PR de Dependabot, que no pueden llevar issue.
+- **Tests**: 122 unitarios en verde, antes 99.
