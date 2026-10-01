@@ -13,18 +13,19 @@ import { selectAll } from '../core/selectors.js';
 import { get as storeGet } from '../core/store.js';
 
 const EXTENSION_HINT = /extension|ext-twitch|\/extensions\/|extension-panel|twitch-ext-/i;
+const EXTENSION_ICON_HINT = /Icon-(Extension|Extensions|Puzzle|Plugin|Apps|Addon|Overlay|Component)/i;
 
 const KNOWN_PLAYER_ICONS = new RegExp(
   'Icon-(Settings|Gear|Volume|Fullscreen|Theater|Pause|Play|Mute|Unmute|Rewind|Forward|' +
     'Quality|Clip|Share|Subscribe|Follow|Bits|Prime|Notifications|Messages|Search|Menu|Close|' +
     'Chevron|Arrow|Drops|Points|Reward|Emote|Mod|Chat|Crown|Heart|Rerun|Pin|Mute-User|Bit|' +
-    'Hype|Extension|Collapse|Expand|Info|Rec|Resume|Exit|Picture|PictureInPicture|RewindLive|' +
-    'PlaybackSettings|Live|Cast|Airplay|Subtitles|AudioTrack)',
+    'Hype|Extension|Collapse|Expand|Info|Rec|Resume|Exit|Picture|PictureInPicture|Pip|RewindLive|' +
+    'PlaybackSettings|Live|Cast|Airplay|Subtitles|CC|Audio|AudioOnly|AudioTrack|Accessibility|Studio)',
   'i',
 );
 
 const SAFE_BUTTON_LABEL =
-  /pantalla|fullscreen|teatro|theater|volumen|volume|silenciar|mute|pausa|pause|reproducir|play|ajustes|settings|calidad|quality|clip|compartir|share|subt[ií]tulos|captions/i;
+  /pantalla|fullscreen|teatro|theater|volumen|volume|silenciar|mute|pausa|pause|reproducir|play|ajustes|settings|calidad|quality|clip|compartir|share|subt[ií]tulos|captions|audio|pip|directo|live|accesibilidad|accessibility/i;
 
 const known = new Set();
 const removed = new Set();
@@ -84,16 +85,22 @@ function unknownButtonSweep() {
       const signature = (svg?.getAttribute('class') || '').match(/\bIcon-[A-Za-z0-9_-]+\b/);
       if (!signature) continue;
       if (KNOWN_PLAYER_ICONS.test(signature[0])) continue;
+
       if (extra.some((needle) => signature[0].toLowerCase().includes(needle.toLowerCase()))) {
         kill(button);
         continue;
       }
-      if (known.has(signature[0])) {
+
+      if (EXTENSION_ICON_HINT.test(signature[0])) {
         kill(button);
         continue;
       }
-      known.add(signature[0]);
-      log('icono nuevo en el player (oculto por heurística):', signature[0]);
+
+      // Iconos desconocidos pero que no coinciden con extensiones conocidas: se conservan para no romper controles nuevos
+      if (!known.has(signature[0])) {
+        known.add(signature[0]);
+        log('icono en el player no catalogado (conservado):', signature[0]);
+      }
     }
   }
 }

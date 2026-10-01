@@ -9,17 +9,22 @@ import { tickAll } from './registry.js';
 import { emit } from './bus.js';
 
 const HEARTBEAT = 400;
+const MIN_RUN_GAP = 200;
 
 let timer = null;
 let observer = null;
 let queued = false;
 let running = false;
+let lastRunTime = 0;
 
 function run() {
   if (running || document.hidden) return;
+  const now = Date.now();
+  if (now - lastRunTime < MIN_RUN_GAP) return;
+  lastRunTime = now;
   running = true;
   try {
-    tickAll(Date.now());
+    tickAll(now);
   } finally {
     running = false;
   }

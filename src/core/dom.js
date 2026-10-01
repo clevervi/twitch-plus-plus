@@ -42,22 +42,28 @@ export function throttle(fn, wait) {
   let last = 0;
   let timer = null;
   let pending = null;
+  let context = null;
+
+  const invoke = () => {
+    timer = null;
+    last = Date.now();
+    const args = pending;
+    const ctx = context;
+    pending = null;
+    context = null;
+    if (args) fn.apply(ctx, args);
+  };
+
   return function throttled(...args) {
     pending = args;
+    context = this;
+    if (timer) return;
     const remaining = wait - (Date.now() - last);
     if (remaining <= 0) {
-      last = Date.now();
-      fn.apply(this, pending);
-      pending = null;
-      return;
+      invoke();
+    } else {
+      timer = setTimeout(invoke, remaining);
     }
-    if (timer) return;
-    timer = setTimeout(() => {
-      timer = null;
-      last = Date.now();
-      if (pending) fn.apply(this, pending);
-      pending = null;
-    }, remaining);
   };
 }
 

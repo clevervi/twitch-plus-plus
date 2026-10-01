@@ -68,3 +68,7 @@
 ## 2.2.5 — 2026-10-01
 
 - Auditoría exhaustiva de los 20 bugs del inventario v1.3.0: autoClaim post-click check, chatPause estado nativo sincronizado, sidebarCompact protección de avatar, multi-pestaña GM_addValueChangeListener, FAB con detección de proximidad y pointer-events seguros, restauración de foco previo y Escape en el panel, cola de toasts y limpieza de chatSearch
+
+## 2.2.6 — 2026-10-01
+
+- Resolución completa de hallazgos v7: throttle() robusto sin doble ejecución ni argumentos obsoletos, scheduler con MIN_RUN_GAP anti-coalescencia, heurística de extensiones invertida a detección explícita EXTENSION_ICON_HINT protegiendo todos los controles de player (Subtitles, CC, PiP, Audio, RewindLive, Studio)
