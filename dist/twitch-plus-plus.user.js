@@ -2103,9 +2103,15 @@ function isDarkTheme() {
   return (r * 299 + g * 587 + b * 114) / 1000 < 128;
 }
 
-/** Diálogo de hover que Twitch abre al pasar por una card de la sidebar. */
 function hoverDialog() {
-  const layers = qsAll('.tw-dialog-layer, [role="dialog"]');
+  // 1. Selector directo para el tooltip moderno de la sidebar de Twitch
+  const tooltipBody = qs('.online-side-nav-channel-tooltip__body, [class*="online-side-nav-channel-tooltip"]');
+  if (tooltipBody && tooltipBody.isConnected) {
+    return tooltipBody.closest('[tabindex="0"], .tw-dialog-layer, [role="dialog"], [role="tooltip"]') || tooltipBody.parentElement || tooltipBody;
+  }
+
+  // 2. Globos y capas de diálogo estándar
+  const layers = qsAll('.tw-balloon, [data-a-target="tw-balloon"], [role="tooltip"], .tw-dialog-layer, [role="dialog"]');
   for (const layer of layers) {
     if (layer.offsetParent === null && layer !== document.body) continue;
     if (isVisible(layer)) return layer;
@@ -2113,12 +2119,12 @@ function hoverDialog() {
   return null;
 }
 
-async function waitForHoverDialog(timeout = 1200) {
+async function waitForHoverDialog(timeout = 800) {
   const deadline = Date.now() + timeout;
   while (Date.now() < deadline) {
     const dialog = hoverDialog();
     if (dialog) return dialog;
-    await new Promise((resolve) => setTimeout(resolve, 50));
+    await new Promise((resolve) => setTimeout(resolve, 30));
   }
   return null;
 }
@@ -2271,11 +2277,16 @@ function buildMatcher() {
   return cache.matcher;
 }
 
+const ATTR = 'data-twpp-kw';
+
 function clear() {
-  for (const line of document.querySelectorAll(`.${CLASS}`)) line.classList.remove(CLASS);
+  for (const line of document.querySelectorAll(`.${CLASS}, [${ATTR}]`)) {
+    line.classList.remove(CLASS);
+    line.removeAttribute(ATTR);
+  }
 }
 
-// La clase ES el estado, y la caché de keywords se invalida al cambiarlas:
+// La clase y atributo ES el estado, y la caché de keywords se invalida al cambiarlas:
 // editar la lista reevalúa los mensajes que ya están en pantalla.
 function sweep() {
   const match = buildMatcher();
@@ -2287,7 +2298,8 @@ function sweep() {
   if (!container) return;
 
   for (const line of chatLines(container)) {
-    if (line.classList.contains(CLASS)) continue;
+    if (line.classList.contains(CLASS) || line.hasAttribute(ATTR)) continue;
+    line.setAttribute(ATTR, '1');
     const text = messageText(line);
     const hit = match instanceof RegExp ? match.test(text) : match(text);
     if (hit) line.classList.add(CLASS);
@@ -2299,7 +2311,7 @@ defineFeature({
   label: 'Resaltar palabras clave',
   section: 'chat',
   default: false,
-  interval: 600,
+  interval: 1000,
   settings: [
     { key: 'chatKeywords', label: 'Palabras (separadas por coma)', type: 'text', placeholder: 'hola, clip, raid' },
     { key: 'chatKeywordRegex', label: 'Tratar como regex', type: 'bool', default: false },
@@ -2832,8 +2844,7 @@ function playerOverlaySweep() {
     for (const frame of qsAll('iframe', player)) {
       if (extensionLike(frame)) kill(frame);
     }
-    for (const box of qsAll('div', player)) {
-      if (!/overlay/.test(box.className || '')) continue;
+    for (const box of qsAll('div[class*="overlay"], .extension-container, .extension-view', player)) {
       if (!box.querySelector('iframe')) continue;
       kill(box);
     }
@@ -2954,9 +2965,20 @@ const { selectAll: selectAll } = __m3;
 const ATTR = 'data-twpp-offline';
 
 function isOffline(card) {
-  if (qs('[class*="offline"], [class*="Offline"]', card)) return true;
-  if (qs('[data-test-selector*="offline"]', card)) return true;
-  if (/offline|desconectado/i.test(card.getAttribute?.('aria-label') || '')) return true;
+  // Si tiene indicador de directo activo o contador de viewers, es ONLINE
+  if (card.querySelector('.tw-channel-status-indicator, [class*="tw-channel-status-indicator"], [data-a-target="side-nav-live-status"]')) {
+    return false;
+  }
+  if (card.querySelector('[data-a-target="side-nav-card-viewer-count"], [class*="viewer-count"]')) {
+    return false;
+  }
+
+  // Comprobar indicadores explícitos de offline
+  if (qs('[class*="offline"], [class*="Offline"], [data-test-selector*="offline"]', card)) return true;
+  const text = card.textContent || '';
+  if (/desconectado|offline/i.test(text)) return true;
+  const label = card.getAttribute?.('aria-label') || card.querySelector('a')?.getAttribute?.('aria-label') || '';
+  if (/desconectado|offline/i.test(label)) return true;
   return false;
 }
 
@@ -3140,7 +3162,6 @@ return {
 const __m31 = (function () {
 const { log: log } = __m2;
 const { defineFeature: defineFeature } = __m6;
-const { selectAll: selectAll } = __m3;
 const { get: storeGet } = __m5;
 const { channelFromCard: channelFromCard, thumbnailUrl: thumbnailUrl, visibleChannels: visibleChannels, waitForHoverDialog: waitForHoverDialog } = __m20;
 
@@ -3150,12 +3171,11 @@ const { channelFromCard: channelFromCard, thumbnailUrl: thumbnailUrl, visibleCha
 
 
 
-
 const cache = new Map();
-const bound = new WeakSet();
 let generation = 0;
 let leaveTimer = null;
-let activeBalloon = null;
+let activeTarget = null;
+let currentCard = null;
 
 function ttl() {
   const seconds = Number(storeGet('thumbCacheTtl'));
@@ -3182,30 +3202,54 @@ function preloadVisible(limit = 8) {
   for (const channel of visibleChannels(limit)) preload(channel);
 }
 
-function getBalloon(dialog) {
+function getTooltipTarget(dialog) {
   if (!dialog) return null;
-  if (dialog.classList?.contains('tw-balloon') || dialog.getAttribute?.('data-a-target') === 'tw-balloon') {
-    return dialog;
+
+  // 1. Tooltip moderno de Twitch (.online-side-nav-channel-tooltip__body)
+  const body = dialog.matches?.('.online-side-nav-channel-tooltip__body, [class*="online-side-nav-channel-tooltip"]')
+    ? dialog
+    : dialog.querySelector?.('.online-side-nav-channel-tooltip__body, [class*="online-side-nav-channel-tooltip"]');
+
+  if (body) {
+    const card = body.closest('[tabindex="0"]') || body.parentElement || body;
+    return { container: card, insertionPoint: body };
   }
-  return dialog.querySelector?.('.tw-balloon, [data-a-target="tw-balloon"]') || dialog;
+
+  // 2. Fallback a .tw-balloon clásico
+  const balloon = dialog.matches?.('.tw-balloon')
+    ? dialog
+    : dialog.querySelector?.('.tw-balloon, [data-a-target="tw-balloon"]') || dialog;
+
+  return { container: balloon, insertionPoint: balloon };
 }
 
-function restoreBalloon(balloon) {
-  if (!balloon) return;
-  balloon.style.removeProperty('width');
-  balloon.style.removeProperty('max-width');
-  balloon.style.removeProperty('min-width');
+function restoreTarget(target) {
+  if (!target) return;
+  const { container, insertionPoint } = target;
+  if (container) {
+    container.style.removeProperty('width');
+    container.style.removeProperty('max-width');
+    container.style.removeProperty('min-width');
+  }
+  if (insertionPoint && insertionPoint !== container) {
+    insertionPoint.style.removeProperty('width');
+    insertionPoint.style.removeProperty('max-width');
+    insertionPoint.style.removeProperty('box-sizing');
+  }
 }
 
 function cleanup() {
-  if (activeBalloon) {
-    restoreBalloon(activeBalloon);
-    activeBalloon = null;
+  if (activeTarget) {
+    restoreTarget(activeTarget);
+    activeTarget = null;
   }
   for (const node of document.querySelectorAll('img.twpp-sidebar-thumb')) {
-    const parent = node.closest('.tw-balloon') || node.parentElement;
+    const parent = node.closest('.online-side-nav-channel-tooltip__body, [class*="online-side-nav-channel-tooltip"], .tw-balloon') || node.parentElement;
     node.remove();
-    if (parent) restoreBalloon(parent);
+    if (parent) {
+      const container = parent.closest('[tabindex="0"]') || parent;
+      restoreTarget({ container, insertionPoint: parent });
+    }
   }
 }
 
@@ -3214,28 +3258,44 @@ function inject(card, channel) {
   waitForHoverDialog().then((dialog) => {
     if (!dialog || !dialog.isConnected || local !== generation) return;
 
-    // Verificar que el diálogo de hover está alineado verticalmente con la card
-    const cardRect = card.getBoundingClientRect();
-    const dialogRect = dialog.getBoundingClientRect();
-    if (cardRect.height > 0 && dialogRect.height > 0) {
-      const cardCenterY = cardRect.top + cardRect.height / 2;
-      const dialogCenterY = dialogRect.top + dialogRect.height / 2;
-      if (Math.abs(cardCenterY - dialogCenterY) > 220) return;
+    const target = getTooltipTarget(dialog);
+    if (!target || !target.insertionPoint) return;
+
+    // Verificar que el tooltip corresponde a este canal:
+    // a) Por coincidencia de texto (en el título o contenido)
+    // b) O por proximidad vertical con la card
+    const text = (target.insertionPoint.textContent || '').toLowerCase();
+    const normChannel = channel.toLowerCase();
+    const matchesChannel = text.includes(normChannel) ||
+      Boolean(target.insertionPoint.querySelector(`[title*="${normChannel}" i], [title*="${channel}" i]`));
+
+    if (!matchesChannel) {
+      const cardRect = card.getBoundingClientRect();
+      const dialogRect = target.container.getBoundingClientRect();
+      if (cardRect.height > 0 && dialogRect.height > 0) {
+        const cardCenterY = cardRect.top + cardRect.height / 2;
+        const dialogCenterY = dialogRect.top + dialogRect.height / 2;
+        if (Math.abs(cardCenterY - dialogCenterY) > 220) return;
+      }
     }
 
     // Limpieza global de cualquier miniatura previa
     cleanup();
 
-    const balloon = getBalloon(dialog);
     const targetWidth = width();
 
-    // Adaptar el ancho del globo para que la imagen no se recorte ni se comprima
-    if (balloon) {
-      balloon.style.width = `${targetWidth}px`;
-      balloon.style.maxWidth = `${targetWidth}px`;
-      balloon.style.minWidth = `${targetWidth}px`;
-      activeBalloon = balloon;
+    // Adaptar el contenedor y el cuerpo del tooltip
+    if (target.container) {
+      target.container.style.width = `${targetWidth}px`;
+      target.container.style.maxWidth = `${targetWidth}px`;
+      target.container.style.minWidth = `${targetWidth}px`;
     }
+    if (target.insertionPoint && target.insertionPoint !== target.container) {
+      target.insertionPoint.style.width = '100%';
+      target.insertionPoint.style.maxWidth = '100%';
+      target.insertionPoint.style.boxSizing = 'border-box';
+    }
+    activeTarget = target;
 
     const image = document.createElement('img');
     image.className = 'twpp-sidebar-thumb';
@@ -3256,45 +3316,46 @@ function inject(card, channel) {
 
     image.addEventListener('error', () => {
       image.remove();
-      restoreBalloon(balloon);
-      if (activeBalloon === balloon) activeBalloon = null;
+      restoreTarget(target);
+      if (activeTarget === target) activeTarget = null;
     }, { once: true });
 
-    balloon.append(image);
+    target.insertionPoint.append(image);
   });
 }
 
-function bind(card) {
-  if (bound.has(card)) return;
-  bound.add(card);
-  let timer = null;
-  card.addEventListener('mouseenter', () => {
-    clearTimeout(leaveTimer);
-    generation += 1;
-    const channel = channelFromCard(card);
-    if (!channel) return;
-    clearTimeout(timer);
-    timer = setTimeout(() => preload(channel), 120);
-    inject(card, channel);
-  });
-  card.addEventListener('mouseleave', () => {
-    generation += 1;
-    clearTimeout(timer);
-    clearTimeout(leaveTimer);
-    const leaveGen = generation;
-    leaveTimer = setTimeout(() => {
-      if (leaveGen === generation) cleanup();
-    }, 80);
-  });
+function onPointerOver(e) {
+  const card = e.target.closest('[data-a-target="side-nav-card"], .side-nav-card, a[data-test-selector="followed-channel"]');
+  if (!card) return;
+  if (card === currentCard) return;
+
+  currentCard = card;
+  clearTimeout(leaveTimer);
+  generation += 1;
+
+  const channel = channelFromCard(card);
+  if (!channel) return;
+
+  preload(channel);
+  inject(card, channel);
 }
 
-function sweep() {
-  for (const card of selectAll('sideNav.card')) {
-    if (channelFromCard(card)) bind(card);
-  }
+function onPointerOut(e) {
+  if (!currentCard) return;
+  const related = e.relatedTarget;
+  if (related && currentCard.contains(related)) return;
+
+  currentCard = null;
+  generation += 1;
+  clearTimeout(leaveTimer);
+  const leaveGen = generation;
+  leaveTimer = setTimeout(() => {
+    if (leaveGen === generation) cleanup();
+  }, 100);
 }
 
 function teardown() {
+  currentCard = null;
   clearTimeout(leaveTimer);
   cleanup();
   cache.clear();
@@ -3305,7 +3366,6 @@ defineFeature({
   label: 'Miniatura en sidebar',
   section: 'sidebar',
   default: false,
-  interval: 2500,
   settings: [
     {
       key: 'thumbWidth',
@@ -3323,13 +3383,17 @@ defineFeature({
     },
     { key: 'thumbCacheTtl', label: 'Caché (segundos)', type: 'number', default: 60, min: 0, max: 3600 },
   ],
-  tick: sweep,
   onEnable() {
-    sweep();
+    document.addEventListener('mouseover', onPointerOver, { passive: true });
+    document.addEventListener('mouseout', onPointerOut, { passive: true });
     setTimeout(() => preloadVisible(8), 2000);
     log('miniaturas de sidebar activas');
   },
-  onDisable: teardown,
+  onDisable() {
+    document.removeEventListener('mouseover', onPointerOver);
+    document.removeEventListener('mouseout', onPointerOut);
+    teardown();
+  },
   onRoute() {
     generation += 1;
     teardown();

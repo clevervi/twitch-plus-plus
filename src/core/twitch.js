@@ -60,9 +60,15 @@ export function isDarkTheme() {
   return (r * 299 + g * 587 + b * 114) / 1000 < 128;
 }
 
-/** Diálogo de hover que Twitch abre al pasar por una card de la sidebar. */
 export function hoverDialog() {
-  const layers = qsAll('.tw-dialog-layer, [role="dialog"]');
+  // 1. Selector directo para el tooltip moderno de la sidebar de Twitch
+  const tooltipBody = qs('.online-side-nav-channel-tooltip__body, [class*="online-side-nav-channel-tooltip"]');
+  if (tooltipBody && tooltipBody.isConnected) {
+    return tooltipBody.closest('[tabindex="0"], .tw-dialog-layer, [role="dialog"], [role="tooltip"]') || tooltipBody.parentElement || tooltipBody;
+  }
+
+  // 2. Globos y capas de diálogo estándar
+  const layers = qsAll('.tw-balloon, [data-a-target="tw-balloon"], [role="tooltip"], .tw-dialog-layer, [role="dialog"]');
   for (const layer of layers) {
     if (layer.offsetParent === null && layer !== document.body) continue;
     if (isVisible(layer)) return layer;
@@ -70,12 +76,12 @@ export function hoverDialog() {
   return null;
 }
 
-export async function waitForHoverDialog(timeout = 1200) {
+export async function waitForHoverDialog(timeout = 800) {
   const deadline = Date.now() + timeout;
   while (Date.now() < deadline) {
     const dialog = hoverDialog();
     if (dialog) return dialog;
-    await new Promise((resolve) => setTimeout(resolve, 50));
+    await new Promise((resolve) => setTimeout(resolve, 30));
   }
   return null;
 }

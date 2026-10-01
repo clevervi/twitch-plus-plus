@@ -62,8 +62,7 @@ function playerOverlaySweep() {
     for (const frame of qsAll('iframe', player)) {
       if (extensionLike(frame)) kill(frame);
     }
-    for (const box of qsAll('div', player)) {
-      if (!/overlay/.test(box.className || '')) continue;
+    for (const box of qsAll('div[class*="overlay"], .extension-container, .extension-view', player)) {
       if (!box.querySelector('iframe')) continue;
       kill(box);
     }

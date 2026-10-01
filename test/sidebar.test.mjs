@@ -1,7 +1,7 @@
 import assert from 'node:assert/strict';
 import test from 'node:test';
 
-import { channelFromHref, thumbnailUrl, parseViewerText } from '../src/core/twitch.js';
+import { channelFromHref, thumbnailUrl, parseViewerText, hoverDialog } from '../src/core/twitch.js';
 import { candidates } from '../src/core/selectors.js';
 
 test('channelFromHref extrae correctamente canales válidos y descarta rutas reservadas', () => {
@@ -69,4 +69,37 @@ test('parseViewerText analiza diversos formatos de números de Twitch', () => {
   assert.equal(parseViewerText('1,5 mil'), 1500);
   assert.equal(parseViewerText(''), null);
   assert.equal(parseViewerText(null), null);
+});
+
+test('hoverDialog detecta correctamente el tooltip moderno de canal en la sidebar', () => {
+  const card = {
+    tagName: 'DIV',
+    getAttribute: (attr) => (attr === 'tabindex' ? '0' : null),
+  };
+  const tooltipBody = {
+    tagName: 'DIV',
+    className: 'Layout-sc-1xcs6mc-0 bekVPP online-side-nav-channel-tooltip__body',
+    isConnected: true,
+    offsetParent: {},
+    textContent: 'helenvader · Fortnite',
+    closest: (selector) => (selector.includes('tabindex') ? card : null),
+    parentElement: card,
+  };
+
+  const prevDoc = globalThis.document;
+  globalThis.document = {
+    querySelector: (sel) => {
+      if (sel.includes('online-side-nav-channel-tooltip')) return tooltipBody;
+      return null;
+    },
+    querySelectorAll: () => [],
+  };
+
+  try {
+    const dialog = hoverDialog();
+    assert.equal(dialog, card);
+  } finally {
+    if (prevDoc) globalThis.document = prevDoc;
+    else delete globalThis.document;
+  }
 });

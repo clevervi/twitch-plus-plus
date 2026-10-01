@@ -6,9 +6,20 @@ import { selectAll } from '../core/selectors.js';
 const ATTR = 'data-twpp-offline';
 
 function isOffline(card) {
-  if (qs('[class*="offline"], [class*="Offline"]', card)) return true;
-  if (qs('[data-test-selector*="offline"]', card)) return true;
-  if (/offline|desconectado/i.test(card.getAttribute?.('aria-label') || '')) return true;
+  // Si tiene indicador de directo activo o contador de viewers, es ONLINE
+  if (card.querySelector('.tw-channel-status-indicator, [class*="tw-channel-status-indicator"], [data-a-target="side-nav-live-status"]')) {
+    return false;
+  }
+  if (card.querySelector('[data-a-target="side-nav-card-viewer-count"], [class*="viewer-count"]')) {
+    return false;
+  }
+
+  // Comprobar indicadores explícitos de offline
+  if (qs('[class*="offline"], [class*="Offline"], [data-test-selector*="offline"]', card)) return true;
+  const text = card.textContent || '';
+  if (/desconectado|offline/i.test(text)) return true;
+  const label = card.getAttribute?.('aria-label') || card.querySelector('a')?.getAttribute?.('aria-label') || '';
+  if (/desconectado|offline/i.test(label)) return true;
   return false;
 }
 
