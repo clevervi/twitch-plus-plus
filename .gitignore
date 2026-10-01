@@ -5,3 +5,8 @@ Thumbs.db
 *.log
 .tmp/
 *.user.js.map
+
+# Scripts de depuración con el sufijo .local.mjs. Los uso para medir cosas en el
+# repo y nunca deben acabar en un commit: se cuelgan, o dependen del estado
+# de mi máquina, y no sirven para nada más allá.
+*.local.mjs
