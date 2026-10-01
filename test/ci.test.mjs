@@ -24,8 +24,16 @@ describe('la CI no se desincroniza de npm run verify', () => {
       'node scripts/lint.mjs',
       'node tools/check-language.mjs',
       'node scripts/build.mjs',
-      'node --test',
+      'node --test test/*.test.mjs',
     ], 'si añades un paso a verify, la CI lo hereda solo; no hace falta tocar ci.yml');
+  });
+
+  it('verify NO se come la suite de navegador', () => {
+    // `node --test` a secas descubre test/browser/ también, y entonces
+    // verificar exigira Playwright instalado. El glob es lo que mantiene
+    // `npm run verify` funcionando sin `npm install`.
+    assert.match(PKG.scripts.verify, /--test test\/\*\.test\.mjs/);
+    assert.doesNotMatch(PKG.scripts.verify, /--test\s*$/, 'un --test a secas arrastraría los tests de navegador');
   });
 
   it('ci.yml no ejecuta lint.mjs ni check-language.mjs por su cuenta', () => {
