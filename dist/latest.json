@@ -1,7 +1,7 @@
 {
-  "version": "2.2.9",
+  "version": "2.2.10",
   "script": "https://raw.githubusercontent.com/clevervi/twitch-plus-plus/main/dist/twitch-plus-plus.user.js",
   "homepage": "https://github.com/clevervi/twitch-plus-plus",
-  "publishedAt": "2026-10-01T04:07:38.123Z",
-  "notes": "Blindaje integral: fijar escape CSS en modo limpio, limites de regex en menciones, observador dinamico en scheduler, atajo de panel en inputs y soporte de mayus"
+  "publishedAt": "2026-10-01T04:34:02.108Z",
+  "notes": "**Grants que faltaban**: `GM_deleteValue` y `GM_addValueChangeListener` no estaban declarados en el encabezado. Sin ellos, «Restablecer configuración» no borraba nada y la sincronización entre pestañas nunca ocurría.\n**`managerName()` corregido**: comprobaba `GM_info` con `typeof === 'function'` cuando `GM_info` es un objeto, así que el informe siempre decía «desconocido».\n**Diagnóstico de APIs**: `TwitchPP.diagnostics.apis()` y la línea «APIs ausentes» en `report()`.\n**Matriz de compatibilidad** en el README, con lo verificado y lo supuesto.\n**Tests**: 88 unitarios en verde."
 }
