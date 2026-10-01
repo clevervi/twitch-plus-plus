@@ -13,6 +13,8 @@
 // @match        https://*.twitch.tv/*
 // @grant        GM_getValue
 // @grant        GM_setValue
+// @grant        GM_deleteValue
+// @grant        GM_addValueChangeListener
 // @grant        GM_xmlhttpRequest
 // @grant        GM_openInTab
 // @grant        GM_info

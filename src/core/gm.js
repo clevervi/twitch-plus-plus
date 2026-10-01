@@ -1,6 +1,8 @@
 /** Adaptador de las APIs GM_* con fallback a localStorage (así el bundle también arranca fuera de Tampermonkey). */
 
 const has = (name) => typeof globalThis[name] === 'function';
+// GM_info es un objeto, no una función: para comprobarlo basta con que exista.
+const exists = (name) => globalThis[name] !== undefined && globalThis[name] !== null;
 
 const memory = new Map();
 const PREFIX = 'twpp:';
@@ -134,9 +136,30 @@ export function getJson(url, { timeout = 10000, headers } = {}) {
 
 export function managerName() {
   try {
-    if (has('GM_info') && globalThis.GM_info) return String(globalThis.GM_info.scriptHandler || 'otro');
+    if (exists('GM_info')) return String(globalThis.GM_info.scriptHandler || 'otro');
   } catch {
     /* ignore */
   }
   return 'desconocido';
+}
+
+/**
+ * Qué APIs de usuario hay disponibles y qué se pierde sin cada una.
+ * Sin `@grant` correspondiente, un gestor de scripts no expone la función, así
+ * que el fallo se manifesta como "no pasa nada" en lugar de como un error.
+ */
+const APIS = {
+  GM_getValue: 'leer y guardar la configuración',
+  GM_setValue: 'leer y guardar la configuración',
+  GM_deleteValue: 'restablecer la configuración',
+  GM_addValueChangeListener: 'sincronizar la configuración entre pestañas',
+  GM_xmlhttpRequest: 'leer el catálogo remoto y buscar actualizaciones',
+  GM_info: 'identificar el gestor de scripts',
+};
+
+export function capabilities() {
+  const ausentes = Object.entries(APIS)
+    .filter(([name]) => (name === 'GM_info' ? !exists(name) : !has(name)))
+    .map(([name, para_que_sirve]) => `${name} (${para_que_sirve})`);
+  return { gestor: managerName(), ausentes };
 }

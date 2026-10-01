@@ -26,6 +26,31 @@ npm run watch      # reconstruye al guardar
 
 Atajos por defecto: `Alt+Shift+T` abre el panel, `Alt+Shift+P` pausa el chat, `Alt+Shift+X` desactiva todo (válvula de escape).
 
+## Compatibilidad
+
+Solo hay un punto de contacto con las APIs de gestor de scripts: `src/core/gm.js`. Ningún otro módulo las toca directamente.
+
+| Gestor | `@grant` síncronos | `GM_xmlhttpRequest` | Estado |
+|---|---|---|---|
+| Tampermonkey | sí | sí | probado a diario |
+| Violentmonkey | sí | sí | debería funcionar; sin verificar |
+| Greasemonkey | sí | sí | debería funcionar; sin verificar |
+| ScriptCat | sí | sí | debería funcionar; sin verificar |
+| Sin gestor (abrir el `.user.js` en la página) | no, usa `localStorage` | no, usa `fetch` | funciona; la configuración no se comparte entre navegadores |
+
+Las APIs que el script declara son `GM_getValue`, `GM_setValue`, `GM_deleteValue`, `GM_addValueChangeListener`, `GM_xmlhttpRequest`, `GM_openInTab` y `GM_info`.
+
+Para saber qué falta en tu caso, el panel lo dice:
+
+```js
+TwitchPP.diagnostics.apis()
+// { gestor: 'Tampermonkey', ausentes: [] }
+
+TwitchPP.diagnostics.report()   // incluye la línea "APIs ausentes: ..."
+```
+
+Una API ausente no rompe el script: `gm.js` cae a `localStorage` o a `fetch`. Pero si `GM_deleteValue` falta, **restablecer la configuración no hace nada**, porque el valor sigue guardado en el gestor y `localStorage` no lo ve. Si te pasa eso, es un `@grant` que no llegó.
+
 ## Cuando Twitch cambia el DOM: la sonda
 
 `probe.html` es la herramienta para eso. Ábrelo (doble clic, o sírvelo con cualquier servidor estático) y:
