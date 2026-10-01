@@ -140,11 +140,13 @@ node scripts/release-notes.mjs          # revisa en local lo que se publicaría
 
 ### Instalar una versión concreta
 
-Cada release lleva el bundle como archivo adjunto. Para quedarte en una versión fija:
+Cada release lleva el bundle como archivo adjunto. Para quedarte en una versión fija, usa la ruta de la release en lugar de la de `main`:
 
 ```
-https://github.com/clevervi/twitch-plus-plus/releases/download/v2.2.10/twitch-plus-plus-2.2.10.user.js
+https://github.com/clevervi/twitch-plus-plus/releases/download/v2.2.10/twitch-plus-plus.user.js
 ```
+
+El nombre del archivo es el mismo en todas las releases; lo que cambia es la versión de la ruta.
 
 ### Volver a una versión anterior
 
