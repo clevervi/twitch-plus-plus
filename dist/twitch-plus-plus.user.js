@@ -1669,29 +1669,42 @@ const { log: log } = __m2;
 
 let routeSeq = 0;
 let bound = false;
+let lastRoute = null;
 
-function currentRoute() {
-  return {
+function currentRoute(razon = 'navigation') {
+  const path = typeof location !== 'undefined' ? location.pathname : '/';
+  const channel = (path.match(/^\/([^/]+)/) || [])[1] || '';
+  const now = Date.now();
+  const route = {
     seq: ++routeSeq,
-    path: location.pathname,
-    channel: (location.pathname.match(/^\/([^/]+)/) || [])[1] || '',
-    at: Date.now(),
+    path,
+    channel,
+    canal: channel,
+    anterior: lastRoute ? lastRoute.channel : null,
+    tiempoVisible: lastRoute ? now - lastRoute.at : 0,
+    razon,
+    at: now,
   };
+  lastRoute = route;
+  return route;
 }
 
-function notify() {
-  const route = currentRoute();
+function notify(razon = 'navigation') {
+  const route = currentRoute(razon);
   log('ruta:', route.path);
   emit('route', route);
-  window.dispatchEvent(new CustomEvent('twpp:route', { detail: route }));
+  if (typeof window !== 'undefined' && window.dispatchEvent) {
+    window.dispatchEvent(new CustomEvent('twpp:route', { detail: route }));
+  }
 }
 
 function patch(type) {
+  if (typeof history === 'undefined') return;
   const original = history[type];
   if (typeof original !== 'function') return;
   history[type] = function patched(...args) {
     const result = original.apply(this, args);
-    notify();
+    notify(type);
     return result;
   };
 }
@@ -1701,11 +1714,14 @@ function start() {
   bound = true;
   patch('pushState');
   patch('replaceState');
-  window.addEventListener('popstate', notify);
-  window.addEventListener('hashchange', notify);
-  emit('route', currentRoute());
+  if (typeof window !== 'undefined' && window.addEventListener) {
+    window.addEventListener('popstate', () => notify('popstate'));
+    window.addEventListener('hashchange', () => notify('hashchange'));
+  }
+  notify('initial');
 }
 return {
+  currentRoute: currentRoute,
   start: start,
 };
 })();
@@ -4780,7 +4796,7 @@ const { on: onBus } = __m0;
 const { refresh: refreshCatalog, status: catalogStatus, warm: warmCatalog } = __m9;
 const { onIdle: onIdle, ready: ready } = __m10;
 const { bindGlobal: bindGlobal, register: registerKeybind } = __m11;
-const { setDebug: setDebug, trackedErrors: trackedErrors, track: track } = __m2;
+const { setDebug: setDebug, track: track, trackedErrors: trackedErrors, warn: warn } = __m2;
 const { probe: probe } = __m12;
 const { report: report } = __m13;
 const { applyAll: applyAll, disableAll: disableAll, onRouteAll: onRouteAll, statuses: statuses } = __m6;
@@ -4870,12 +4886,37 @@ async function networkTasks() {
   }
 }
 
+const BOOT_BUDGET_MS = 150;
+
+const bootReport = {
+  startedAt: 0,
+  completedAt: 0,
+  durationMs: 0,
+  budgetMs: BOOT_BUDGET_MS,
+  slow: false,
+  stages: {
+    styles: { ok: false, error: null },
+    ui: { ok: false, error: null },
+  },
+};
+
 function start() {
+  bootReport.startedAt = Date.now();
+  if (typeof performance !== 'undefined' && performance.mark) {
+    try {
+      performance.mark('twpp-boot-start');
+    } catch {
+      /* ignore */
+    }
+  }
+
   // Capa 1: todo lo que no necesita <body>. Se ejecuta en document-start para
   // que el CSS esté en la página antes de que Twitch pinte el tema claro.
   try {
     bootStyles();
+    bootReport.stages.styles.ok = true;
   } catch (error) {
+    bootReport.stages.styles.error = String(error?.message || error);
     reportBootFailure('estilos', error);
     return;
   }
@@ -4886,8 +4927,27 @@ function start() {
       startScheduler();
       UI.build();
       UI.renderCatalogNote();
+      bootReport.stages.ui.ok = true;
+      bootReport.completedAt = Date.now();
+      bootReport.durationMs = bootReport.completedAt - bootReport.startedAt;
+      bootReport.slow = bootReport.durationMs > bootReport.budgetMs;
+
+      if (typeof performance !== 'undefined' && performance.mark) {
+        try {
+          performance.mark('twpp-boot-end');
+          performance.measure?.('twpp-boot', 'twpp-boot-start', 'twpp-boot-end');
+        } catch {
+          /* ignore */
+        }
+      }
+
+      if (bootReport.slow) {
+        warn(`arranque lento: ${bootReport.durationMs}ms (presupuesto: ${bootReport.budgetMs}ms)`);
+      }
+
       onIdle(networkTasks);
     } catch (error) {
+      bootReport.stages.ui.error = String(error?.message || error);
       reportBootFailure('interfaz', error);
     }
   });
@@ -4946,8 +5006,10 @@ const diagnostics = {
   broken: brokenSelectors,
   probe,
   report,
+  boot: () => ({ ...bootReport, stages: { ...bootReport.stages } }),
 };
 return {
+  bootReport: bootReport,
   start: start,
   setFeature: setFeature,
   diagnostics: diagnostics,

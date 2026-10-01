@@ -8,7 +8,7 @@ import { on as onBus } from './core/bus.js';
 import { refresh as refreshCatalog, status as catalogStatus, warm as warmCatalog } from './core/catalog.js';
 import { onIdle, ready } from './core/dom.js';
 import { bindGlobal, register as registerKeybind } from './core/keybinds.js';
-import { setDebug, trackedErrors, track } from './core/log.js';
+import { setDebug, track, trackedErrors, warn } from './core/log.js';
 import { probe } from './core/probe.js';
 import { report } from './core/report.js';
 import { applyAll, disableAll, onRouteAll, statuses } from './core/registry.js';
@@ -73,12 +73,37 @@ async function networkTasks() {
   }
 }
 
+const BOOT_BUDGET_MS = 150;
+
+export const bootReport = {
+  startedAt: 0,
+  completedAt: 0,
+  durationMs: 0,
+  budgetMs: BOOT_BUDGET_MS,
+  slow: false,
+  stages: {
+    styles: { ok: false, error: null },
+    ui: { ok: false, error: null },
+  },
+};
+
 export function start() {
+  bootReport.startedAt = Date.now();
+  if (typeof performance !== 'undefined' && performance.mark) {
+    try {
+      performance.mark('twpp-boot-start');
+    } catch {
+      /* ignore */
+    }
+  }
+
   // Capa 1: todo lo que no necesita <body>. Se ejecuta en document-start para
   // que el CSS esté en la página antes de que Twitch pinte el tema claro.
   try {
     bootStyles();
+    bootReport.stages.styles.ok = true;
   } catch (error) {
+    bootReport.stages.styles.error = String(error?.message || error);
     reportBootFailure('estilos', error);
     return;
   }
@@ -89,8 +114,27 @@ export function start() {
       startScheduler();
       UI.build();
       UI.renderCatalogNote();
+      bootReport.stages.ui.ok = true;
+      bootReport.completedAt = Date.now();
+      bootReport.durationMs = bootReport.completedAt - bootReport.startedAt;
+      bootReport.slow = bootReport.durationMs > bootReport.budgetMs;
+
+      if (typeof performance !== 'undefined' && performance.mark) {
+        try {
+          performance.mark('twpp-boot-end');
+          performance.measure?.('twpp-boot', 'twpp-boot-start', 'twpp-boot-end');
+        } catch {
+          /* ignore */
+        }
+      }
+
+      if (bootReport.slow) {
+        warn(`arranque lento: ${bootReport.durationMs}ms (presupuesto: ${bootReport.budgetMs}ms)`);
+      }
+
       onIdle(networkTasks);
     } catch (error) {
+      bootReport.stages.ui.error = String(error?.message || error);
       reportBootFailure('interfaz', error);
     }
   });
@@ -149,4 +193,5 @@ export const diagnostics = {
   broken: brokenSelectors,
   probe,
   report,
+  boot: () => ({ ...bootReport, stages: { ...bootReport.stages } }),
 };

@@ -4,29 +4,42 @@ import { log } from './log.js';
 
 let routeSeq = 0;
 let bound = false;
+let lastRoute = null;
 
-function currentRoute() {
-  return {
+export function currentRoute(razon = 'navigation') {
+  const path = typeof location !== 'undefined' ? location.pathname : '/';
+  const channel = (path.match(/^\/([^/]+)/) || [])[1] || '';
+  const now = Date.now();
+  const route = {
     seq: ++routeSeq,
-    path: location.pathname,
-    channel: (location.pathname.match(/^\/([^/]+)/) || [])[1] || '',
-    at: Date.now(),
+    path,
+    channel,
+    canal: channel,
+    anterior: lastRoute ? lastRoute.channel : null,
+    tiempoVisible: lastRoute ? now - lastRoute.at : 0,
+    razon,
+    at: now,
   };
+  lastRoute = route;
+  return route;
 }
 
-function notify() {
-  const route = currentRoute();
+function notify(razon = 'navigation') {
+  const route = currentRoute(razon);
   log('ruta:', route.path);
   emit('route', route);
-  window.dispatchEvent(new CustomEvent('twpp:route', { detail: route }));
+  if (typeof window !== 'undefined' && window.dispatchEvent) {
+    window.dispatchEvent(new CustomEvent('twpp:route', { detail: route }));
+  }
 }
 
 function patch(type) {
+  if (typeof history === 'undefined') return;
   const original = history[type];
   if (typeof original !== 'function') return;
   history[type] = function patched(...args) {
     const result = original.apply(this, args);
-    notify();
+    notify(type);
     return result;
   };
 }
@@ -36,7 +49,9 @@ export function start() {
   bound = true;
   patch('pushState');
   patch('replaceState');
-  window.addEventListener('popstate', notify);
-  window.addEventListener('hashchange', notify);
-  emit('route', currentRoute());
+  if (typeof window !== 'undefined' && window.addEventListener) {
+    window.addEventListener('popstate', () => notify('popstate'));
+    window.addEventListener('hashchange', () => notify('hashchange'));
+  }
+  notify('initial');
 }
