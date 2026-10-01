@@ -3849,7 +3849,7 @@ function settingHtml(feature) {
       if (setting.type === 'bool') {
         return `<label class="row setting" data-setting-row="${setting.key}">
           <span>${escapeHtml(setting.label)}</span>
-          <input type="checkbox" class="check" data-setting="${setting.key}">
+          <input type="checkbox" class="check" data-setting="${setting.key}"${value ? ' checked' : ''}>
         </label>`;
       }
       if (setting.type === 'select') {
@@ -4255,6 +4255,16 @@ function sync() {
   for (const key of ['catalog', 'autoUpdate', 'debug']) {
     const input = shadow.querySelector(`input[data-key="${key}"]`);
     if (input) input.checked = !!get(key);
+  }
+
+  for (const input of shadow.querySelectorAll('input[data-setting]')) {
+    const key = input.dataset.setting;
+    if (input.type === 'checkbox') input.checked = !!get(key);
+    else input.value = String(get(key) ?? '');
+  }
+  for (const select of shadow.querySelectorAll('select[data-setting]')) {
+    const key = select.dataset.setting;
+    select.value = String(get(key) ?? '');
   }
 
   const keybinds = get('keybinds') || {};
