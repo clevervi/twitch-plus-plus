@@ -3187,6 +3187,11 @@ defineFeature({
   label: 'Contraste OLED alto',
   section: 'visual',
   default: false,
+  // El CSS de aquí fuerza texto blanco sobre variables de Twitch. Sin esta
+  // condición, con el tema claro de Twitch se aplicaba igual y ponía texto
+  // blanco sobre fondo blanco: `darkMode` respeta la elección del usuario,
+  // pero esta feature no dependía de él y se colaba por detrás.
+  when: () => !storeGet('respectTwitchTheme') || isDarkTheme(),
   css: `
     %SCOPE% {
       --color-text-base: #ffffff !important;
