@@ -1,7 +1,8 @@
 name: Release
 
-# Sube versión, reconstruye dist/ y lo deja commiteado: dist/ es lo que
-# serves @downloadURL / @updateURL, así que tiene que ir en el repo.
+# Prepara el release en una rama y abre un pull request. `main` exige que
+# todos los cambios entren por PR, y ademas necesita la comprobacion `verify`,
+# que el propio workflow no puede ejecutar sobre el commit que crea.
 
 on:
   workflow_dispatch:
@@ -11,12 +12,13 @@ on:
         required: true
         default: patch
       notes:
-        description: "Notas del release (una línea por punto, separadas por ;)"
+        description: "Notas del release (una linea por punto, separadas por ;)"
         required: false
         default: ""
 
 permissions:
   contents: write
+  pull-requests: write
 
 jobs:
   release:
@@ -31,13 +33,29 @@ jobs:
         run: |
           node scripts/bump.mjs "${{ inputs.level }}" "${{ inputs.notes }}"
           node scripts/lint.mjs
+          node tools/check-language.mjs
           node scripts/build.mjs
           node --test
 
-      - name: Commit
+      - name: Publicar la rama y abrir el pull request
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+          NIVEL: ${{ inputs.level }}
         run: |
+          version="$(node -p "require('./package.json').version")"
+          branch="release/v${version}"
           git config user.name "github-actions[bot]"
-          git config user.email "github-actions[bot]@users.noreply.github.com"
+          git config user.email "github-actions-bot@users.noreply.github.com"
+          git checkout -b "$branch"
           git add package.json CHANGELOG.md dist/
-          git diff --staged --quiet || git commit -m "chore(release): v$(node -p "require('./package.json').version")"
-          git push
+          git commit -m "chore(release): v${version}"
+          git push -u origin "$branch"
+          {
+            echo "Bump a **v${version}** generado por el workflow \`Release\` con nivel \`${NIVEL}\`."
+            echo
+            echo "Hecho automáticamente. Revisa el CHANGELOG y \`dist/\` antes de mezclar."
+          } > nota.md
+          gh pr create --base main --head "$branch" \
+            --title "chore(release): v${version}" \
+            --body-file nota.md \
+            --label "tipo:chore" --label "area:infra"

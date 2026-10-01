@@ -1,11 +1,12 @@
-// Detector de mezcla de idiomas en la documentación y las plantillas.
+// Detector de mezcla de idiomas en la documentación y las plantillas de issue.
 // Solo vigila los tokens que delatan prosa en inglés o en otro idioma
 // colada dentro de un texto que debe estar en español.
 import { readFileSync, readdirSync, statSync } from 'node:fs';
 import { extname, join, relative, resolve } from 'node:path';
 
 const RAIZ = resolve('.');
-const OBJETIVOS = ['.github', 'CONTRIBUTING.md', 'SECURITY.md', 'CODE_OF_CONDUCT.md'];
+// Los workflows se quedan fuera: son código, y su inglés es intencionado.
+const OBJETIVOS = ['.github/ISSUE_TEMPLATE', 'CONTRIBUTING.md', 'SECURITY.md', 'CODE_OF_CONDUCT.md'];
 
 // Solo palabras que no pueden aparecer en español. La jerga del proyecto
 // (feature, commit, workflow, build) es intencionada y no se vigila.

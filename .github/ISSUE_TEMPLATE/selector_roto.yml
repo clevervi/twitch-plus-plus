@@ -72,7 +72,7 @@ body:
     id: selector_nuevo
     attributes:
       label: Selector candidato
-      description: Si lo has encontrado tú revisando el DOM, pégalo aquí: ahorra una ida y vuelta.
+      description: "Si lo has encontrado tú revisando el DOM, pégalo aquí: ahorra una ida y vuelta."
       render: css
       value: |
         ```
