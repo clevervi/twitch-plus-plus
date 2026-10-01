@@ -57,7 +57,9 @@ jobs:
           git tag -a "$tag" -m "$tag"
           git push origin "refs/tags/$tag"
 
+          # El nombre del asset es el del archivo en dist/. La ruta de descarga
+          # ya incluye la versión, así que no hace falta prefijarla.
           gh release create "$tag" \
             --title "$tag" \
             --notes-file notas.md \
-            dist/twitch-plus-plus.user.js#twitch-plus-plus-${version}.user.js
+            dist/twitch-plus-plus.user.js
