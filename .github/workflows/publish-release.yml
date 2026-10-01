@@ -1,0 +1,63 @@
+name: Publish Release
+
+# Crea la etiqueta y la release de GitHub de la versión que ya está en `main`.
+# Va aparte del bump a propósito: abrir un pull request desde un workflow
+# dispara workflows con GITHUB_TOKEN, GitHub los ignora para evitar la
+# recursión, y `main` exige la comprobación `verify`. Ese PR no podría
+# mergearse nunca. Aquí no hay pull request, solo una etiqueta y una release.
+
+on:
+  workflow_dispatch:
+    inputs:
+      dry-run:
+        description: "Comprobar sin publicar nada"
+        type: boolean
+        required: false
+        default: false
+
+permissions:
+  contents: write
+
+jobs:
+  publish:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 20
+
+      - name: Comprobar que la repo está sana y las notas existen
+        run: |
+          npm run verify
+          node scripts/release-notes.mjs > notas.md
+          echo "--- notas ---"
+          cat notas.md
+          echo "----------------"
+          version="$(node -p "require('./package.json').version")"
+          echo "version en package.json: $version"
+          echo "version en el bundle: $(grep -oP '@version\s+\K[0-9.]+' dist/twitch-plus-plus.user.js)"
+
+      - name: Etiqueta y release
+        if: ${{ !inputs.dry-run }}
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+          DRY_RUN: ${{ inputs.dry-run }}
+        run: |
+          version="$(node -p "require('./package.json').version")"
+          tag="v${version}"
+
+          if gh release view "$tag" >/dev/null 2>&1; then
+            echo "::error::ya existe la release $tag"
+            exit 1
+          fi
+
+          git config user.name "github-actions[bot]"
+          git config user.email "github-actions-bot@users.noreply.github.com"
+          git tag -a "$tag" -m "$tag"
+          git push origin "refs/tags/$tag"
+
+          gh release create "$tag" \
+            --title "$tag" \
+            --notes-file notas.md \
+            dist/twitch-plus-plus.user.js#twitch-plus-plus-${version}.user.js

@@ -50,7 +50,7 @@ node scripts/validate-pr.mjs
 
 Si tocas `src/`, tienes que reconstruir y commitear `dist/`. Si no, la comprobación *el bundle no debe haber derivado* falla en CI.
 
-`main` exige pull request, y no hay excepción: ni siquiera para las releases.
+`main` exige pull request, y no hay excepción: ni siquiera para las releases. El bump se hace en local con `npm run release` y entra por el flujo normal. La etiqueta de Git y la release de GitHub las crea después el workflow *Publish Release*, que actúa sobre `main` y no abre ningún pull request.
 
 ## Dónde va cada cosa
 

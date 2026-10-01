@@ -98,9 +98,10 @@ src/
   features/             una feature por archivo
   ui/panel.js           panel en shadow DOM (filas, ajustes, presets)
   ui/presets.js         minimal / balanced / agresivo
-test/                   52 tests con node:test
+test/                   93 tests con node:test
+tools/check-language.mjs vigila que la documentación no mezcla idiomas
 tools/dom-stub.mjs      DOM mínimo para arrancar el bundle fuera del navegador
-scripts/                build (bundler propio), lint, bump
+scripts/                build (bundler propio), lint, bump, validate-pr, release-notes
 catalog.json            lo que el script lee del repo (ver abajo)
 probe.html              sonda: pega un volcado del DOM y comprueba qué funciona
 dist/                   bundle + latest.json (se commitean: los sirve el userscript)
@@ -131,7 +132,23 @@ gh pr create --fill
 
 El release entra por pull request como cualquier otro cambio, y lo hace a propósito: `main` exige la comprobación `verify`, que GitHub no ejecuta en eventos disparados por `GITHUB_TOKEN`. Un workflow que abriera su propio PR se quedaría bloqueado para siempre.
 
-Cuando el PR está mergeado, `dist/` en `main` es la versión que descarga `@updateURL`. No hace falta nada más.
+Cuando el PR está mergeado, `dist/` en `main` es la versión que descarga `@updateURL`. Para crear la etiqueta y la release de GitHub, lanza el workflow *Publish Release* desde la pestaña de Actions (con *dry-run* para ver las notas sin publicar). Lee el apartado del `CHANGELOG.md` de esa versión, así que no hay que escribir las notas dos veces:
+
+```bash
+node scripts/release-notes.mjs          # revisa en local lo que se publicaría
+```
+
+### Instalar una versión concreta
+
+Cada release lleva el bundle como archivo adjunto. Para quedarte en una versión fija:
+
+```
+https://github.com/clevervi/twitch-plus-plus/releases/download/v2.2.10/twitch-plus-plus-2.2.10.user.js
+```
+
+### Volver a una versión anterior
+
+Copia la anterior sobre la instalada y guarda. La configuración no se toca al instalar: `src/core/store.js` migra el esquema por versión, así que **bajar de versión puede dejar claves huérfanas**, que se ignoran sin más. Si quieres el punto de partida limpio, usa *Avanzado → Restablecer configuración* después de instalar la versión antigua.
 
 ## Cómo contribute una feature
 
