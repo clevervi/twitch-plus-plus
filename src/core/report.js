@@ -4,7 +4,7 @@ import { capabilities } from './gm.js';
 import { trackedErrors } from './log.js';
 import { snapshot as perfSnapshot } from './perf.js';
 import { statuses } from './registry.js';
-import { brokenSelectors } from './selectors.js';
+import { brokenSelectors, promovidosRemotamente } from './selectors.js';
 import { VERSION } from './version.js';
 
 export function report() {
@@ -13,6 +13,11 @@ export function report() {
   const blocked = list.filter((feature) => feature.enabled && !feature.active).map((feature) => feature.id);
   const failing = list.filter((feature) => feature.failures > 0).map((feature) => `${feature.id} (${feature.failures})`);
   const dead = brokenSelectors().map((row) => row.key);
+  // Solo las claves donde el catálogo remoto ha cambiado el ganador. Es la
+  // información que hace falta para decidir si un fix del repo era acertado.
+  const promovidos = promovidosRemotamente()
+    .map((p) => `${p.key}=${p.candidato}`)
+    .join(', ');
   const catalog = catalogStatus();
   const apis = capabilities();
   const perf = perfSnapshot();
@@ -28,6 +33,7 @@ export function report() {
     `features bloqueadas por condición: ${blocked.join(', ') || '—'}`,
     `features con errores: ${failing.join(', ') || '—'}`,
     `selectores sin resolver: ${dead.join(', ') || '—'}`,
+    `ganadores remotos: ${promovidos || 'ninguno'}`,
     `APIs ausentes: ${apis.ausentes.join(', ') || 'ninguna'}`,
     `catálogo: rev. ${catalog.revision || 'local'}${catalog.remote ? '' : ' (sin remoto)'}${catalog.error ? ` — ${catalog.error}` : ''}`,
   ];
