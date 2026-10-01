@@ -7,6 +7,7 @@
 import { on as onBus } from './core/bus.js';
 import { refresh as refreshCatalog, status as catalogStatus, warm as warmCatalog } from './core/catalog.js';
 import { onIdle, ready } from './core/dom.js';
+import { capabilities } from './core/gm.js';
 import { bindGlobal, register as registerKeybind } from './core/keybinds.js';
 import { setDebug, track, trackedErrors, warn } from './core/log.js';
 import { probe } from './core/probe.js';
@@ -193,5 +194,6 @@ export const diagnostics = {
   broken: brokenSelectors,
   probe,
   report,
+  apis: capabilities,
   boot: () => ({ ...bootReport, stages: { ...bootReport.stages } }),
 };
