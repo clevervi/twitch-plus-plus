@@ -3481,6 +3481,7 @@ const { channelFromCard: channelFromCard, thumbnailUrl: thumbnailUrl, visibleCha
 const cache = new Map();
 let generation = 0;
 let leaveTimer = null;
+let preloadTimer = null;
 let activeTarget = null;
 let currentCard = null;
 
@@ -3741,6 +3742,11 @@ function onWindowBlur() {
 function teardown() {
   currentCard = null;
   clearTimeout(leaveTimer);
+  // El precargado diferido se cancela aquí: sin esto, apagar la feature antes
+  // de los 2 s deja el temporador vivo y pide miniaturas al CDN con la feature
+  // apagada. Los listeners ya se quitan en onDisable; esto es lo que faltaba.
+  clearTimeout(preloadTimer);
+  preloadTimer = null;
   cleanup();
   cache.clear();
 }
@@ -3771,7 +3777,11 @@ defineFeature({
     document.addEventListener('mouseover', onPointerOver, { passive: true });
     document.addEventListener('mouseout', onPointerOut, { passive: true });
     window.addEventListener('blur', onWindowBlur);
-    setTimeout(() => preloadVisible(8), 2000);
+    clearTimeout(preloadTimer);
+    preloadTimer = setTimeout(() => {
+      preloadTimer = null;
+      preloadVisible(8);
+    }, 2000);
     log('miniaturas de sidebar activas');
   },
   onDisable() {
