@@ -9,6 +9,7 @@ const MODIFIERS = {
   ctrl: 'ctrl',
   control: 'ctrl',
   shift: 'shift',
+  mayus: 'shift',
   meta: 'meta',
   cmd: 'meta',
   command: 'meta',
@@ -60,7 +61,9 @@ function matchKeybind(combo, event) {
 function isTypingTarget(target) {
   if (!target || !target.tagName) return false;
   const tag = target.tagName.toLowerCase();
-  return tag === 'input' || tag === 'textarea' || tag === 'select' || target.isContentEditable === true;
+  if (tag === 'input' || tag === 'textarea' || tag === 'select' || target.isContentEditable === true) return true;
+  const role = target.getAttribute?.('role');
+  return role === 'textbox' || role === 'searchbox';
 }
 
 let comboCache = null;

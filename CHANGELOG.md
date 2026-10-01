@@ -80,3 +80,7 @@
 ## 2.2.8 — 2026-10-01
 
 - Fix controles de player con overlays específicos, acotación estricta de tooltips de sidebar, corrección FAB no invasivo y selectores robustos
+
+## 2.2.9 — 2026-10-01
+
+- Blindaje integral: fijar escape CSS en modo limpio, limites de regex en menciones, observador dinamico en scheduler, atajo de panel en inputs y soporte de mayus

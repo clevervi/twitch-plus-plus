@@ -11,7 +11,8 @@ function detectUsername() {
   if (username) return username;
   username = currentUsername();
   if (!username) return null;
-  pattern = new RegExp(`@?${username.replace(/[.*+?^${}()|[\]\\]/g, '\\$&')}`, 'i');
+  const escaped = username.replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
+  pattern = new RegExp(`(?:^|[^a-zA-Z0-9_])@?${escaped}(?:[^a-zA-Z0-9_]|$)`, 'i');
   return username;
 }
 

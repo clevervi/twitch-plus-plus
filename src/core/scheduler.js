@@ -39,25 +39,35 @@ export function request() {
   });
 }
 
-function observe() {
-  if (observer || typeof MutationObserver !== 'function') return;
-  const signal = throttle(() => request(), 400);
-  observer = new MutationObserver(signal);
-  
-  // Observar áreas específicas sin profundidad extrema
+const observedTargets = new WeakSet();
+
+function attachTargets() {
+  if (!observer || typeof document === 'undefined') return;
   const targets = [
     document.querySelector('[data-a-target="side-nav-bar"]'),
     document.querySelector('[data-a-target="video-player"]'),
     document.querySelector('[data-a-target="chat-room-component-layout"]'),
   ].filter(Boolean);
-  
-  // Observar estos con subtree limitado
+
   for (const target of targets) {
-    observer.observe(target, { childList: true, subtree: true });
+    if (!observedTargets.has(target)) {
+      observedTargets.add(target);
+      observer.observe(target, { childList: true, subtree: true });
+    }
   }
-  
-  // Observar body solo para detectar si se recrea algún contenedor principal
-  observer.observe(document.body, { childList: true, subtree: false });
+}
+
+function observe() {
+  if (observer || typeof MutationObserver !== 'function') return;
+  const signal = throttle(() => {
+    attachTargets();
+    request();
+  }, 400);
+  observer = new MutationObserver(signal);
+  attachTargets();
+  if (document.body) {
+    observer.observe(document.body, { childList: true, subtree: false });
+  }
 }
 
 export function start() {
@@ -90,7 +100,10 @@ export function kick() {
   request();
 }
 
-export const scheduleRoute = debounce(() => request(), 120);
+export const scheduleRoute = debounce(() => {
+  attachTargets();
+  request();
+}, 120);
 
 export function isRunning() {
   return !!timer;

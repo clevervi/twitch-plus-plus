@@ -33,7 +33,7 @@ declare('autoUpdate', 'bool', true);
 declare('debug', 'bool', false);
 
 function registerKeybinds() {
-  registerKeybind('panel', 'Abrir panel', 'Alt+Shift+T');
+  registerKeybind('panel', 'Abrir panel', 'Alt+Shift+T', { allowWhileTyping: true });
   registerKeybind('chatPause', 'Pausar chat', 'Alt+Shift+P');
   registerKeybind('pauseAll', 'Desactivar todo', 'Alt+Shift+X');
 }

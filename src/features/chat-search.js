@@ -46,10 +46,11 @@ function buildMatcher(query) {
   return query.toLowerCase();
 }
 
-function apply() {
+function apply({ keepCursor = false } = {}) {
   const input = qs('.twpp-search-input', bar);
   if (!input) return;
   const raw = input.value.trim();
+  const prevCursor = cursor;
   clearMarks();
   if (!raw) return;
 
@@ -70,7 +71,15 @@ function apply() {
     matches.push(line);
   }
   updateCounter();
-  if (matches.length) jump(0);
+  if (matches.length) {
+    if (keepCursor && prevCursor >= 0 && prevCursor < matches.length) {
+      cursor = prevCursor;
+      matches[cursor].classList.add('twpp-chat-current');
+      updateCounter();
+    } else {
+      jump(0);
+    }
+  }
 }
 
 function ensureUI() {
@@ -165,7 +174,7 @@ defineFeature({
   tick() {
     if (!ensureUI()) return;
     const input = qs('.twpp-search-input', bar);
-    if (input && input.value.trim()) apply();
+    if (input && input.value.trim()) apply({ keepCursor: true });
   },
   onDisable: destroy,
   onRoute: destroy,
