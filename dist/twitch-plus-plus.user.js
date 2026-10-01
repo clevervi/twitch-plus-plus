@@ -1298,17 +1298,99 @@ return {
 };
 })();
 
-/* ---- src/core/dom.js ---- */
+/* ---- src/core/perf.js ---- */
 const __m10 = (function () {
+/**
+ * Contadores de coste, de bajo coste.
+ *
+ * Un userscript puede parecer ligero y estar recorriendo el DOM cada latido.
+ * Aquí se cuentan las cosas que de verdad se pagan: ticks del scheduler,
+ * consultas al DOM y ráfagas de mutación.
+ *
+ * Todos los contadores son incrementos enteros en un objeto plano. Nada de
+ * `performance.mark`, nada de listas, nada que limpiar.
+ */
+
+/** Ticks recientes, para sacar una media en vez de un pico. */
+const VENTANA = 20;
+
+const contadores = {
+  /** Ciclos del scheduler que llegaron a `tickAll`. */
+  ticks: 0,
+  /** Consultas al DOM lanzadas desde `dom.js`. */
+  consultas: 0,
+  /** Ráfagas de mutación que despertaron al scheduler. */
+  mutaciones: 0,
+  /** Arranque hasta la primera feature activa, en ms. */
+  arranqueMs: null,
+};
+
+const ticksRecientes = [];
+
+function contar(clave, delta = 1) {
+  if (contadores[clave] === undefined) return;
+  contadores[clave] += delta;
+}
+
+function registrarTick() {
+  const ahora = Date.now();
+  contadores.ticks += 1;
+  ticksRecientes.push(ahora);
+  if (ticksRecientes.length > VENTANA) ticksRecientes.shift();
+}
+
+function registrarArranque(ms) {
+  if (contadores.arranqueMs === null) contadores.arranqueMs = ms;
+}
+
+function snapshot() {
+  const total = ticksRecientes.length;
+  let porSegundo = 0;
+  if (total > 1) {
+    const span = ticksRecientes[total - 1] - ticksRecientes[0];
+    if (span > 0) porSegundo = Math.round(((total - 1) / span) * 1000 * 10) / 10;
+  }
+  return {
+    ticks: contadores.ticks,
+    ticksPorSegundo: porSegundo,
+    consultas: contadores.consultas,
+    mutaciones: contadores.mutaciones,
+    arranqueMs: contadores.arranqueMs,
+  };
+}
+
+function reset() {
+  contadores.ticks = 0;
+  contadores.consultas = 0;
+  contadores.mutaciones = 0;
+  contadores.arranqueMs = null;
+  ticksRecientes.length = 0;
+}
+return {
+  contar: contar,
+  registrarTick: registrarTick,
+  registrarArranque: registrarArranque,
+  snapshot: snapshot,
+  reset: reset,
+};
+})();
+
+/* ---- src/core/dom.js ---- */
+const __m11 = (function () {
+const { contar: contar } = __m10;
+
 function $(selector, root = document) {
+  contar('consultas');
   return root.querySelector(selector);
 }
 
 function $$(selector, root = document) {
+  contar('consultas');
   return Array.from(root.querySelectorAll(selector));
 }
 
 function qsAll(selector, root = document) {
+  contar('consultas');
   try {
     return Array.from(root.querySelectorAll(selector));
   } catch {
@@ -1317,6 +1399,7 @@ function qsAll(selector, root = document) {
 }
 
 function qs(selector, root = document) {
+  contar('consultas');
   try {
     return root.querySelector(selector);
   } catch {
@@ -1423,7 +1506,7 @@ return {
 })();
 
 /* ---- src/core/keybinds.js ---- */
-const __m11 = (function () {
+const __m12 = (function () {
 const { get: storeGet, onChange: onChange, set: storeSet } = __m5;
 const { warn: warn } = __m2;
 
@@ -1584,7 +1667,7 @@ return {
 })();
 
 /* ---- src/core/probe.js ---- */
-const __m12 = (function () {
+const __m13 = (function () {
 const { trackedErrors: trackedErrors } = __m2;
 const { all: all, applyAll: applyAll, failureCount: failureCount, isActive: isActive, tickAll: tickAll } = __m6;
 const { selectorReport: selectorReport } = __m3;
@@ -1648,15 +1731,17 @@ return {
 })();
 
 /* ---- src/core/report.js ---- */
-const __m13 = (function () {
+const __m14 = (function () {
 const { status: catalogStatus } = __m9;
 const { capabilities: capabilities } = __m1;
 const { trackedErrors: trackedErrors } = __m2;
+const { snapshot: perfSnapshot } = __m10;
 const { statuses: statuses } = __m6;
 const { brokenSelectors: brokenSelectors } = __m3;
 const { VERSION: VERSION } = __m8;
 
 /** Informe de una línea por dato, pensado para pegar en un issue. */
+
 
 
 
@@ -1672,12 +1757,15 @@ function report() {
   const dead = brokenSelectors().map((row) => row.key);
   const catalog = catalogStatus();
   const apis = capabilities();
+  const perf = perfSnapshot();
 
   const lines = [
     `Twitch++ v${VERSION}`,
     `gestor de scripts: ${apis.gestor}`,
     `navegador: ${globalThis.navigator?.userAgent || 'desconocido'}`,
     `página: ${location.pathname}`,
+    `arranque: ${perf.arranqueMs === null ? 'no medido' : `${perf.arranqueMs} ms`}`,
+    `ticks: ${perf.ticks} (${perf.ticksPorSegundo}/s) · consultas: ${perf.consultas} · mutaciones: ${perf.mutaciones}`,
     `features activas: ${active.join(', ') || '—'}`,
     `features bloqueadas por condición: ${blocked.join(', ') || '—'}`,
     `features con errores: ${failing.join(', ') || '—'}`,
@@ -1694,7 +1782,7 @@ return {
 })();
 
 /* ---- src/core/router.js ---- */
-const __m14 = (function () {
+const __m15 = (function () {
 const { emit: emit } = __m0;
 const { log: log } = __m2;
 
@@ -1762,9 +1850,10 @@ return {
 })();
 
 /* ---- src/core/scheduler.js ---- */
-const __m15 = (function () {
-const { debounce: debounce, onIdle: onIdle, throttle: throttle } = __m10;
+const __m16 = (function () {
+const { debounce: debounce, onIdle: onIdle, throttle: throttle } = __m11;
 const { log: log } = __m2;
+const { contar: contar, registrarTick: registrarTick } = __m10;
 const { tickAll: tickAll } = __m6;
 const { emit: emit } = __m0;
 
@@ -1773,6 +1862,7 @@ const { emit: emit } = __m0;
  * Se despierta por eventos (mutaciones, cambio de ruta, visibilidad) y cada
  * feature decide su frecuencia con `interval`. Se detiene con la pestaña oculta.
  */
+
 
 
 
@@ -1794,6 +1884,7 @@ function run() {
   lastRunTime = now;
   running = true;
   try {
+    registrarTick();
     tickAll(now);
   } finally {
     running = false;
@@ -1830,6 +1921,7 @@ function attachTargets() {
 function observe() {
   if (observer || typeof MutationObserver !== 'function') return;
   const signal = throttle(() => {
+    contar('mutaciones');
     attachTargets();
     request();
   }, 400);
@@ -1889,7 +1981,7 @@ return {
 })();
 
 /* ---- src/core/toast.js ---- */
-const __m16 = (function () {
+const __m17 = (function () {
 const { log: log } = __m2;
 
 let host = null;
@@ -1928,7 +2020,7 @@ return {
 })();
 
 /* ---- src/core/updater.js ---- */
-const __m17 = (function () {
+const __m18 = (function () {
 const { getJson: getJson, getValue: getValue, openInTab: openInTab, setValue: setValue } = __m1;
 const { log: log } = __m2;
 const { get: storeGet } = __m5;
@@ -2011,11 +2103,11 @@ return {
 })();
 
 /* ---- src/features/chat-pause.js ---- */
-const __m18 = (function () {
+const __m19 = (function () {
 const { emit: emitBus } = __m0;
-const { isVisible: isVisible } = __m10;
+const { isVisible: isVisible } = __m11;
 const { select: select } = __m3;
-const { show: toast } = __m16;
+const { show: toast } = __m17;
 
 /**
  * Pausa de chat.
@@ -2206,12 +2298,12 @@ return {
 })();
 
 /* ---- src/features/auto-claim.js ---- */
-const __m19 = (function () {
-const { isVisible: isVisible, qs: qs } = __m10;
+const __m20 = (function () {
+const { isVisible: isVisible, qs: qs } = __m11;
 const { log: log } = __m2;
 const { defineFeature: defineFeature } = __m6;
 const { select: select, selectAll: selectAll } = __m3;
-const { show: toast } = __m16;
+const { show: toast } = __m17;
 const { get: storeGet } = __m5;
 
 /** Reclamo automático de Channel Points. */
@@ -2307,8 +2399,8 @@ return {
 })();
 
 /* ---- src/core/twitch.js ---- */
-const __m20 = (function () {
-const { qs: qs, qsAll: qsAll, isVisible: isVisible } = __m10;
+const __m21 = (function () {
+const { qs: qs, qsAll: qsAll, isVisible: isVisible } = __m11;
 const { select: select, selectAll: selectAll } = __m3;
 
 /** Utilidades específicas de Twitch: nombres de canal, miniaturas, tooltips, contadores. */
@@ -2503,10 +2595,10 @@ return {
 })();
 
 /* ---- src/features/chat-keywords.js ---- */
-const __m21 = (function () {
+const __m22 = (function () {
 const { defineFeature: defineFeature } = __m6;
 const { get: storeGet, onChange: onChange } = __m5;
-const { chatContainer: chatContainer, chatLines: chatLines, messageText: messageText } = __m20;
+const { chatContainer: chatContainer, chatLines: chatLines, messageText: messageText } = __m21;
 
 /** Resalta mensajes que contienen palabras clave (por defecto o regex). */
 
@@ -2622,11 +2714,11 @@ return {
 })();
 
 /* ---- src/features/chat-search.js ---- */
-const __m22 = (function () {
-const { qs: qs } = __m10;
+const __m23 = (function () {
+const { qs: qs } = __m11;
 const { defineFeature: defineFeature } = __m6;
 const { get: storeGet } = __m5;
-const { chatContainer: chatContainer, chatLines: chatLines, messageText: messageText } = __m20;
+const { chatContainer: chatContainer, chatLines: chatLines, messageText: messageText } = __m21;
 
 /** Buscador dentro del chat: filtra, cuenta y permite saltar entre coincidencias. */
 
@@ -2815,7 +2907,7 @@ return {
 })();
 
 /* ---- src/features/clean-mode.js ---- */
-const __m23 = (function () {
+const __m24 = (function () {
 const { defineFeature: defineFeature } = __m6;
 
 defineFeature({
@@ -2849,10 +2941,10 @@ return {
 })();
 
 /* ---- src/features/dark-mode.js ---- */
-const __m24 = (function () {
+const __m25 = (function () {
 const { defineFeature: defineFeature } = __m6;
 const { get: storeGet } = __m5;
-const { isDarkTheme: isDarkTheme } = __m20;
+const { isDarkTheme: isDarkTheme } = __m21;
 
 defineFeature({
   id: 'darkMode',
@@ -2966,7 +3058,7 @@ return {
 })();
 
 /* ---- src/features/hide-blocks.js ---- */
-const __m25 = (function () {
+const __m26 = (function () {
 const { defineFeature: defineFeature } = __m6;
 
 defineFeature({
@@ -3032,7 +3124,7 @@ return {
 })();
 
 /* ---- src/features/hide-chat-extras.js ---- */
-const __m26 = (function () {
+const __m27 = (function () {
 const { defineFeature: defineFeature } = __m6;
 
 defineFeature({
@@ -3055,8 +3147,8 @@ return {
 })();
 
 /* ---- src/features/hide-extensions.js ---- */
-const __m27 = (function () {
-const { qsAll: qsAll } = __m10;
+const __m28 = (function () {
+const { qsAll: qsAll } = __m11;
 const { log: log } = __m2;
 const { defineFeature: defineFeature } = __m6;
 const { selectAll: selectAll } = __m3;
@@ -3260,8 +3352,8 @@ return {
 })();
 
 /* ---- src/features/hide-offline-channels.js ---- */
-const __m28 = (function () {
-const { qs: qs } = __m10;
+const __m29 = (function () {
+const { qs: qs } = __m11;
 const { defineFeature: defineFeature } = __m6;
 const { selectAll: selectAll } = __m3;
 
@@ -3328,9 +3420,9 @@ return {
 })();
 
 /* ---- src/features/mention-highlight.js ---- */
-const __m29 = (function () {
+const __m30 = (function () {
 const { defineFeature: defineFeature } = __m6;
-const { chatContainer: chatContainer, chatLines: chatLines, currentUsername: currentUsername, messageText: messageText } = __m20;
+const { chatContainer: chatContainer, chatLines: chatLines, currentUsername: currentUsername, messageText: messageText } = __m21;
 
 /** Resalta los mensajes que te mencionan. */
 
@@ -3404,7 +3496,7 @@ return {
 })();
 
 /* ---- src/features/sidebar-compact.js ---- */
-const __m30 = (function () {
+const __m31 = (function () {
 const { defineFeature: defineFeature } = __m6;
 const { get: storeGet, onChange: onChange } = __m5;
 
@@ -3466,11 +3558,11 @@ return {
 })();
 
 /* ---- src/features/sidebar-thumbnails.js ---- */
-const __m31 = (function () {
+const __m32 = (function () {
 const { log: log } = __m2;
 const { defineFeature: defineFeature } = __m6;
 const { get: storeGet } = __m5;
-const { channelFromCard: channelFromCard, thumbnailUrl: thumbnailUrl, visibleChannels: visibleChannels, waitForHoverDialog: waitForHoverDialog } = __m20;
+const { channelFromCard: channelFromCard, thumbnailUrl: thumbnailUrl, visibleChannels: visibleChannels, waitForHoverDialog: waitForHoverDialog } = __m21;
 
 /** Miniaturas de canal al pasar el ratón por una card de la sidebar. */
 
@@ -3801,7 +3893,7 @@ return {
 })();
 
 /* ---- src/features/theater-clean.js ---- */
-const __m32 = (function () {
+const __m33 = (function () {
 const { defineFeature: defineFeature } = __m6;
 
 defineFeature({
@@ -3835,10 +3927,10 @@ return {
 })();
 
 /* ---- src/features/viewer-analytics.js ---- */
-const __m33 = (function () {
+const __m34 = (function () {
 const { defineFeature: defineFeature } = __m6;
 const { get: storeGet } = __m5;
-const { chatContainer: chatContainer, chatLines: chatLines, usernameOf: usernameOf, viewerCount: viewerCount } = __m20;
+const { chatContainer: chatContainer, chatLines: chatLines, usernameOf: usernameOf, viewerCount: viewerCount } = __m21;
 
 /** Contador real de viewers + chatters activos por ventana deslizante. */
 
@@ -3981,7 +4073,7 @@ return {
 })();
 
 /* ---- src/features/index.js ---- */
-const __m34 = (function () {
+const __m35 = (function () {
 /**
  * Índice de features.
  *
@@ -3994,7 +4086,7 @@ return {
 })();
 
 /* ---- src/ui/panel-css.js ---- */
-const __m35 = (function () {
+const __m36 = (function () {
 const PANEL_CSS = `
   :host { all: initial; }
   * { box-sizing: border-box; font-family: "Inter","Roobert",-apple-system,"Segoe UI",Roboto,sans-serif; }
@@ -4121,7 +4213,7 @@ return {
 })();
 
 /* ---- src/ui/presets.js ---- */
-const __m36 = (function () {
+const __m37 = (function () {
 /** Presets: un clic y la config queda como quieres. */
 const PRESETS = {
   minimal: ['darkMode', 'cleanMode', 'autoClaim'],
@@ -4175,21 +4267,21 @@ return {
 })();
 
 /* ---- src/ui/panel.js ---- */
-const __m37 = (function () {
+const __m38 = (function () {
 const { on: onBus } = __m0;
 const { setDebug: setDebug, trackedErrors: trackedErrors } = __m2;
 const { all: allFeatures, apply: apply, applyAll: applyAll, SECTIONS: SECTIONS, statuses: statuses } = __m6;
-const { report: report } = __m13;
+const { report: report } = __m14;
 const { brokenSelectors: brokenSelectors, selectorReport: selectorReport } = __m3;
 const { declare: declare, exportJSON: exportJSON, get: get, importJSON: importJSON, reset: resetStore, set: set, setMany: setMany } = __m5;
-const { list: keybindList, setCombo: setCombo } = __m11;
-const { setHost: setToastHost, show: toast } = __m16;
+const { list: keybindList, setCombo: setCombo } = __m12;
+const { setHost: setToastHost, show: toast } = __m17;
 const { clearCache: clearCache, refresh: refreshCatalog, status: catalogStatus } = __m9;
-const { check: checkUpdate, install: installUpdate, shouldCheck: shouldCheck } = __m17;
-const { ChatPause: ChatPause } = __m18;
+const { check: checkUpdate, install: installUpdate, shouldCheck: shouldCheck } = __m18;
+const { ChatPause: ChatPause } = __m19;
 const { VERSION: VERSION } = __m8;
-const { PANEL_CSS: PANEL_CSS } = __m35;
-const { PRESETS: PRESETS, PRESET_LABELS: PRESET_LABELS, idsOf: idsOf } = __m36;
+const { PANEL_CSS: PANEL_CSS } = __m36;
+const { PRESETS: PRESETS, PRESET_LABELS: PRESET_LABELS, idsOf: idsOf } = __m37;
 
 /** Panel de control en shadow DOM (sin colisiones con el CSS de Twitch). */
 
@@ -4836,26 +4928,27 @@ return {
 })();
 
 /* ---- src/app.js ---- */
-const __m38 = (function () {
+const __m39 = (function () {
 const { on: onBus } = __m0;
 const { refresh: refreshCatalog, status: catalogStatus, warm: warmCatalog } = __m9;
-const { onIdle: onIdle, ready: ready } = __m10;
+const { onIdle: onIdle, ready: ready } = __m11;
 const { capabilities: capabilities } = __m1;
-const { bindGlobal: bindGlobal, register: registerKeybind } = __m11;
+const { bindGlobal: bindGlobal, register: registerKeybind } = __m12;
 const { setDebug: setDebug, track: track, trackedErrors: trackedErrors, warn: warn } = __m2;
-const { probe: probe } = __m12;
-const { report: report } = __m13;
+const { probe: probe } = __m13;
+const { registrarArranque: registrarArranque, reset: resetPerf, snapshot: perfSnapshot } = __m10;
+const { report: report } = __m14;
 const { applyAll: applyAll, disableAll: disableAll, onRouteAll: onRouteAll, statuses: statuses } = __m6;
-const { start: startRouter } = __m14;
+const { start: startRouter } = __m15;
 const { brokenSelectors: brokenSelectors, selectorReport: selectorReport } = __m3;
-const { kick: kickScheduler, scheduleRoute: scheduleRoute, start: startScheduler } = __m15;
+const { kick: kickScheduler, scheduleRoute: scheduleRoute, start: startScheduler } = __m16;
 const { declare: declare, get: storeGet, set: storeSet } = __m5;
 const { rebuild: rebuildStyles } = __m7;
-const { show: toast } = __m16;
-const { check: checkUpdate, shouldCheck: shouldCheck } = __m17;
+const { show: toast } = __m17;
+const { check: checkUpdate, shouldCheck: shouldCheck } = __m18;
 const { VERSION: VERSION } = __m8;
-const { ChatPause: ChatPause } = __m18;
-const { UI: UI } = __m37;
+const { ChatPause: ChatPause } = __m19;
+const { UI: UI } = __m38;
 
 /**
  * Arranque y API de diagnóstico.
@@ -4863,6 +4956,7 @@ const { UI: UI } = __m37;
  * Orden: catálogo cacheado (sin red) → estilos → features → atajos → router →
  * scheduler → UI → tareas de red (catálogo + comprobación de actualización).
  */
+
 
 
 
@@ -4978,6 +5072,7 @@ function start() {
       bootReport.completedAt = Date.now();
       bootReport.durationMs = bootReport.completedAt - bootReport.startedAt;
       bootReport.slow = bootReport.durationMs > bootReport.budgetMs;
+      registrarArranque(bootReport.durationMs);
 
       if (typeof performance !== 'undefined' && performance.mark) {
         try {
@@ -5054,6 +5149,8 @@ const diagnostics = {
   probe,
   report,
   apis: capabilities,
+  perf: perfSnapshot,
+  perfReset: resetPerf,
   boot: () => ({ ...bootReport, stages: { ...bootReport.stages } }),
 };
 return {
@@ -5065,8 +5162,8 @@ return {
 })();
 
 /* ---- src/index.js ---- */
-const __m39 = (function () {
-const { diagnostics: diagnostics, setFeature: setFeature, start: start } = __m38;
+const __m40 = (function () {
+const { diagnostics: diagnostics, setFeature: setFeature, start: start } = __m39;
 const { VERSION: VERSION } = __m8;
 
 /**
@@ -5088,6 +5185,6 @@ return {
 };
 })();
 
-__m39;
+__m40;
 
 })();

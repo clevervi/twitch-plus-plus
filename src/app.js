@@ -11,6 +11,7 @@ import { capabilities } from './core/gm.js';
 import { bindGlobal, register as registerKeybind } from './core/keybinds.js';
 import { setDebug, track, trackedErrors, warn } from './core/log.js';
 import { probe } from './core/probe.js';
+import { registrarArranque, reset as resetPerf, snapshot as perfSnapshot } from './core/perf.js';
 import { report } from './core/report.js';
 import { applyAll, disableAll, onRouteAll, statuses } from './core/registry.js';
 import { start as startRouter } from './core/router.js';
@@ -119,6 +120,7 @@ export function start() {
       bootReport.completedAt = Date.now();
       bootReport.durationMs = bootReport.completedAt - bootReport.startedAt;
       bootReport.slow = bootReport.durationMs > bootReport.budgetMs;
+      registrarArranque(bootReport.durationMs);
 
       if (typeof performance !== 'undefined' && performance.mark) {
         try {
@@ -195,5 +197,7 @@ export const diagnostics = {
   probe,
   report,
   apis: capabilities,
+  perf: perfSnapshot,
+  perfReset: resetPerf,
   boot: () => ({ ...bootReport, stages: { ...bootReport.stages } }),
 };

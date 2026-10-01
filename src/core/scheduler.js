@@ -5,6 +5,7 @@
  */
 import { debounce, onIdle, throttle } from './dom.js';
 import { log } from './log.js';
+import { contar, registrarTick } from './perf.js';
 import { tickAll } from './registry.js';
 import { emit } from './bus.js';
 
@@ -24,6 +25,7 @@ function run() {
   lastRunTime = now;
   running = true;
   try {
+    registrarTick();
     tickAll(now);
   } finally {
     running = false;
@@ -60,6 +62,7 @@ function attachTargets() {
 function observe() {
   if (observer || typeof MutationObserver !== 'function') return;
   const signal = throttle(() => {
+    contar('mutaciones');
     attachTargets();
     request();
   }, 400);
