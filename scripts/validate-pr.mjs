@@ -49,9 +49,20 @@ export function validarTitulo(title) {
     : `El título "${title}" no sigue el formato convencional, por ejemplo fix(store): validar la forma de los valores.`;
 }
 
+/**
+ * GitHub no crea referencias a issues dentro de bloques de código ni de
+ * fragmentos en línea, así que el validador tampoco las busca ahí. Sin esto,
+ * documentar un ejemplo con `Closes #N` en el propio PR lo hace fallar.
+ */
+export function sinCodigo(body) {
+  return String(body || '')
+    .replace(/```[\s\S]*?```/g, ' ')
+    .replace(/`[^`\n]*`/g, ' ');
+}
+
 export function issuesEnlazados(body) {
   const numeros = new Set();
-  for (const coincidencia of String(body || '').matchAll(ENLACE_RE)) {
+  for (const coincidencia of sinCodigo(body).matchAll(ENLACE_RE)) {
     const numero = Number(coincidencia[1]);
     if (Number.isInteger(numero) && numero > 0) numeros.add(numero);
   }

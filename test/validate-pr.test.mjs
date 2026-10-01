@@ -52,6 +52,19 @@ describe('issuesEnlazados', () => {
     assert.deepEqual(issuesEnlazados(''), []);
     assert.deepEqual(issuesEnlazados(undefined), []);
   });
+
+  it('ignora las referencias escritas dentro de codigo', () => {
+    const cuerpo = [
+      'Closes #7',
+      '',
+      '```bash',
+      'PR_BODY="Closes #2"   # esto es un ejemplo, no un enlace',
+      '```',
+      '',
+      'Y tampoco cuenta `Closes #3` aqui.',
+    ].join('\n');
+    assert.deepEqual(issuesEnlazados(cuerpo), [7]);
+  });
 });
 
 describe('validarCuerpo', () => {
