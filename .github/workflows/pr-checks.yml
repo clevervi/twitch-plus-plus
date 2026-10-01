@@ -3,10 +3,6 @@ name: PR Checks
 on:
   pull_request:
     types: [opened, edited, reopened, synchronize, labeled, unlabeled]
-    # El workflow Release abre sus propios PRs: no llevan issue porque el
-    # propio trabajo ya estaba revisado cuando se pidió el release.
-    branches-ignore:
-      - "release/**"
 
 permissions:
   contents: read
@@ -30,5 +26,11 @@ jobs:
           PR_HEAD_REF: ${{ github.event.pull_request.head.ref }}
           PR_TITLE: ${{ github.event.pull_request.title }}
           PR_BODY: ${{ github.event.pull_request.body }}
-          PR_LABELS: ${{ toJSON(github.event.pull_request.labels.*.name) }}
-        run: node scripts/validate-pr.mjs
+        run: |
+          # Las etiquetas se leen de la API y no del payload del evento:
+          # `gh pr create --label` crea el PR y lo etiqueta después, así que
+          # el payload de `opened` llega vacío y el check falla siempre.
+          # Asignar en la línea de comando, no con export: solo así la
+          # variable llega al entorno del proceso node.
+          PR_LABELS="$(gh pr view "$PR_NUMBER" --json labels --jq '[.labels[].name] | @json')" \
+            node scripts/validate-pr.mjs
