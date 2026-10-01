@@ -24,10 +24,22 @@ test('channelFromHref extrae correctamente canales válidos y descarta rutas res
   assert.equal(channelFromHref('https://twitch.tv/ibai'), null);
 });
 
-test('thumbnailUrl genera la URL del CDN oficial de Twitch con resolución ajustada', () => {
+test('thumbnailUrl genera la URL del CDN oficial de Twitch con resolución ajustada en 16:9', () => {
+  assert.equal(
+    thumbnailUrl('ibai'),
+    'https://static-cdn.jtvnw.net/previews-ttv/live_user_ibai-320x180.jpg',
+  );
   assert.equal(
     thumbnailUrl('ibai', 220),
-    'https://static-cdn.jtvnw.net/previews-ttv/live_user_ibai-220x248.jpg',
+    'https://static-cdn.jtvnw.net/previews-ttv/live_user_ibai-220x124.jpg',
+  );
+  assert.equal(
+    thumbnailUrl('ibai', 260),
+    'https://static-cdn.jtvnw.net/previews-ttv/live_user_ibai-260x146.jpg',
+  );
+  assert.equal(
+    thumbnailUrl('ibai', 320),
+    'https://static-cdn.jtvnw.net/previews-ttv/live_user_ibai-320x180.jpg',
   );
   assert.equal(
     thumbnailUrl('ibai', 440),

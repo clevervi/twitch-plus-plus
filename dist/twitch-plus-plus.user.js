@@ -2076,9 +2076,11 @@ function visibleChannels(limit = 8) {
   return out;
 }
 
-function thumbnailUrl(channel, width = 440) {
-  const size = width <= 220 ? '220x248' : width >= 720 ? '720x405' : '440x248';
-  return `${CDN}/live_user_${channel}-${size}.jpg`;
+function thumbnailUrl(channel, width = 320) {
+  const user = String(channel || '').trim().toLowerCase();
+  const w = Math.max(160, Math.min(1280, Math.round(Number(width) || 320)));
+  const h = Math.round((w * 9) / 16);
+  return `${CDN}/live_user_${user}-${w}x${h}.jpg`;
 }
 
 function currentChannel() {
@@ -3152,6 +3154,8 @@ const { channelFromCard: channelFromCard, thumbnailUrl: thumbnailUrl, visibleCha
 const cache = new Map();
 const bound = new WeakSet();
 let generation = 0;
+let leaveTimer = null;
+let activeBalloon = null;
 
 function ttl() {
   const seconds = Number(storeGet('thumbCacheTtl'));
@@ -3160,7 +3164,7 @@ function ttl() {
 
 function width() {
   const value = Number(storeGet('thumbWidth'));
-  return Number.isFinite(value) ? value : 440;
+  return Number.isFinite(value) && value >= 160 ? value : 320;
 }
 
 function preload(channel) {
@@ -3178,8 +3182,31 @@ function preloadVisible(limit = 8) {
   for (const channel of visibleChannels(limit)) preload(channel);
 }
 
+function getBalloon(dialog) {
+  if (!dialog) return null;
+  if (dialog.classList?.contains('tw-balloon') || dialog.getAttribute?.('data-a-target') === 'tw-balloon') {
+    return dialog;
+  }
+  return dialog.querySelector?.('.tw-balloon, [data-a-target="tw-balloon"]') || dialog;
+}
+
+function restoreBalloon(balloon) {
+  if (!balloon) return;
+  balloon.style.removeProperty('width');
+  balloon.style.removeProperty('max-width');
+  balloon.style.removeProperty('min-width');
+}
+
 function cleanup() {
-  for (const node of document.querySelectorAll('img.twpp-sidebar-thumb')) node.remove();
+  if (activeBalloon) {
+    restoreBalloon(activeBalloon);
+    activeBalloon = null;
+  }
+  for (const node of document.querySelectorAll('img.twpp-sidebar-thumb')) {
+    const parent = node.closest('.tw-balloon') || node.parentElement;
+    node.remove();
+    if (parent) restoreBalloon(parent);
+  }
 }
 
 function inject(card, channel) {
@@ -3193,19 +3220,47 @@ function inject(card, channel) {
     if (cardRect.height > 0 && dialogRect.height > 0) {
       const cardCenterY = cardRect.top + cardRect.height / 2;
       const dialogCenterY = dialogRect.top + dialogRect.height / 2;
-      if (Math.abs(cardCenterY - dialogCenterY) > 160) return;
+      if (Math.abs(cardCenterY - dialogCenterY) > 220) return;
     }
 
     // Limpieza global de cualquier miniatura previa
     cleanup();
 
+    const balloon = getBalloon(dialog);
+    const targetWidth = width();
+
+    // Adaptar el ancho del globo para que la imagen no se recorte ni se comprima
+    if (balloon) {
+      balloon.style.width = `${targetWidth}px`;
+      balloon.style.maxWidth = `${targetWidth}px`;
+      balloon.style.minWidth = `${targetWidth}px`;
+      activeBalloon = balloon;
+    }
+
     const image = document.createElement('img');
     image.className = 'twpp-sidebar-thumb';
     image.decoding = 'async';
-    image.src = thumbnailUrl(channel, width());
-    image.style.cssText = 'width:100%;display:block;border-radius:4px;margin-top:8px;';
-    image.addEventListener('error', () => image.remove(), { once: true });
-    dialog.append(image);
+    image.alt = `Vista previa de ${channel}`;
+    image.src = thumbnailUrl(channel, targetWidth);
+    image.style.cssText = [
+      'width:100%',
+      'height:auto',
+      'aspect-ratio:16/9',
+      'object-fit:cover',
+      'display:block',
+      'border-radius:6px',
+      'margin-top:8px',
+      'background:#0e0e10',
+      'box-shadow:0 2px 8px rgba(0,0,0,0.35)',
+    ].join(';');
+
+    image.addEventListener('error', () => {
+      image.remove();
+      restoreBalloon(balloon);
+      if (activeBalloon === balloon) activeBalloon = null;
+    }, { once: true });
+
+    balloon.append(image);
   });
 }
 
@@ -3214,6 +3269,7 @@ function bind(card) {
   bound.add(card);
   let timer = null;
   card.addEventListener('mouseenter', () => {
+    clearTimeout(leaveTimer);
     generation += 1;
     const channel = channelFromCard(card);
     if (!channel) return;
@@ -3224,7 +3280,11 @@ function bind(card) {
   card.addEventListener('mouseleave', () => {
     generation += 1;
     clearTimeout(timer);
-    setTimeout(cleanup, 50);
+    clearTimeout(leaveTimer);
+    const leaveGen = generation;
+    leaveTimer = setTimeout(() => {
+      if (leaveGen === generation) cleanup();
+    }, 80);
   });
 }
 
@@ -3235,6 +3295,7 @@ function sweep() {
 }
 
 function teardown() {
+  clearTimeout(leaveTimer);
   cleanup();
   cache.clear();
 }
@@ -3246,7 +3307,20 @@ defineFeature({
   default: false,
   interval: 2500,
   settings: [
-    { key: 'thumbWidth', label: 'Tamaño de miniatura', type: 'select', options: [['220', '220x248'], ['440', '440x248'], ['720', '720x405']], default: '440' },
+    {
+      key: 'thumbWidth',
+      label: 'Tamaño de miniatura',
+      type: 'select',
+      options: [
+        ['220', '220px (Compacta)'],
+        ['260', '260px (Mediana)'],
+        ['320', '320px (Estándar 16:9)'],
+        ['380', '380px (Grande)'],
+        ['440', '440px (Extra grande)'],
+        ['720', '720px (Máxima)'],
+      ],
+      default: '320',
+    },
     { key: 'thumbCacheTtl', label: 'Caché (segundos)', type: 'number', default: 60, min: 0, max: 3600 },
   ],
   tick: sweep,

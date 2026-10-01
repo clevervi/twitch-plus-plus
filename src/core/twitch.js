@@ -33,9 +33,11 @@ export function visibleChannels(limit = 8) {
   return out;
 }
 
-export function thumbnailUrl(channel, width = 440) {
-  const size = width <= 220 ? '220x248' : width >= 720 ? '720x405' : '440x248';
-  return `${CDN}/live_user_${channel}-${size}.jpg`;
+export function thumbnailUrl(channel, width = 320) {
+  const user = String(channel || '').trim().toLowerCase();
+  const w = Math.max(160, Math.min(1280, Math.round(Number(width) || 320)));
+  const h = Math.round((w * 9) / 16);
+  return `${CDN}/live_user_${user}-${w}x${h}.jpg`;
 }
 
 export function currentChannel() {
