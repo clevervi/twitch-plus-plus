@@ -13,6 +13,8 @@
 // @match        https://*.twitch.tv/*
 // @grant        GM_getValue
 // @grant        GM_setValue
+// @grant        GM_deleteValue
+// @grant        GM_addValueChangeListener
 // @grant        GM_xmlhttpRequest
 // @grant        GM_openInTab
 // @grant        GM_info
@@ -63,6 +65,8 @@ const __m1 = (function () {
 /** Adaptador de las APIs GM_* con fallback a localStorage (así el bundle también arranca fuera de Tampermonkey). */
 
 const has = (name) => typeof globalThis[name] === 'function';
+// GM_info es un objeto, no una función: para comprobarlo basta con que exista.
+const exists = (name) => globalThis[name] !== undefined && globalThis[name] !== null;
 
 const memory = new Map();
 const PREFIX = 'twpp:';
@@ -196,11 +200,32 @@ function getJson(url, { timeout = 10000, headers } = {}) {
 
 function managerName() {
   try {
-    if (has('GM_info') && globalThis.GM_info) return String(globalThis.GM_info.scriptHandler || 'otro');
+    if (exists('GM_info')) return String(globalThis.GM_info.scriptHandler || 'otro');
   } catch {
     /* ignore */
   }
   return 'desconocido';
+}
+
+/**
+ * Qué APIs de usuario hay disponibles y qué se pierde sin cada una.
+ * Sin `@grant` correspondiente, un gestor de scripts no expone la función, así
+ * que el fallo se manifesta como "no pasa nada" en lugar de como un error.
+ */
+const APIS = {
+  GM_getValue: 'leer y guardar la configuración',
+  GM_setValue: 'leer y guardar la configuración',
+  GM_deleteValue: 'restablecer la configuración',
+  GM_addValueChangeListener: 'sincronizar la configuración entre pestañas',
+  GM_xmlhttpRequest: 'leer el catálogo remoto y buscar actualizaciones',
+  GM_info: 'identificar el gestor de scripts',
+};
+
+function capabilities() {
+  const ausentes = Object.entries(APIS)
+    .filter(([name]) => (name === 'GM_info' ? !exists(name) : !has(name)))
+    .map(([name, para_que_sirve]) => `${name} (${para_que_sirve})`);
+  return { gestor: managerName(), ausentes };
 }
 return {
   getValue: getValue,
@@ -210,6 +235,7 @@ return {
   openInTab: openInTab,
   getJson: getJson,
   managerName: managerName,
+  capabilities: capabilities,
 };
 })();
 
@@ -1620,12 +1646,14 @@ return {
 /* ---- src/core/report.js ---- */
 const __m13 = (function () {
 const { status: catalogStatus } = __m9;
+const { capabilities: capabilities } = __m1;
 const { trackedErrors: trackedErrors } = __m2;
 const { statuses: statuses } = __m6;
 const { brokenSelectors: brokenSelectors } = __m3;
 const { VERSION: VERSION } = __m8;
 
 /** Informe de una línea por dato, pensado para pegar en un issue. */
+
 
 
 
@@ -1639,15 +1667,18 @@ function report() {
   const failing = list.filter((feature) => feature.failures > 0).map((feature) => `${feature.id} (${feature.failures})`);
   const dead = brokenSelectors().map((row) => row.key);
   const catalog = catalogStatus();
+  const apis = capabilities();
 
   const lines = [
     `Twitch++ v${VERSION}`,
+    `gestor de scripts: ${apis.gestor}`,
     `navegador: ${globalThis.navigator?.userAgent || 'desconocido'}`,
     `página: ${location.pathname}`,
     `features activas: ${active.join(', ') || '—'}`,
     `features bloqueadas por condición: ${blocked.join(', ') || '—'}`,
     `features con errores: ${failing.join(', ') || '—'}`,
     `selectores sin resolver: ${dead.join(', ') || '—'}`,
+    `APIs ausentes: ${apis.ausentes.join(', ') || 'ninguna'}`,
     `catálogo: rev. ${catalog.revision || 'local'}${catalog.remote ? '' : ' (sin remoto)'}${catalog.error ? ` — ${catalog.error}` : ''}`,
   ];
   for (const entry of trackedErrors().slice(-5)) lines.push(`error: ${entry.scope}: ${entry.message}`);
@@ -4795,6 +4826,7 @@ const __m38 = (function () {
 const { on: onBus } = __m0;
 const { refresh: refreshCatalog, status: catalogStatus, warm: warmCatalog } = __m9;
 const { onIdle: onIdle, ready: ready } = __m10;
+const { capabilities: capabilities } = __m1;
 const { bindGlobal: bindGlobal, register: registerKeybind } = __m11;
 const { setDebug: setDebug, track: track, trackedErrors: trackedErrors, warn: warn } = __m2;
 const { probe: probe } = __m12;
@@ -4817,6 +4849,7 @@ const { UI: UI } = __m37;
  * Orden: catálogo cacheado (sin red) → estilos → features → atajos → router →
  * scheduler → UI → tareas de red (catálogo + comprobación de actualización).
  */
+
 
 
 
@@ -5006,6 +5039,7 @@ const diagnostics = {
   broken: brokenSelectors,
   probe,
   report,
+  apis: capabilities,
   boot: () => ({ ...bootReport, stages: { ...bootReport.stages } }),
 };
 return {
