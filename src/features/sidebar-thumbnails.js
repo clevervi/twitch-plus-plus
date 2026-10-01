@@ -35,25 +35,65 @@ function preloadVisible(limit = 8) {
   for (const channel of visibleChannels(limit)) preload(channel);
 }
 
-function getTooltipTarget(dialog) {
-  if (!dialog) return null;
+/* ------------------------------------------------------------------ *
+ * Localización estricta del tooltip de la sidebar.
+ *
+ * Regla: SOLO aceptamos tooltips que:
+ *   a) tengan la clase moderna de Twitch para sidebar, o
+ *   b) estén posicionados a menos de 100px verticales Y a la derecha
+ *      (o izquierda) de la card con un gap < 60px.
+ * En cualquier otro caso, devolvemos null (no inyectamos nada).
+ * ------------------------------------------------------------------ */
 
-  // 1. Tooltip moderno de Twitch (.online-side-nav-channel-tooltip__body)
+function findSidebarTooltip(card, dialog) {
+  if (!card || !dialog) return null;
+
+  const cardRect = card.getBoundingClientRect();
+  const cardCY = cardRect.top + cardRect.height / 2;
+
+  // a) Clase moderna de Twitch (fuente de verdad)
   const body = dialog.matches?.('.online-side-nav-channel-tooltip__body, [class*="online-side-nav-channel-tooltip"]')
     ? dialog
     : dialog.querySelector?.('.online-side-nav-channel-tooltip__body, [class*="online-side-nav-channel-tooltip"]');
 
   if (body) {
-    const card = body.closest('[tabindex="0"]') || body.parentElement || body;
-    return { container: card, insertionPoint: body };
+    // El "container" debe ser el wrapper inmediato del body, NO un ancestro grande.
+    // Caminamos hacia arriba mientras el ancestro tenga un tamaño razonable
+    // (tooltips de sidebar miden ~250-400px de ancho).
+    let container = body.parentElement;
+    let hops = 0;
+    while (container && container !== dialog && hops < 4) {
+      const r = container.getBoundingClientRect();
+      if (r.width > 0 && r.width < 500 && r.height > 0 && r.height < 600) break;
+      container = container.parentElement;
+      hops += 1;
+    }
+    if (!container || container === document.body) container = body;
+    return { container, insertionPoint: body };
   }
 
-  // 2. Fallback a .tw-balloon clásico
-  const balloon = dialog.matches?.('.tw-balloon')
-    ? dialog
-    : dialog.querySelector?.('.tw-balloon, [data-a-target="tw-balloon"]') || dialog;
+  // b) Fallback geométrico: tooltip anclado a la card
+  const containers = document.querySelectorAll(
+    '.tw-dialog-layer, [role="tooltip"], [data-popper-placement]'
+  );
+  for (const el of containers) {
+    const p = el.querySelector('p');
+    if (!p) continue;
+    const r = el.getBoundingClientRect();
+    if (r.width === 0 || r.height === 0) continue;
+    if (r.width > 500 || r.height > 600) continue;   // descartar capas grandes
+    const cy = r.top + r.height / 2;
+    const verticalDist = Math.abs(cy - cardCY);
+    const horizontalDist = Math.min(
+      Math.abs(r.left - cardRect.right),
+      Math.abs(cardRect.left - r.right)
+    );
+    if (verticalDist <= 100 && horizontalDist <= 60) {
+      return { container: el, insertionPoint: p };
+    }
+  }
 
-  return { container: balloon, insertionPoint: balloon };
+  return null;
 }
 
 function restoreTarget(target) {
@@ -76,14 +116,60 @@ function cleanup() {
     restoreTarget(activeTarget);
     activeTarget = null;
   }
+  // Barrido global defensivo: cualquier miniatura huérfana también se elimina
   for (const node of document.querySelectorAll('img.twpp-sidebar-thumb')) {
     const parent = node.closest('.online-side-nav-channel-tooltip__body, [class*="online-side-nav-channel-tooltip"], .tw-balloon') || node.parentElement;
     node.remove();
     if (parent) {
-      const container = parent.closest('[tabindex="0"]') || parent;
+      const container = parent.closest('[data-a-target="side-nav-bar"]') ? parent : parent;
       restoreTarget({ container, insertionPoint: parent });
     }
   }
+}
+
+/* -------------------------------------------------------------- *
+ * Comprobación de identidad del tooltip.
+ * Requerimos DOS condiciones: el texto menciona el canal Y la
+ * geometría es coherente. Si solo una se cumple, no inyectamos.
+ * -------------------------------------------------------------- */
+
+function tooltipMatchesChannel(card, target, channel) {
+  if (!target || !target.insertionPoint) return false;
+
+  const text = (target.insertionPoint.textContent || '').toLowerCase();
+  const normChannel = channel.toLowerCase();
+
+  // Match textual robusto: canal de 4+ letras → contains simple.
+  // Canal corto → exigimos límite de palabra.
+  let textMatch = false;
+  if (normChannel.length >= 4) {
+    textMatch = text.includes(normChannel);
+  } else {
+    const re = new RegExp(`(^|[^a-z0-9_])${normChannel.replace(/[.*+?^${}()|[\]\\]/g, '\\$&')}([^a-z0-9_]|$)`, 'i');
+    textMatch = re.test(text);
+  }
+
+  const titleMatch = Boolean(
+    target.insertionPoint.querySelector(
+      `[title*="${normChannel}" i], [title*="${channel}" i]`
+    )
+  );
+
+  // Comprobación geométrica estricta
+  const cardRect = card.getBoundingClientRect();
+  const contRect = target.container.getBoundingClientRect();
+  const cardCY = cardRect.top + cardRect.height / 2;
+  const contCY = contRect.top + contRect.height / 2;
+  const verticalOK = Math.abs(cardCY - contCY) <= 100;
+  const horizontalOK = Math.min(
+    Math.abs(contRect.left - cardRect.right),
+    Math.abs(cardRect.left - contRect.right)
+  ) <= 60;
+
+  // Ambas deben cumplirse. Excepción: si hay match textual, relajamos
+  // la geometría a solo vertical (pero seguimos exigiendo <= 100px).
+  if (textMatch || titleMatch) return verticalOK;
+  return verticalOK && horizontalOK;
 }
 
 function inject(card, channel) {
@@ -91,33 +177,16 @@ function inject(card, channel) {
   waitForHoverDialog().then((dialog) => {
     if (!dialog || !dialog.isConnected || local !== generation) return;
 
-    const target = getTooltipTarget(dialog);
+    const target = findSidebarTooltip(card, dialog);
     if (!target || !target.insertionPoint) return;
 
-    // Verificar que el tooltip corresponde a este canal:
-    // a) Por coincidencia de texto (en el título o contenido)
-    // b) O por proximidad vertical con la card
-    const text = (target.insertionPoint.textContent || '').toLowerCase();
-    const normChannel = channel.toLowerCase();
-    const matchesChannel = text.includes(normChannel) ||
-      Boolean(target.insertionPoint.querySelector(`[title*="${normChannel}" i], [title*="${channel}" i]`));
+    if (!tooltipMatchesChannel(card, target, channel)) return;
 
-    if (!matchesChannel) {
-      const cardRect = card.getBoundingClientRect();
-      const dialogRect = target.container.getBoundingClientRect();
-      if (cardRect.height > 0 && dialogRect.height > 0) {
-        const cardCenterY = cardRect.top + cardRect.height / 2;
-        const dialogCenterY = dialogRect.top + dialogRect.height / 2;
-        if (Math.abs(cardCenterY - dialogCenterY) > 220) return;
-      }
-    }
-
-    // Limpieza global de cualquier miniatura previa
+    // Limpieza global antes de inyectar
     cleanup();
 
     const targetWidth = width();
 
-    // Adaptar el contenedor y el cuerpo del tooltip
     if (target.container) {
       target.container.style.width = `${targetWidth}px`;
       target.container.style.maxWidth = `${targetWidth}px`;
@@ -160,6 +229,8 @@ function inject(card, channel) {
 function onPointerOver(e) {
   const card = e.target.closest('[data-a-target="side-nav-card"], .side-nav-card, a[data-test-selector="followed-channel"]');
   if (!card) return;
+  // Scoping adicional: la card DEBE estar dentro de la sidebar real
+  if (!card.closest('[data-a-target="side-nav-bar"], nav[aria-label="Primary navigation"], [data-test-selector="side-nav"], .side-nav')) return;
   if (card === currentCard) return;
 
   currentCard = card;
@@ -185,6 +256,12 @@ function onPointerOut(e) {
   leaveTimer = setTimeout(() => {
     if (leaveGen === generation) cleanup();
   }, 100);
+}
+
+function onWindowBlur() {
+  currentCard = null;
+  generation += 1;
+  cleanup();
 }
 
 function teardown() {
@@ -219,12 +296,14 @@ defineFeature({
   onEnable() {
     document.addEventListener('mouseover', onPointerOver, { passive: true });
     document.addEventListener('mouseout', onPointerOut, { passive: true });
+    window.addEventListener('blur', onWindowBlur);
     setTimeout(() => preloadVisible(8), 2000);
     log('miniaturas de sidebar activas');
   },
   onDisable() {
     document.removeEventListener('mouseover', onPointerOver);
     document.removeEventListener('mouseout', onPointerOut);
+    window.removeEventListener('blur', onWindowBlur);
     teardown();
   },
   onRoute() {

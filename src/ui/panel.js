@@ -16,6 +16,7 @@ import { PRESETS, PRESET_LABELS, idsOf } from './presets.js';
 
 declare('fabRight', 'number', 14);
 declare('fabBottom', 'number', 56);
+declare('hasSeenFab', 'bool', false);
 
 let host = null;
 let shadow = null;
@@ -42,7 +43,10 @@ function node(name) {
 }
 
 function escapeHtml(value) {
-  return String(value).replace(/[&<>"']/g, (char) => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' })[char]);
+  return String(value).replace(
+    /[&<>"'`]/g,
+    (char) => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;', '`': '&#96;' })[char],
+  );
 }
 
 function settingHtml(feature) {
@@ -323,10 +327,16 @@ function bind() {
     const fabX = isLeft ? (right + 13) : (winW - right - 13);
     const fabY = isTop ? (bottom + 13) : (winH - bottom - 13);
     const dist = Math.hypot(event.clientX - fabX, event.clientY - fabY);
-    if (dist < 140) {
+
+    if (dist < 30) {
+      fab.classList.add('awake', 'near');
+    } else if (dist < 140) {
       fab.classList.add('awake');
-      scheduleIdle();
+      fab.classList.remove('near');
+    } else {
+      fab.classList.remove('awake', 'near');
     }
+    scheduleIdle();
   };
   document.addEventListener('mousemove', wakeFab, { passive: true });
 
@@ -416,6 +426,7 @@ function bind() {
   node('preset').addEventListener('change', (event) => applyPreset(event.target.value));
 
   onBus('route', () => sync());
+  onBus('chatPause:change', () => sync());
   onBus('catalog:updated', () => {
     // el catálogo pudo añadir features: hay que redibujar las filas
     node('body').innerHTML = sectionsHtml();
@@ -443,12 +454,14 @@ function scheduleIdle() {
   clearTimeout(idleTimer);
   idleTimer = setTimeout(() => {
     if (panel && !panel.hidden) return;
-    fab?.classList.remove('awake');
+    fab?.classList.remove('awake', 'near');
   }, 4000);
 }
 
 function flashFab() {
   if (!fab) return;
+  if (get('hasSeenFab')) return;
+  set('hasSeenFab', true);
   fab.classList.add('flash');
   setTimeout(() => {
     if (panel && !panel.hidden) return;

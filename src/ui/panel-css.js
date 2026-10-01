@@ -11,10 +11,11 @@ export const PANEL_CSS = `
   .wrap.open-down .panel { transform-origin: top right; }
   .wrap.open-down.align-left .panel { transform-origin: top left; }
   .toasts {
-    position: fixed; right: 14px; bottom: 52px;
+    position: absolute; right: 0; bottom: 40px;
     display: flex; flex-direction: column; gap: 6px;
-    pointer-events: none; z-index: 10;
+    pointer-events: none; z-index: 10; align-items: flex-end;
   }
+  .wrap.open-down .toasts { bottom: auto; top: 40px; }
   .toast {
     background: #9147ff; color: #fff; padding: 7px 12px; border-radius: 6px;
     font-size: 12px; font-weight: 600; box-shadow: 0 4px 14px rgba(0,0,0,.5);
@@ -31,9 +32,10 @@ export const PANEL_CSS = `
     transform: scale(.85);
     transition: opacity .22s ease, transform .22s ease, background .18s ease;
   }
-  .fab:hover, .fab.reveal:hover { opacity: 1; transform: scale(1.15); background: #a970ff; pointer-events: auto; }
-  .fab.awake, .fab.reveal { opacity: .6; pointer-events: auto; transform: scale(1); }
-  .fab.flash { opacity: .75; pointer-events: auto; transform: scale(1.05); }
+  .fab.awake, .fab.reveal { opacity: .6; transform: scale(1); }
+  .fab.flash { opacity: .75; transform: scale(1.05); }
+  .fab.near { opacity: 1; transform: scale(1.15); background: #a970ff; pointer-events: auto; }
+  .fab:hover { opacity: 1; transform: scale(1.15); background: #a970ff; pointer-events: auto; }
   .fab.active { background: #ff5c5c; opacity: .95; pointer-events: auto; }
   .fab.dragging { cursor: grabbing !important; opacity: .85; transform: scale(1.1); pointer-events: auto; }
   .panel {

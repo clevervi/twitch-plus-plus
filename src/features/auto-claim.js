@@ -7,7 +7,8 @@ import { show as toast } from '../core/toast.js';
 import { get as storeGet } from '../core/store.js';
 
 const CLAIM_HINT = /bonificaci[oó]n|b[oóô]nus|bonus|бонус|claim|reclamar|resgatar|abholen|réclamer/i;
-const FORBIDDEN_HINT = /saldo|balance|potenciador|reward|recompensa/i;
+const FORBIDDEN_HINT = /saldo|balance|potenciador|reward|recompensa|suscripci[oó]n|subscription/i;
+const FORBIDDEN_CONTEXT = '[data-a-target="top-nav-container"], [data-a-target="user-menu-toggle"], [data-a-target="user-menu-button"], nav[aria-label*="Primary" i]';
 
 let lastClick = 0;
 
@@ -18,16 +19,18 @@ function cooldown() {
 
 export function isClaimButton(btn) {
   if (!btn) return false;
-  const target = btn.tagName === 'BUTTON' ? btn : btn.closest('button');
+  const target = btn.tagName === 'BUTTON' ? btn : btn.closest?.('button') || btn;
   if (!target) return false;
 
-  const label = (target.getAttribute('aria-label') || target.textContent || '').trim();
-  // Nunca pulsar el botón del menú de saldo / potenciadores de Twitch
+  // Nunca pulsar botones en la barra superior o menús de usuario
+  if (target.closest?.(FORBIDDEN_CONTEXT)) return false;
+
+  const label = (target.getAttribute?.('aria-label') || target.textContent || '').trim();
   if (FORBIDDEN_HINT.test(label)) return false;
 
   // Es el cofre si tiene el icono o el texto específico de bonificación
-  if (target.querySelector('.claimable-bonus__icon, [data-test-selector="claimable-bonus-icon"]')) return true;
-  if (target.classList.contains('claimable-bonus__icon')) return true;
+  if (target.querySelector?.('.claimable-bonus__icon, [data-test-selector="claimable-bonus-icon"]')) return true;
+  if (target.classList?.contains?.('claimable-bonus__icon') || target.className?.includes?.('claimable-bonus__icon')) return true;
   if (CLAIM_HINT.test(label)) return true;
 
   return false;

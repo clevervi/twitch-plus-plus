@@ -24,7 +24,9 @@ import { ChatPause } from './features/chat-pause.js';
 import './features/index.js';
 import { UI } from './ui/panel.js';
 
-declare('keybinds', 'object', {});
+declare('keybinds', 'object', {}, (v) =>
+  v && typeof v === 'object' && !Array.isArray(v) && Object.values(v).every((x) => typeof x === 'string'),
+);
 declare('preset', 'string', 'balanced');
 declare('catalog', 'bool', true);
 declare('autoUpdate', 'bool', true);

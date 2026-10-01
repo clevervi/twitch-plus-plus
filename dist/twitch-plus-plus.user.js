@@ -1,7 +1,7 @@
 // ==UserScript==
 // @name         Twitch++
 // @namespace    https://github.com/clevervi
-// @version      2.2.7
+// @version      2.2.8
 // @description  Twitch limpio, modular y autoactualizable: OLED, sidebar, chat, analítica de viewers, auto Channel Points y pausa de chat.
 // @author       clevervi
 // @license      MIT
@@ -349,9 +349,10 @@ const BASE = {
   'claimBonus': [
     'button:has([data-test-selector="claimable-bonus-icon"])',
     'button:has(.claimable-bonus__icon)',
-    'button[aria-label*="Bonus" i]',
-    'button[aria-label*="bonificación" i]',
-    'button[aria-label*="reclamar" i]',
+    '[data-a-target="community-points-summary"] button[aria-label*="Bonus" i]',
+    '[data-test-selector="community-points-summary"] button[aria-label*="Bonus" i]',
+    '[data-a-target="community-points-summary"] button[aria-label*="bonificación" i]',
+    '[data-test-selector="community-points-summary"] button[aria-label*="bonificación" i]',
     '.claimable-bonus__icon',
     '[data-test-selector="claimable-bonus-icon"]',
   ],
@@ -413,19 +414,19 @@ function candidates(key) {
   return list(key);
 }
 
-function select(key, root = document) {
+function select(key, root = document, { track = true } = {}) {
   for (const selector of list(key)) {
     try {
       const found = root.querySelector(selector);
       if (found) {
-        note(key, selector);
+        if (track) note(key, selector);
         return found;
       }
     } catch {
       /* candidato inválido: se ignora */
     }
   }
-  note(key, null);
+  if (track) note(key, null);
   return null;
 }
 
@@ -445,20 +446,38 @@ function selectAll(key, root = document) {
   return [];
 }
 
+const TOO_BROAD = [
+  /^\*$/,                          // universal
+  /^[a-z]+$/i,                     // solo un tag: button, div, span, a
+  /^\[[a-z-]+\]$/i,                // solo un atributo: [class], [id], [href]
+  /^\.\w+$/,                       // una sola clase sin contexto: .foo
+  /^#\w+$/,                        // un solo id sin contexto: #bar
+  /^[a-z]+\s*>\s*\*$/i,            // button > * , div > *
+  /^[a-z]+\s+\*$/i,                // button * , div *
+];
+
+function isTooBroad(selector) {
+  const s = selector.trim();
+  if (s.length < 6) return true;   // demasiado corto para ser específico
+  for (const re of TOO_BROAD) if (re.test(s)) return true;
+  return false;
+}
+
 function isValidSelector(selector) {
-  return (
-    typeof selector === 'string' &&
-    selector.trim().length > 0 &&
-    selector.length <= MAX_LENGTH &&
-    !FORBIDDEN.test(selector)
-  );
+  if (typeof selector !== 'string') return false;
+  const s = selector.trim();
+  if (!s || s.length > MAX_LENGTH) return false;
+  if (FORBIDDEN.test(s)) return false;
+  if (isTooBroad(s)) return false;
+  return true;
 }
 
 /** Aplica selectores remotos. Devuelve cuántos se aceptaron y cuáles se rechazaron. */
 function applyRemote(map) {
   const applied = [];
   const rejected = [];
-  if (!map || typeof map !== 'object') return { applied, rejected };
+  const rejectedBroad = [];
+  if (!map || typeof map !== 'object') return { applied, rejected, rejectedBroad };
 
   for (const [key, raw] of Object.entries(map)) {
     const entry = state.get(key);
@@ -466,9 +485,13 @@ function applyRemote(map) {
       rejected.push(key);
       continue;
     }
-    const incoming = (Array.isArray(raw) ? raw : [raw]).filter(isValidSelector);
+    const items = Array.isArray(raw) ? raw : [raw];
+    const incoming = items.filter(isValidSelector);
+    const broad = items.filter((s) => typeof s === 'string' && !FORBIDDEN.test(s) && isTooBroad(s));
+
     if (!incoming.length) {
       rejected.push(key);
+      if (broad.length) rejectedBroad.push(`${key}: ${broad.join(', ')}`);
       continue;
     }
     entry.remote = incoming.slice(0, MAX_CANDIDATES);
@@ -477,7 +500,8 @@ function applyRemote(map) {
 
   if (applied.length) log('selectores remotos aplicados:', applied.join(', '));
   if (rejected.length) warn('selectores remotos rechazados:', rejected.join(', '));
-  return { applied, rejected };
+  if (rejectedBroad.length) warn('selectores remotos demasiado amplios:', rejectedBroad.join(' | '));
+  return { applied, rejected, rejectedBroad };
 }
 
 function clearRemote() {
@@ -496,7 +520,7 @@ function snapshot() {
  */
 function selectorReport(root = document) {
   return [...state.keys()].map((key) => {
-    const matched = select(key, root);
+    const matched = select(key, root, { track: false });
     const stats = health.get(key) || { hits: 0, misses: 0 };
     return {
       key,
@@ -617,11 +641,18 @@ const listeners = new Set();
 let cache = null;
 let importedFromLegacy = null;
 
-addValueChangeListener(KEY, (remote) => {
-  if (!remote || typeof remote !== 'object') return;
+addValueChangeListener(KEY, (newValue) => {
+  if (!newValue || typeof newValue !== 'object') return;
+  const prev = cache;
   cache = null;
-  all();
-  for (const key of schema.keys()) changed(key);
+  const next = all();
+  if (!prev) {
+    for (const key of schema.keys()) changed(key);
+    return;
+  }
+  for (const key of schema.keys()) {
+    if (prev[key] !== next[key]) changed(key);
+  }
 });
 
 function coerce(value, type) {
@@ -644,9 +675,23 @@ function coerce(value, type) {
   }
 }
 
-function declare(key, type, fallback) {
-  schema.set(key, { type, fallback });
-  if (cache) cache[key] = coerce(cache[key], type) ?? fallback;
+function applyValidate(key, value) {
+  const def = schema.get(key);
+  if (!def?.validate || value === undefined) return value;
+  try {
+    return def.validate(value) ? value : undefined;
+  } catch {
+    return undefined;
+  }
+}
+
+function declare(key, type, fallback, validate) {
+  schema.set(key, { type, fallback, validate });
+  if (cache) {
+    const raw = coerce(cache[key], type);
+    const valid = validate && raw !== undefined ? (validate(raw) ? raw : undefined) : raw;
+    cache[key] = valid ?? (typeof fallback === 'object' && fallback !== null ? clone(fallback) : fallback);
+  }
 }
 
 function all() {
@@ -657,7 +702,7 @@ function all() {
   const next = {};
   let repaired = 0;
   for (const [key, { type, fallback }] of schema) {
-    const value = coerce(migrated[key], type);
+    const value = applyValidate(key, coerce(migrated[key], type));
     if (value === undefined) {
       if (migrated[key] !== undefined) {
         repaired += 1;
@@ -718,18 +763,25 @@ function changed(key) {
 
 function set(key, value) {
   const current = all();
-  if (current[key] === value) return value;
-  current[key] = value;
+  const def = schema.get(key);
+  const coerced = def ? applyValidate(key, coerce(value, def.type)) : value;
+  const final = coerced === undefined ? (def ? (typeof def.fallback === 'object' && def.fallback !== null ? clone(def.fallback) : def.fallback) : value) : coerced;
+  if (current[key] === final) return final;
+  current[key] = final;
   persist();
   changed(key);
-  return value;
+  return final;
 }
 
 function setMany(entries) {
   const current = all();
   const keys = Object.keys(entries).filter((key) => current[key] !== entries[key]);
   if (!keys.length) return current;
-  Object.assign(current, entries);
+  for (const [key, value] of Object.entries(entries)) {
+    const def = schema.get(key);
+    const coerced = def ? applyValidate(key, coerce(value, def.type)) : value;
+    current[key] = coerced === undefined ? (def ? (typeof def.fallback === 'object' && def.fallback !== null ? clone(def.fallback) : def.fallback) : value) : coerced;
+  }
   persist();
   for (const key of keys) changed(key);
   return current;
@@ -757,7 +809,7 @@ function importJSON(text) {
   if (!parsed || typeof parsed !== 'object' || Array.isArray(parsed)) throw new Error('JSON inválido');
   cache = all();
   for (const [key, { type, fallback }] of schema) {
-    const value = coerce(parsed[key], type);
+    const value = applyValidate(key, coerce(parsed[key], type));
     cache[key] = value === undefined ? (typeof fallback === 'object' ? clone(fallback) : fallback) : value;
   }
   cache._v = CONFIG_VERSION;
@@ -1048,7 +1100,7 @@ return {
 /* ---- src/core/version.js ---- */
 const __m8 = (function () {
 /** Sustituido en build. Fuente única de verdad: package.json + header del userscript. */
-const VERSION = '2.2.7';
+const VERSION = '2.2.8';
 const REPO_URL = 'https://github.com/clevervi/twitch-plus-plus';
 const RAW_URL = 'https://raw.githubusercontent.com/clevervi/twitch-plus-plus/main';
 const BRANCH = 'main';
@@ -1346,7 +1398,7 @@ return {
 
 /* ---- src/core/keybinds.js ---- */
 const __m11 = (function () {
-const { get: storeGet, set: storeSet } = __m5;
+const { get: storeGet, onChange: onChange, set: storeSet } = __m5;
 const { warn: warn } = __m2;
 
 const actions = new Map();
@@ -1411,11 +1463,34 @@ function isTypingTarget(target) {
   return tag === 'input' || tag === 'textarea' || tag === 'select' || target.isContentEditable === true;
 }
 
-function register(id, label, fallback) {
-  actions.set(id, { id, label, fallback });
+let comboCache = null;
+
+function buildComboCache() {
   const keybinds = storeGet('keybinds') || {};
-  if (typeof keybinds[id] !== 'string') keybinds[id] = fallback;
-  storeSet('keybinds', keybinds);
+  const map = new Map();
+  for (const id of actions.keys()) map.set(id, parseKeybind(keybinds[id]));
+  return map;
+}
+
+function combos() {
+  if (!comboCache) comboCache = buildComboCache();
+  return comboCache;
+}
+
+function invalidateComboCache() {
+  comboCache = null;
+}
+
+function register(id, label, fallback, options = {}) {
+  actions.set(id, {
+    id,
+    label,
+    fallback,
+    allowWhileTyping: options.allowWhileTyping ?? (id === 'panel'),
+  });
+  const keybinds = storeGet('keybinds') || {};
+  if (typeof keybinds[id] === 'string') return;
+  setCombo(id, fallback);
 }
 
 function list() {
@@ -1423,7 +1498,7 @@ function list() {
 }
 
 function comboOf(id) {
-  return parseKeybind((storeGet('keybinds') || {})[id]);
+  return combos().get(id) || null;
 }
 
 function bindGlobal(run) {
@@ -1431,14 +1506,15 @@ function bindGlobal(run) {
     'keydown',
     (event) => {
       if (event.repeat) return; // mantener pulsado no debe repetir la acción
-      const keybinds = storeGet('keybinds') || {};
-      for (const id of actions.keys()) {
-        if (!keybinds[id]) continue;
-        if (!matchKeybind(parseKeybind(keybinds[id]), event)) continue;
-        if (isTypingTarget(event.target) && id !== 'panel') continue;
+      const map = combos();
+      for (const action of actions.values()) {
+        const combo = map.get(action.id);
+        if (!combo) continue;
+        if (!matchKeybind(combo, event)) continue;
+        if (isTypingTarget(event.target) && !action.allowWhileTyping) continue;
         event.preventDefault?.();
         event.stopPropagation?.();
-        run(id);
+        run(action.id);
         return;
       }
     },
@@ -1447,21 +1523,28 @@ function bindGlobal(run) {
 }
 
 function setCombo(id, value) {
-  const keybinds = { ...(storeGet('keybinds') || {}) };
+  const current = storeGet('keybinds') || {};
   const combo = parseKeybind(value);
   if (value && !combo) {
     warn('atajo inválido, se ignora:', value);
     return false;
   }
-  keybinds[id] = combo ? String(value).trim() : '';
-  storeSet('keybinds', keybinds);
+  const next = combo ? String(value).trim() : '';
+  if (current[id] === next) return true;
+  storeSet('keybinds', { ...current, [id]: next });
+  invalidateComboCache();
   return true;
 }
 
 function describe(value) {
   return parseKeybind(value) ? String(value).trim() : '—';
 }
+
+onChange((key) => {
+  if (key === 'keybinds') invalidateComboCache();
+});
 return {
+  invalidateComboCache: invalidateComboCache,
   register: register,
   list: list,
   comboOf: comboOf,
@@ -1862,6 +1945,7 @@ return {
 
 /* ---- src/features/chat-pause.js ---- */
 const __m18 = (function () {
+const { emit: emitBus } = __m0;
 const { isVisible: isVisible } = __m10;
 const { select: select } = __m3;
 const { show: toast } = __m16;
@@ -1876,6 +1960,9 @@ const { show: toast } = __m16;
 
 
 
+
+const RESET_AFTER_MISSES = 5;
+
 const state = {
   active: false,
   mode: null, // 'native' | 'scroll' | null
@@ -1886,7 +1973,16 @@ const state = {
   onUser: null,
   userTimer: null,
   native: null,
+  missedChecks: 0,
 };
+
+function emitChange() {
+  try {
+    emitBus('chatPause:change', { active: state.active, mode: state.mode });
+  } catch {
+    /* ignore */
+  }
+}
 
 function nativeButton() {
   const button = select('pauseChat');
@@ -1959,14 +2055,18 @@ const ChatPause = {
       state.active = !wasPaused;
       state.mode = state.active ? 'native' : null;
       state.native = state.active ? native : null;
+      state.missedChecks = 0;
       toast(state.active ? 'Chat pausado' : 'Chat reanudado');
+      emitChange();
       return true;
     }
     if (!attach()) return false;
     state.top = state.el.scrollTop;
     state.active = true;
     state.mode = 'scroll';
+    state.missedChecks = 0;
     toast('Chat pausado');
+    emitChange();
     return true;
   },
 
@@ -1979,8 +2079,10 @@ const ChatPause = {
     state.native = null;
     state.active = false;
     state.mode = null;
+    state.missedChecks = 0;
     detach();
     toast('Chat reanudado');
+    emitChange();
     return true;
   },
 
@@ -1990,18 +2092,37 @@ const ChatPause = {
 
   /** Lo llama el scheduler: reconcilia con Twitch y recoloca el scroll si recreó el contenedor. */
   ensure() {
-    if (!state.active) return;
+    if (!state.active) {
+      if (state.mode === null) {
+        const native = nativeButton();
+        if (native && nativeSaysPaused(native)) {
+          state.active = true;
+          state.mode = 'native';
+          state.native = native;
+          state.missedChecks = 0;
+          emitChange();
+        }
+      }
+      return;
+    }
     if (state.mode === 'native') {
       const current = nativeButton();
       if (current && nativeSaysPaused(current)) {
-        state.native = current;   // actualiza la referencia
+        state.native = current;
+        state.missedChecks = 0;
         return;
+      }
+      state.missedChecks += 1;
+      if (state.missedChecks < RESET_AFTER_MISSES) {
+        return; // Twitch re-renderizó el botón temporalmente
       }
       // El botón nativo desapareció o ya no dice "Resume": Twitch desbloqueó el chat
       state.native = null;
       state.active = false;
       state.mode = null;
+      state.missedChecks = 0;
       detach();
+      emitChange();
       return;
     }
     if (state.mode === 'scroll') {
@@ -2035,7 +2156,8 @@ const { get: storeGet } = __m5;
 
 
 const CLAIM_HINT = /bonificaci[oó]n|b[oóô]nus|bonus|бонус|claim|reclamar|resgatar|abholen|réclamer/i;
-const FORBIDDEN_HINT = /saldo|balance|potenciador|reward|recompensa/i;
+const FORBIDDEN_HINT = /saldo|balance|potenciador|reward|recompensa|suscripci[oó]n|subscription/i;
+const FORBIDDEN_CONTEXT = '[data-a-target="top-nav-container"], [data-a-target="user-menu-toggle"], [data-a-target="user-menu-button"], nav[aria-label*="Primary" i]';
 
 let lastClick = 0;
 
@@ -2046,16 +2168,18 @@ function cooldown() {
 
 function isClaimButton(btn) {
   if (!btn) return false;
-  const target = btn.tagName === 'BUTTON' ? btn : btn.closest('button');
+  const target = btn.tagName === 'BUTTON' ? btn : btn.closest?.('button') || btn;
   if (!target) return false;
 
-  const label = (target.getAttribute('aria-label') || target.textContent || '').trim();
-  // Nunca pulsar el botón del menú de saldo / potenciadores de Twitch
+  // Nunca pulsar botones en la barra superior o menús de usuario
+  if (target.closest?.(FORBIDDEN_CONTEXT)) return false;
+
+  const label = (target.getAttribute?.('aria-label') || target.textContent || '').trim();
   if (FORBIDDEN_HINT.test(label)) return false;
 
   // Es el cofre si tiene el icono o el texto específico de bonificación
-  if (target.querySelector('.claimable-bonus__icon, [data-test-selector="claimable-bonus-icon"]')) return true;
-  if (target.classList.contains('claimable-bonus__icon')) return true;
+  if (target.querySelector?.('.claimable-bonus__icon, [data-test-selector="claimable-bonus-icon"]')) return true;
+  if (target.classList?.contains?.('claimable-bonus__icon') || target.className?.includes?.('claimable-bonus__icon')) return true;
   if (CLAIM_HINT.test(label)) return true;
 
   return false;
@@ -2875,7 +2999,8 @@ const { get: storeGet } = __m5;
 
 
 const EXTENSION_HINT = /extension|ext-twitch|\/extensions\/|extension-panel|twitch-ext-/i;
-const EXTENSION_ICON_HINT = /Icon-(Extension|Extensions|Puzzle|Plugin|Apps|Addon|Overlay|Component)/i;
+// Solo iconos claramente de extensión. Sin Overlay/Component genéricos.
+const EXTENSION_ICON_HINT = /Icon-(Extension|Extensions|Puzzle|Plugin|Addon|Apps)/i;
 
 const KNOWN_PLAYER_ICONS = new RegExp(
   'Icon-(Settings|Gear|Volume|Fullscreen|Theater|Pause|Play|Mute|Unmute|Rewind|Forward|' +
@@ -2890,21 +3015,24 @@ const SAFE_BUTTON_LABEL =
   /pantalla|fullscreen|teatro|theater|volumen|volume|silenciar|mute|pausa|pause|reproducir|play|ajustes|settings|calidad|quality|clip|compartir|share|subt[ií]tulos|captions|audio|pip|directo|live|accesibilidad|accessibility/i;
 
 const known = new Set();
-const removed = new Set();
+const removed = new WeakSet();
+const removedRefs = new Set();
 
 function kill(element) {
   if (!element || removed.has(element)) return;
   removed.add(element);
+  removedRefs.add(element);
   element.style.setProperty('display', 'none', 'important');
   element.style.setProperty('pointer-events', 'none', 'important');
 }
 
 function restore() {
-  for (const node of removed) {
+  for (const node of removedRefs) {
+    if (!node?.isConnected) continue;
     node.style?.removeProperty('display');
     node.style?.removeProperty('pointer-events');
   }
-  removed.clear();
+  removedRefs.clear();
 }
 
 function extensionLike(element) {
@@ -2922,10 +3050,26 @@ function extensionLike(element) {
 
 function playerOverlaySweep() {
   for (const player of selectAll('player')) {
+    // 1) iframes de extensión dentro del player
     for (const frame of qsAll('iframe', player)) {
       if (extensionLike(frame)) kill(frame);
     }
-    for (const box of qsAll('div[class*="overlay"], .extension-container, .extension-view', player)) {
+
+    // 2) Overlays de extensión SOLO con clases específicas.
+    //    Ya NO usamos div[class*="overlay"] porque matchea los overlays
+    //    legítimos del player (controles de pausa, settings, etc.).
+    const overlaySelectors = [
+      '.extension-container',
+      '.extension-view',
+      '[class*="extension-overlay"]',
+      '[class*="extensions-overlay"]',
+      '[class*="video-extension"]',
+      '[data-test-selector="extension-overlay"]',
+      '[data-a-target="extension-overlay"]',
+      '[data-test-selector="video-extension-overlay"]',
+      '[data-a-target="video-extension-overlay"]',
+    ];
+    for (const box of qsAll(overlaySelectors.join(','), player)) {
       if (!box.querySelector('iframe')) continue;
       kill(box);
     }
@@ -3013,7 +3157,6 @@ defineFeature({
     %SCOPE% [id^="twitch-ext-"],
     %SCOPE% [id*="extension-iframe"],
     %SCOPE% [id*="extension-overlay"],
-    %SCOPE% iframe[src*="extension"],
     %SCOPE% iframe[src*="ext-twitch"],
     %SCOPE% iframe[src*="/extensions/"],
     %SCOPE% iframe[id*="extension"],
@@ -3287,25 +3430,65 @@ function preloadVisible(limit = 8) {
   for (const channel of visibleChannels(limit)) preload(channel);
 }
 
-function getTooltipTarget(dialog) {
-  if (!dialog) return null;
+/* ------------------------------------------------------------------ *
+ * Localización estricta del tooltip de la sidebar.
+ *
+ * Regla: SOLO aceptamos tooltips que:
+ *   a) tengan la clase moderna de Twitch para sidebar, o
+ *   b) estén posicionados a menos de 100px verticales Y a la derecha
+ *      (o izquierda) de la card con un gap < 60px.
+ * En cualquier otro caso, devolvemos null (no inyectamos nada).
+ * ------------------------------------------------------------------ */
 
-  // 1. Tooltip moderno de Twitch (.online-side-nav-channel-tooltip__body)
+function findSidebarTooltip(card, dialog) {
+  if (!card || !dialog) return null;
+
+  const cardRect = card.getBoundingClientRect();
+  const cardCY = cardRect.top + cardRect.height / 2;
+
+  // a) Clase moderna de Twitch (fuente de verdad)
   const body = dialog.matches?.('.online-side-nav-channel-tooltip__body, [class*="online-side-nav-channel-tooltip"]')
     ? dialog
     : dialog.querySelector?.('.online-side-nav-channel-tooltip__body, [class*="online-side-nav-channel-tooltip"]');
 
   if (body) {
-    const card = body.closest('[tabindex="0"]') || body.parentElement || body;
-    return { container: card, insertionPoint: body };
+    // El "container" debe ser el wrapper inmediato del body, NO un ancestro grande.
+    // Caminamos hacia arriba mientras el ancestro tenga un tamaño razonable
+    // (tooltips de sidebar miden ~250-400px de ancho).
+    let container = body.parentElement;
+    let hops = 0;
+    while (container && container !== dialog && hops < 4) {
+      const r = container.getBoundingClientRect();
+      if (r.width > 0 && r.width < 500 && r.height > 0 && r.height < 600) break;
+      container = container.parentElement;
+      hops += 1;
+    }
+    if (!container || container === document.body) container = body;
+    return { container, insertionPoint: body };
   }
 
-  // 2. Fallback a .tw-balloon clásico
-  const balloon = dialog.matches?.('.tw-balloon')
-    ? dialog
-    : dialog.querySelector?.('.tw-balloon, [data-a-target="tw-balloon"]') || dialog;
+  // b) Fallback geométrico: tooltip anclado a la card
+  const containers = document.querySelectorAll(
+    '.tw-dialog-layer, [role="tooltip"], [data-popper-placement]'
+  );
+  for (const el of containers) {
+    const p = el.querySelector('p');
+    if (!p) continue;
+    const r = el.getBoundingClientRect();
+    if (r.width === 0 || r.height === 0) continue;
+    if (r.width > 500 || r.height > 600) continue;   // descartar capas grandes
+    const cy = r.top + r.height / 2;
+    const verticalDist = Math.abs(cy - cardCY);
+    const horizontalDist = Math.min(
+      Math.abs(r.left - cardRect.right),
+      Math.abs(cardRect.left - r.right)
+    );
+    if (verticalDist <= 100 && horizontalDist <= 60) {
+      return { container: el, insertionPoint: p };
+    }
+  }
 
-  return { container: balloon, insertionPoint: balloon };
+  return null;
 }
 
 function restoreTarget(target) {
@@ -3328,14 +3511,60 @@ function cleanup() {
     restoreTarget(activeTarget);
     activeTarget = null;
   }
+  // Barrido global defensivo: cualquier miniatura huérfana también se elimina
   for (const node of document.querySelectorAll('img.twpp-sidebar-thumb')) {
     const parent = node.closest('.online-side-nav-channel-tooltip__body, [class*="online-side-nav-channel-tooltip"], .tw-balloon') || node.parentElement;
     node.remove();
     if (parent) {
-      const container = parent.closest('[tabindex="0"]') || parent;
+      const container = parent.closest('[data-a-target="side-nav-bar"]') ? parent : parent;
       restoreTarget({ container, insertionPoint: parent });
     }
   }
+}
+
+/* -------------------------------------------------------------- *
+ * Comprobación de identidad del tooltip.
+ * Requerimos DOS condiciones: el texto menciona el canal Y la
+ * geometría es coherente. Si solo una se cumple, no inyectamos.
+ * -------------------------------------------------------------- */
+
+function tooltipMatchesChannel(card, target, channel) {
+  if (!target || !target.insertionPoint) return false;
+
+  const text = (target.insertionPoint.textContent || '').toLowerCase();
+  const normChannel = channel.toLowerCase();
+
+  // Match textual robusto: canal de 4+ letras → contains simple.
+  // Canal corto → exigimos límite de palabra.
+  let textMatch = false;
+  if (normChannel.length >= 4) {
+    textMatch = text.includes(normChannel);
+  } else {
+    const re = new RegExp(`(^|[^a-z0-9_])${normChannel.replace(/[.*+?^${}()|[\]\\]/g, '\\$&')}([^a-z0-9_]|$)`, 'i');
+    textMatch = re.test(text);
+  }
+
+  const titleMatch = Boolean(
+    target.insertionPoint.querySelector(
+      `[title*="${normChannel}" i], [title*="${channel}" i]`
+    )
+  );
+
+  // Comprobación geométrica estricta
+  const cardRect = card.getBoundingClientRect();
+  const contRect = target.container.getBoundingClientRect();
+  const cardCY = cardRect.top + cardRect.height / 2;
+  const contCY = contRect.top + contRect.height / 2;
+  const verticalOK = Math.abs(cardCY - contCY) <= 100;
+  const horizontalOK = Math.min(
+    Math.abs(contRect.left - cardRect.right),
+    Math.abs(cardRect.left - contRect.right)
+  ) <= 60;
+
+  // Ambas deben cumplirse. Excepción: si hay match textual, relajamos
+  // la geometría a solo vertical (pero seguimos exigiendo <= 100px).
+  if (textMatch || titleMatch) return verticalOK;
+  return verticalOK && horizontalOK;
 }
 
 function inject(card, channel) {
@@ -3343,33 +3572,16 @@ function inject(card, channel) {
   waitForHoverDialog().then((dialog) => {
     if (!dialog || !dialog.isConnected || local !== generation) return;
 
-    const target = getTooltipTarget(dialog);
+    const target = findSidebarTooltip(card, dialog);
     if (!target || !target.insertionPoint) return;
 
-    // Verificar que el tooltip corresponde a este canal:
-    // a) Por coincidencia de texto (en el título o contenido)
-    // b) O por proximidad vertical con la card
-    const text = (target.insertionPoint.textContent || '').toLowerCase();
-    const normChannel = channel.toLowerCase();
-    const matchesChannel = text.includes(normChannel) ||
-      Boolean(target.insertionPoint.querySelector(`[title*="${normChannel}" i], [title*="${channel}" i]`));
+    if (!tooltipMatchesChannel(card, target, channel)) return;
 
-    if (!matchesChannel) {
-      const cardRect = card.getBoundingClientRect();
-      const dialogRect = target.container.getBoundingClientRect();
-      if (cardRect.height > 0 && dialogRect.height > 0) {
-        const cardCenterY = cardRect.top + cardRect.height / 2;
-        const dialogCenterY = dialogRect.top + dialogRect.height / 2;
-        if (Math.abs(cardCenterY - dialogCenterY) > 220) return;
-      }
-    }
-
-    // Limpieza global de cualquier miniatura previa
+    // Limpieza global antes de inyectar
     cleanup();
 
     const targetWidth = width();
 
-    // Adaptar el contenedor y el cuerpo del tooltip
     if (target.container) {
       target.container.style.width = `${targetWidth}px`;
       target.container.style.maxWidth = `${targetWidth}px`;
@@ -3412,6 +3624,8 @@ function inject(card, channel) {
 function onPointerOver(e) {
   const card = e.target.closest('[data-a-target="side-nav-card"], .side-nav-card, a[data-test-selector="followed-channel"]');
   if (!card) return;
+  // Scoping adicional: la card DEBE estar dentro de la sidebar real
+  if (!card.closest('[data-a-target="side-nav-bar"], nav[aria-label="Primary navigation"], [data-test-selector="side-nav"], .side-nav')) return;
   if (card === currentCard) return;
 
   currentCard = card;
@@ -3437,6 +3651,12 @@ function onPointerOut(e) {
   leaveTimer = setTimeout(() => {
     if (leaveGen === generation) cleanup();
   }, 100);
+}
+
+function onWindowBlur() {
+  currentCard = null;
+  generation += 1;
+  cleanup();
 }
 
 function teardown() {
@@ -3471,12 +3691,14 @@ defineFeature({
   onEnable() {
     document.addEventListener('mouseover', onPointerOver, { passive: true });
     document.addEventListener('mouseout', onPointerOut, { passive: true });
+    window.addEventListener('blur', onWindowBlur);
     setTimeout(() => preloadVisible(8), 2000);
     log('miniaturas de sidebar activas');
   },
   onDisable() {
     document.removeEventListener('mouseover', onPointerOver);
     document.removeEventListener('mouseout', onPointerOut);
+    window.removeEventListener('blur', onWindowBlur);
     teardown();
   },
   onRoute() {
@@ -3699,10 +3921,11 @@ const PANEL_CSS = `
   .wrap.open-down .panel { transform-origin: top right; }
   .wrap.open-down.align-left .panel { transform-origin: top left; }
   .toasts {
-    position: fixed; right: 14px; bottom: 52px;
+    position: absolute; right: 0; bottom: 40px;
     display: flex; flex-direction: column; gap: 6px;
-    pointer-events: none; z-index: 10;
+    pointer-events: none; z-index: 10; align-items: flex-end;
   }
+  .wrap.open-down .toasts { bottom: auto; top: 40px; }
   .toast {
     background: #9147ff; color: #fff; padding: 7px 12px; border-radius: 6px;
     font-size: 12px; font-weight: 600; box-shadow: 0 4px 14px rgba(0,0,0,.5);
@@ -3719,9 +3942,10 @@ const PANEL_CSS = `
     transform: scale(.85);
     transition: opacity .22s ease, transform .22s ease, background .18s ease;
   }
-  .fab:hover, .fab.reveal:hover { opacity: 1; transform: scale(1.15); background: #a970ff; pointer-events: auto; }
-  .fab.awake, .fab.reveal { opacity: .6; pointer-events: auto; transform: scale(1); }
-  .fab.flash { opacity: .75; pointer-events: auto; transform: scale(1.05); }
+  .fab.awake, .fab.reveal { opacity: .6; transform: scale(1); }
+  .fab.flash { opacity: .75; transform: scale(1.05); }
+  .fab.near { opacity: 1; transform: scale(1.15); background: #a970ff; pointer-events: auto; }
+  .fab:hover { opacity: 1; transform: scale(1.15); background: #a970ff; pointer-events: auto; }
   .fab.active { background: #ff5c5c; opacity: .95; pointer-events: auto; }
   .fab.dragging { cursor: grabbing !important; opacity: .85; transform: scale(1.1); pointer-events: auto; }
   .panel {
@@ -3898,6 +4122,7 @@ const { PRESETS: PRESETS, PRESET_LABELS: PRESET_LABELS, idsOf: idsOf } = __m36;
 
 declare('fabRight', 'number', 14);
 declare('fabBottom', 'number', 56);
+declare('hasSeenFab', 'bool', false);
 
 let host = null;
 let shadow = null;
@@ -3924,7 +4149,10 @@ function node(name) {
 }
 
 function escapeHtml(value) {
-  return String(value).replace(/[&<>"']/g, (char) => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' })[char]);
+  return String(value).replace(
+    /[&<>"'`]/g,
+    (char) => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;', '`': '&#96;' })[char],
+  );
 }
 
 function settingHtml(feature) {
@@ -4205,10 +4433,16 @@ function bind() {
     const fabX = isLeft ? (right + 13) : (winW - right - 13);
     const fabY = isTop ? (bottom + 13) : (winH - bottom - 13);
     const dist = Math.hypot(event.clientX - fabX, event.clientY - fabY);
-    if (dist < 140) {
+
+    if (dist < 30) {
+      fab.classList.add('awake', 'near');
+    } else if (dist < 140) {
       fab.classList.add('awake');
-      scheduleIdle();
+      fab.classList.remove('near');
+    } else {
+      fab.classList.remove('awake', 'near');
     }
+    scheduleIdle();
   };
   document.addEventListener('mousemove', wakeFab, { passive: true });
 
@@ -4298,6 +4532,7 @@ function bind() {
   node('preset').addEventListener('change', (event) => applyPreset(event.target.value));
 
   onBus('route', () => sync());
+  onBus('chatPause:change', () => sync());
   onBus('catalog:updated', () => {
     // el catálogo pudo añadir features: hay que redibujar las filas
     node('body').innerHTML = sectionsHtml();
@@ -4325,12 +4560,14 @@ function scheduleIdle() {
   clearTimeout(idleTimer);
   idleTimer = setTimeout(() => {
     if (panel && !panel.hidden) return;
-    fab?.classList.remove('awake');
+    fab?.classList.remove('awake', 'near');
   }, 4000);
 }
 
 function flashFab() {
   if (!fab) return;
+  if (get('hasSeenFab')) return;
+  set('hasSeenFab', true);
   fab.classList.add('flash');
   setTimeout(() => {
     if (panel && !panel.hidden) return;
@@ -4558,7 +4795,9 @@ const { UI: UI } = __m37;
 
 
 
-declare('keybinds', 'object', {});
+declare('keybinds', 'object', {}, (v) =>
+  v && typeof v === 'object' && !Array.isArray(v) && Object.values(v).every((x) => typeof x === 'string'),
+);
 declare('preset', 'string', 'balanced');
 declare('catalog', 'bool', true);
 declare('autoUpdate', 'bool', true);

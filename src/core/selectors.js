@@ -61,9 +61,10 @@ const BASE = {
   'claimBonus': [
     'button:has([data-test-selector="claimable-bonus-icon"])',
     'button:has(.claimable-bonus__icon)',
-    'button[aria-label*="Bonus" i]',
-    'button[aria-label*="bonificación" i]',
-    'button[aria-label*="reclamar" i]',
+    '[data-a-target="community-points-summary"] button[aria-label*="Bonus" i]',
+    '[data-test-selector="community-points-summary"] button[aria-label*="Bonus" i]',
+    '[data-a-target="community-points-summary"] button[aria-label*="bonificación" i]',
+    '[data-test-selector="community-points-summary"] button[aria-label*="bonificación" i]',
     '.claimable-bonus__icon',
     '[data-test-selector="claimable-bonus-icon"]',
   ],
@@ -125,19 +126,19 @@ export function candidates(key) {
   return list(key);
 }
 
-export function select(key, root = document) {
+export function select(key, root = document, { track = true } = {}) {
   for (const selector of list(key)) {
     try {
       const found = root.querySelector(selector);
       if (found) {
-        note(key, selector);
+        if (track) note(key, selector);
         return found;
       }
     } catch {
       /* candidato inválido: se ignora */
     }
   }
-  note(key, null);
+  if (track) note(key, null);
   return null;
 }
 
@@ -157,20 +158,38 @@ export function selectAll(key, root = document) {
   return [];
 }
 
+const TOO_BROAD = [
+  /^\*$/,                          // universal
+  /^[a-z]+$/i,                     // solo un tag: button, div, span, a
+  /^\[[a-z-]+\]$/i,                // solo un atributo: [class], [id], [href]
+  /^\.\w+$/,                       // una sola clase sin contexto: .foo
+  /^#\w+$/,                        // un solo id sin contexto: #bar
+  /^[a-z]+\s*>\s*\*$/i,            // button > * , div > *
+  /^[a-z]+\s+\*$/i,                // button * , div *
+];
+
+function isTooBroad(selector) {
+  const s = selector.trim();
+  if (s.length < 6) return true;   // demasiado corto para ser específico
+  for (const re of TOO_BROAD) if (re.test(s)) return true;
+  return false;
+}
+
 export function isValidSelector(selector) {
-  return (
-    typeof selector === 'string' &&
-    selector.trim().length > 0 &&
-    selector.length <= MAX_LENGTH &&
-    !FORBIDDEN.test(selector)
-  );
+  if (typeof selector !== 'string') return false;
+  const s = selector.trim();
+  if (!s || s.length > MAX_LENGTH) return false;
+  if (FORBIDDEN.test(s)) return false;
+  if (isTooBroad(s)) return false;
+  return true;
 }
 
 /** Aplica selectores remotos. Devuelve cuántos se aceptaron y cuáles se rechazaron. */
 export function applyRemote(map) {
   const applied = [];
   const rejected = [];
-  if (!map || typeof map !== 'object') return { applied, rejected };
+  const rejectedBroad = [];
+  if (!map || typeof map !== 'object') return { applied, rejected, rejectedBroad };
 
   for (const [key, raw] of Object.entries(map)) {
     const entry = state.get(key);
@@ -178,9 +197,13 @@ export function applyRemote(map) {
       rejected.push(key);
       continue;
     }
-    const incoming = (Array.isArray(raw) ? raw : [raw]).filter(isValidSelector);
+    const items = Array.isArray(raw) ? raw : [raw];
+    const incoming = items.filter(isValidSelector);
+    const broad = items.filter((s) => typeof s === 'string' && !FORBIDDEN.test(s) && isTooBroad(s));
+
     if (!incoming.length) {
       rejected.push(key);
+      if (broad.length) rejectedBroad.push(`${key}: ${broad.join(', ')}`);
       continue;
     }
     entry.remote = incoming.slice(0, MAX_CANDIDATES);
@@ -189,7 +212,8 @@ export function applyRemote(map) {
 
   if (applied.length) log('selectores remotos aplicados:', applied.join(', '));
   if (rejected.length) warn('selectores remotos rechazados:', rejected.join(', '));
-  return { applied, rejected };
+  if (rejectedBroad.length) warn('selectores remotos demasiado amplios:', rejectedBroad.join(' | '));
+  return { applied, rejected, rejectedBroad };
 }
 
 export function clearRemote() {
@@ -208,7 +232,7 @@ export function snapshot() {
  */
 export function selectorReport(root = document) {
   return [...state.keys()].map((key) => {
-    const matched = select(key, root);
+    const matched = select(key, root, { track: false });
     const stats = health.get(key) || { hits: 0, misses: 0 };
     return {
       key,

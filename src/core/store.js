@@ -14,11 +14,18 @@ const listeners = new Set();
 let cache = null;
 let importedFromLegacy = null;
 
-addValueChangeListener(KEY, (remote) => {
-  if (!remote || typeof remote !== 'object') return;
+addValueChangeListener(KEY, (newValue) => {
+  if (!newValue || typeof newValue !== 'object') return;
+  const prev = cache;
   cache = null;
-  all();
-  for (const key of schema.keys()) changed(key);
+  const next = all();
+  if (!prev) {
+    for (const key of schema.keys()) changed(key);
+    return;
+  }
+  for (const key of schema.keys()) {
+    if (prev[key] !== next[key]) changed(key);
+  }
 });
 
 function coerce(value, type) {
@@ -41,9 +48,23 @@ function coerce(value, type) {
   }
 }
 
-export function declare(key, type, fallback) {
-  schema.set(key, { type, fallback });
-  if (cache) cache[key] = coerce(cache[key], type) ?? fallback;
+function applyValidate(key, value) {
+  const def = schema.get(key);
+  if (!def?.validate || value === undefined) return value;
+  try {
+    return def.validate(value) ? value : undefined;
+  } catch {
+    return undefined;
+  }
+}
+
+export function declare(key, type, fallback, validate) {
+  schema.set(key, { type, fallback, validate });
+  if (cache) {
+    const raw = coerce(cache[key], type);
+    const valid = validate && raw !== undefined ? (validate(raw) ? raw : undefined) : raw;
+    cache[key] = valid ?? (typeof fallback === 'object' && fallback !== null ? clone(fallback) : fallback);
+  }
 }
 
 export function all() {
@@ -54,7 +75,7 @@ export function all() {
   const next = {};
   let repaired = 0;
   for (const [key, { type, fallback }] of schema) {
-    const value = coerce(migrated[key], type);
+    const value = applyValidate(key, coerce(migrated[key], type));
     if (value === undefined) {
       if (migrated[key] !== undefined) {
         repaired += 1;
@@ -115,18 +136,25 @@ function changed(key) {
 
 export function set(key, value) {
   const current = all();
-  if (current[key] === value) return value;
-  current[key] = value;
+  const def = schema.get(key);
+  const coerced = def ? applyValidate(key, coerce(value, def.type)) : value;
+  const final = coerced === undefined ? (def ? (typeof def.fallback === 'object' && def.fallback !== null ? clone(def.fallback) : def.fallback) : value) : coerced;
+  if (current[key] === final) return final;
+  current[key] = final;
   persist();
   changed(key);
-  return value;
+  return final;
 }
 
 export function setMany(entries) {
   const current = all();
   const keys = Object.keys(entries).filter((key) => current[key] !== entries[key]);
   if (!keys.length) return current;
-  Object.assign(current, entries);
+  for (const [key, value] of Object.entries(entries)) {
+    const def = schema.get(key);
+    const coerced = def ? applyValidate(key, coerce(value, def.type)) : value;
+    current[key] = coerced === undefined ? (def ? (typeof def.fallback === 'object' && def.fallback !== null ? clone(def.fallback) : def.fallback) : value) : coerced;
+  }
   persist();
   for (const key of keys) changed(key);
   return current;
@@ -154,7 +182,7 @@ export function importJSON(text) {
   if (!parsed || typeof parsed !== 'object' || Array.isArray(parsed)) throw new Error('JSON inválido');
   cache = all();
   for (const [key, { type, fallback }] of schema) {
-    const value = coerce(parsed[key], type);
+    const value = applyValidate(key, coerce(parsed[key], type));
     cache[key] = value === undefined ? (typeof fallback === 'object' ? clone(fallback) : fallback) : value;
   }
   cache._v = CONFIG_VERSION;

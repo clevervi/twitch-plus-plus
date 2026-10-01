@@ -1,4 +1,4 @@
-import { get as storeGet, set as storeSet } from './store.js';
+import { get as storeGet, onChange, set as storeSet } from './store.js';
 import { warn } from './log.js';
 
 const actions = new Map();
@@ -63,11 +63,34 @@ function isTypingTarget(target) {
   return tag === 'input' || tag === 'textarea' || tag === 'select' || target.isContentEditable === true;
 }
 
-export function register(id, label, fallback) {
-  actions.set(id, { id, label, fallback });
+let comboCache = null;
+
+function buildComboCache() {
   const keybinds = storeGet('keybinds') || {};
-  if (typeof keybinds[id] !== 'string') keybinds[id] = fallback;
-  storeSet('keybinds', keybinds);
+  const map = new Map();
+  for (const id of actions.keys()) map.set(id, parseKeybind(keybinds[id]));
+  return map;
+}
+
+function combos() {
+  if (!comboCache) comboCache = buildComboCache();
+  return comboCache;
+}
+
+export function invalidateComboCache() {
+  comboCache = null;
+}
+
+export function register(id, label, fallback, options = {}) {
+  actions.set(id, {
+    id,
+    label,
+    fallback,
+    allowWhileTyping: options.allowWhileTyping ?? (id === 'panel'),
+  });
+  const keybinds = storeGet('keybinds') || {};
+  if (typeof keybinds[id] === 'string') return;
+  setCombo(id, fallback);
 }
 
 export function list() {
@@ -75,7 +98,7 @@ export function list() {
 }
 
 export function comboOf(id) {
-  return parseKeybind((storeGet('keybinds') || {})[id]);
+  return combos().get(id) || null;
 }
 
 export function bindGlobal(run) {
@@ -83,14 +106,15 @@ export function bindGlobal(run) {
     'keydown',
     (event) => {
       if (event.repeat) return; // mantener pulsado no debe repetir la acción
-      const keybinds = storeGet('keybinds') || {};
-      for (const id of actions.keys()) {
-        if (!keybinds[id]) continue;
-        if (!matchKeybind(parseKeybind(keybinds[id]), event)) continue;
-        if (isTypingTarget(event.target) && id !== 'panel') continue;
+      const map = combos();
+      for (const action of actions.values()) {
+        const combo = map.get(action.id);
+        if (!combo) continue;
+        if (!matchKeybind(combo, event)) continue;
+        if (isTypingTarget(event.target) && !action.allowWhileTyping) continue;
         event.preventDefault?.();
         event.stopPropagation?.();
-        run(id);
+        run(action.id);
         return;
       }
     },
@@ -99,17 +123,23 @@ export function bindGlobal(run) {
 }
 
 export function setCombo(id, value) {
-  const keybinds = { ...(storeGet('keybinds') || {}) };
+  const current = storeGet('keybinds') || {};
   const combo = parseKeybind(value);
   if (value && !combo) {
     warn('atajo inválido, se ignora:', value);
     return false;
   }
-  keybinds[id] = combo ? String(value).trim() : '';
-  storeSet('keybinds', keybinds);
+  const next = combo ? String(value).trim() : '';
+  if (current[id] === next) return true;
+  storeSet('keybinds', { ...current, [id]: next });
+  invalidateComboCache();
   return true;
 }
 
 export function describe(value) {
   return parseKeybind(value) ? String(value).trim() : '—';
 }
+
+onChange((key) => {
+  if (key === 'keybinds') invalidateComboCache();
+});

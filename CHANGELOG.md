@@ -76,3 +76,7 @@
 ## 2.2.7 — 2026-10-01
 
 - Actualización de selectores con base en informe de consola en vivo: soporte para sideNav.link, sideNav.more, claimBonus y pauseChat en Twitch moderno
+
+## 2.2.8 — 2026-10-01
+
+- Fix controles de player con overlays específicos, acotación estricta de tooltips de sidebar, corrección FAB no invasivo y selectores robustos

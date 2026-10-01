@@ -13,7 +13,8 @@ import { selectAll } from '../core/selectors.js';
 import { get as storeGet } from '../core/store.js';
 
 const EXTENSION_HINT = /extension|ext-twitch|\/extensions\/|extension-panel|twitch-ext-/i;
-const EXTENSION_ICON_HINT = /Icon-(Extension|Extensions|Puzzle|Plugin|Apps|Addon|Overlay|Component)/i;
+// Solo iconos claramente de extensión. Sin Overlay/Component genéricos.
+const EXTENSION_ICON_HINT = /Icon-(Extension|Extensions|Puzzle|Plugin|Addon|Apps)/i;
 
 const KNOWN_PLAYER_ICONS = new RegExp(
   'Icon-(Settings|Gear|Volume|Fullscreen|Theater|Pause|Play|Mute|Unmute|Rewind|Forward|' +
@@ -28,21 +29,24 @@ const SAFE_BUTTON_LABEL =
   /pantalla|fullscreen|teatro|theater|volumen|volume|silenciar|mute|pausa|pause|reproducir|play|ajustes|settings|calidad|quality|clip|compartir|share|subt[ií]tulos|captions|audio|pip|directo|live|accesibilidad|accessibility/i;
 
 const known = new Set();
-const removed = new Set();
+const removed = new WeakSet();
+const removedRefs = new Set();
 
 function kill(element) {
   if (!element || removed.has(element)) return;
   removed.add(element);
+  removedRefs.add(element);
   element.style.setProperty('display', 'none', 'important');
   element.style.setProperty('pointer-events', 'none', 'important');
 }
 
 function restore() {
-  for (const node of removed) {
+  for (const node of removedRefs) {
+    if (!node?.isConnected) continue;
     node.style?.removeProperty('display');
     node.style?.removeProperty('pointer-events');
   }
-  removed.clear();
+  removedRefs.clear();
 }
 
 function extensionLike(element) {
@@ -60,10 +64,26 @@ function extensionLike(element) {
 
 function playerOverlaySweep() {
   for (const player of selectAll('player')) {
+    // 1) iframes de extensión dentro del player
     for (const frame of qsAll('iframe', player)) {
       if (extensionLike(frame)) kill(frame);
     }
-    for (const box of qsAll('div[class*="overlay"], .extension-container, .extension-view', player)) {
+
+    // 2) Overlays de extensión SOLO con clases específicas.
+    //    Ya NO usamos div[class*="overlay"] porque matchea los overlays
+    //    legítimos del player (controles de pausa, settings, etc.).
+    const overlaySelectors = [
+      '.extension-container',
+      '.extension-view',
+      '[class*="extension-overlay"]',
+      '[class*="extensions-overlay"]',
+      '[class*="video-extension"]',
+      '[data-test-selector="extension-overlay"]',
+      '[data-a-target="extension-overlay"]',
+      '[data-test-selector="video-extension-overlay"]',
+      '[data-a-target="video-extension-overlay"]',
+    ];
+    for (const box of qsAll(overlaySelectors.join(','), player)) {
       if (!box.querySelector('iframe')) continue;
       kill(box);
     }
@@ -151,7 +171,6 @@ defineFeature({
     %SCOPE% [id^="twitch-ext-"],
     %SCOPE% [id*="extension-iframe"],
     %SCOPE% [id*="extension-overlay"],
-    %SCOPE% iframe[src*="extension"],
     %SCOPE% iframe[src*="ext-twitch"],
     %SCOPE% iframe[src*="/extensions/"],
     %SCOPE% iframe[id*="extension"],

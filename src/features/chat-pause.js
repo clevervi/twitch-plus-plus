@@ -4,9 +4,12 @@
  * Usa el botón nativo de Twitch cuando existe; si no, congela el scroll del
  * contenedor de mensajes. Se mantiene vivo aunque Twitch recree el nodo.
  */
+import { emit as emitBus } from '../core/bus.js';
 import { isVisible } from '../core/dom.js';
 import { select } from '../core/selectors.js';
 import { show as toast } from '../core/toast.js';
+
+const RESET_AFTER_MISSES = 5;
 
 const state = {
   active: false,
@@ -18,7 +21,16 @@ const state = {
   onUser: null,
   userTimer: null,
   native: null,
+  missedChecks: 0,
 };
+
+function emitChange() {
+  try {
+    emitBus('chatPause:change', { active: state.active, mode: state.mode });
+  } catch {
+    /* ignore */
+  }
+}
 
 function nativeButton() {
   const button = select('pauseChat');
@@ -91,14 +103,18 @@ export const ChatPause = {
       state.active = !wasPaused;
       state.mode = state.active ? 'native' : null;
       state.native = state.active ? native : null;
+      state.missedChecks = 0;
       toast(state.active ? 'Chat pausado' : 'Chat reanudado');
+      emitChange();
       return true;
     }
     if (!attach()) return false;
     state.top = state.el.scrollTop;
     state.active = true;
     state.mode = 'scroll';
+    state.missedChecks = 0;
     toast('Chat pausado');
+    emitChange();
     return true;
   },
 
@@ -111,8 +127,10 @@ export const ChatPause = {
     state.native = null;
     state.active = false;
     state.mode = null;
+    state.missedChecks = 0;
     detach();
     toast('Chat reanudado');
+    emitChange();
     return true;
   },
 
@@ -122,18 +140,37 @@ export const ChatPause = {
 
   /** Lo llama el scheduler: reconcilia con Twitch y recoloca el scroll si recreó el contenedor. */
   ensure() {
-    if (!state.active) return;
+    if (!state.active) {
+      if (state.mode === null) {
+        const native = nativeButton();
+        if (native && nativeSaysPaused(native)) {
+          state.active = true;
+          state.mode = 'native';
+          state.native = native;
+          state.missedChecks = 0;
+          emitChange();
+        }
+      }
+      return;
+    }
     if (state.mode === 'native') {
       const current = nativeButton();
       if (current && nativeSaysPaused(current)) {
-        state.native = current;   // actualiza la referencia
+        state.native = current;
+        state.missedChecks = 0;
         return;
+      }
+      state.missedChecks += 1;
+      if (state.missedChecks < RESET_AFTER_MISSES) {
+        return; // Twitch re-renderizó el botón temporalmente
       }
       // El botón nativo desapareció o ya no dice "Resume": Twitch desbloqueó el chat
       state.native = null;
       state.active = false;
       state.mode = null;
+      state.missedChecks = 0;
       detach();
+      emitChange();
       return;
     }
     if (state.mode === 'scroll') {
