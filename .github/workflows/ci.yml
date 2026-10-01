@@ -15,20 +15,17 @@ jobs:
         with:
           node-version: 20
 
-      - name: Lint
-        run: node scripts/lint.mjs
+      # `npm run verify` es la única definición de qué hay que comprobar:
+      # lint + detector de idioma + build + tests. Reimplementar los pasos aquí
+      # a mano ya ha causado que un paso se quedara fuera sin que nadie lo notase.
+      - name: Verificar (lint, idioma, build y tests)
+        run: npm run verify
 
-      - name: Build
-        run: node scripts/build.mjs
-
-      - name: El bundle no debe tener drifted
+      - name: El bundle no debe haber derivado
         run: git diff --exit-code dist/
 
       - name: El YAML de .github debe ser válido
         run: |
           for f in $(find .github -name '*.yml'); do
-            ruby -ryaml -e "YAML.load_file(ARGV[0])" "$f" || { echo "YAML invalido: $f"; exit 1; }
+            ruby -ryaml -e "YAML.load_file(ARGV[0])" "$f" || { echo "YAML inválido: $f"; exit 1; }
           done
-
-      - name: Tests
-        run: node --test
