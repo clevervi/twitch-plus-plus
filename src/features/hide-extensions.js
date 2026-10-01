@@ -29,24 +29,48 @@ const SAFE_BUTTON_LABEL =
   /pantalla|fullscreen|teatro|theater|volumen|volume|silenciar|mute|pausa|pause|reproducir|play|ajustes|settings|calidad|quality|clip|compartir|share|subt[ií]tulos|captions|audio|pip|directo|live|accesibilidad|accessibility/i;
 
 const known = new Set();
-const removed = new WeakSet();
-const removedRefs = new Set();
+
+/**
+ * Nodos ocultados ahora mismo, con el valor que tenía cada propiedad antes de
+ * que tocáramos nada.
+ *
+ * Refleja el ESTADO, no la historia. Con un `WeakSet` que solo crecía, apagar
+ * y volver a encender la feature dejaba los overlays visibles para siempre:
+ * el nodo seguía marcado, `kill()` no hacía nada y nunca se volvía a ocultar.
+ */
+const ocultos = new Map();
+
+const PROPIEDADES = ['display', 'pointer-events'];
 
 function kill(element) {
-  if (!element || removed.has(element)) return;
-  removed.add(element);
-  removedRefs.add(element);
+  if (!element || ocultos.has(element)) return false;
+
+  const previo = {};
+  for (const propiedad of PROPIEDADES) {
+    previo[propiedad] = element.style?.getPropertyValue(propiedad) ?? '';
+  }
   element.style.setProperty('display', 'none', 'important');
   element.style.setProperty('pointer-events', 'none', 'important');
+  ocultos.set(element, previo);
+  return true;
+}
+
+function restaurar(elemento, previo) {
+  for (const propiedad of PROPIEDADES) {
+    // Se restaura el valor que había, no se borra la propiedad: si Twitch
+    // tenía `display: flex` en línea, borrarla rompería el elemento al apagar.
+    if (previo[propiedad]) element.style.setProperty(propiedad, previo[propiedad]);
+    else element.style.removeProperty(propiedad);
+  }
 }
 
 function restore() {
-  for (const node of removedRefs) {
-    if (!node?.isConnected) continue;
-    node.style?.removeProperty('display');
-    node.style?.removeProperty('pointer-events');
+  for (const [elemento, previo] of ocultos) {
+    if (elemento?.isConnected) restaurar(elemento, previo);
   }
-  removedRefs.clear();
+  // Se vacía el registro entero, no solo los conectados: si no, el ciclo
+  // apagar/encender deja los overlays sin ocultar para siempre.
+  ocultos.clear();
 }
 
 function extensionLike(element) {
@@ -98,7 +122,7 @@ function unknownButtonSweep() {
 
   for (const player of selectAll('player')) {
     for (const button of qsAll('button', player)) {
-      if (removed.has(button)) continue;
+      if (ocultos.has(button)) continue;
       const label = (button.getAttribute('aria-label') || button.getAttribute('title') || '').trim();
       if (SAFE_BUTTON_LABEL.test(label)) continue;
       const svg = button.querySelector('svg');
