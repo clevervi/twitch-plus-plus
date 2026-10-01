@@ -84,3 +84,7 @@
 ## 2.2.9 — 2026-10-01
 
 - Blindaje integral: fijar escape CSS en modo limpio, limites de regex en menciones, observador dinamico en scheduler, atajo de panel en inputs y soporte de mayus
+
+## 2.2.10 — 2026-10-01
+
+- grant de GM_deleteValue y GM_addValueChangeListener, que faltaban y hacia que restablecer la configuracion no borrase nada; - managerName() ya no devuelve siempre desconocido, porque GM_info es un objeto y no una funcion; - diagnostico nuevo: TwitchPP.diagnostics.apis() y la linea de APIs ausentes en report(); - matriz de compatibilidad en el README

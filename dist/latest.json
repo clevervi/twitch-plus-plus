@@ -1,7 +1,7 @@
 {
-  "version": "2.2.9",
+  "version": "2.2.10",
   "script": "https://raw.githubusercontent.com/clevervi/twitch-plus-plus/main/dist/twitch-plus-plus.user.js",
   "homepage": "https://github.com/clevervi/twitch-plus-plus",
-  "publishedAt": "2026-10-01T04:07:38.123Z",
-  "notes": "Blindaje integral: fijar escape CSS en modo limpio, limites de regex en menciones, observador dinamico en scheduler, atajo de panel en inputs y soporte de mayus"
+  "publishedAt": "2026-10-01T04:32:01.004Z",
+  "notes": "grant de GM_deleteValue y GM_addValueChangeListener, que faltaban y hacia que restablecer la configuracion no borrase nada; - managerName() ya no devuelve siempre desconocido, porque GM_info es un objeto y no una funcion; - diagnostico nuevo: TwitchPP.diagnostics.apis() y la linea de APIs ausentes en report(); - matriz de compatibilidad en el README"
 }
