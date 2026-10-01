@@ -1,7 +1,7 @@
 // ==UserScript==
 // @name         Twitch++
 // @namespace    https://github.com/clevervi
-// @version      2.2.8
+// @version      2.2.9
 // @description  Twitch limpio, modular y autoactualizable: OLED, sidebar, chat, analítica de viewers, auto Channel Points y pausa de chat.
 // @author       clevervi
 // @license      MIT
@@ -810,7 +810,7 @@ function importJSON(text) {
   cache = all();
   for (const [key, { type, fallback }] of schema) {
     const value = applyValidate(key, coerce(parsed[key], type));
-    cache[key] = value === undefined ? (typeof fallback === 'object' ? clone(fallback) : fallback) : value;
+    cache[key] = value === undefined ? (typeof fallback === 'object' && fallback !== null ? clone(fallback) : fallback) : value;
   }
   cache._v = CONFIG_VERSION;
   persist();
@@ -1100,7 +1100,7 @@ return {
 /* ---- src/core/version.js ---- */
 const __m8 = (function () {
 /** Sustituido en build. Fuente única de verdad: package.json + header del userscript. */
-const VERSION = '2.2.8';
+const VERSION = '2.2.9';
 const REPO_URL = 'https://github.com/clevervi/twitch-plus-plus';
 const RAW_URL = 'https://raw.githubusercontent.com/clevervi/twitch-plus-plus/main';
 const BRANCH = 'main';
@@ -1409,6 +1409,7 @@ const MODIFIERS = {
   ctrl: 'ctrl',
   control: 'ctrl',
   shift: 'shift',
+  mayus: 'shift',
   meta: 'meta',
   cmd: 'meta',
   command: 'meta',
@@ -1460,7 +1461,9 @@ function matchKeybind(combo, event) {
 function isTypingTarget(target) {
   if (!target || !target.tagName) return false;
   const tag = target.tagName.toLowerCase();
-  return tag === 'input' || tag === 'textarea' || tag === 'select' || target.isContentEditable === true;
+  if (tag === 'input' || tag === 'textarea' || tag === 'select' || target.isContentEditable === true) return true;
+  const role = target.getAttribute?.('role');
+  return role === 'textbox' || role === 'searchbox';
 }
 
 let comboCache = null;
@@ -1666,29 +1669,42 @@ const { log: log } = __m2;
 
 let routeSeq = 0;
 let bound = false;
+let lastRoute = null;
 
-function currentRoute() {
-  return {
+function currentRoute(razon = 'navigation') {
+  const path = typeof location !== 'undefined' ? location.pathname : '/';
+  const channel = (path.match(/^\/([^/]+)/) || [])[1] || '';
+  const now = Date.now();
+  const route = {
     seq: ++routeSeq,
-    path: location.pathname,
-    channel: (location.pathname.match(/^\/([^/]+)/) || [])[1] || '',
-    at: Date.now(),
+    path,
+    channel,
+    canal: channel,
+    anterior: lastRoute ? lastRoute.channel : null,
+    tiempoVisible: lastRoute ? now - lastRoute.at : 0,
+    razon,
+    at: now,
   };
+  lastRoute = route;
+  return route;
 }
 
-function notify() {
-  const route = currentRoute();
+function notify(razon = 'navigation') {
+  const route = currentRoute(razon);
   log('ruta:', route.path);
   emit('route', route);
-  window.dispatchEvent(new CustomEvent('twpp:route', { detail: route }));
+  if (typeof window !== 'undefined' && window.dispatchEvent) {
+    window.dispatchEvent(new CustomEvent('twpp:route', { detail: route }));
+  }
 }
 
 function patch(type) {
+  if (typeof history === 'undefined') return;
   const original = history[type];
   if (typeof original !== 'function') return;
   history[type] = function patched(...args) {
     const result = original.apply(this, args);
-    notify();
+    notify(type);
     return result;
   };
 }
@@ -1698,11 +1714,14 @@ function start() {
   bound = true;
   patch('pushState');
   patch('replaceState');
-  window.addEventListener('popstate', notify);
-  window.addEventListener('hashchange', notify);
-  emit('route', currentRoute());
+  if (typeof window !== 'undefined' && window.addEventListener) {
+    window.addEventListener('popstate', () => notify('popstate'));
+    window.addEventListener('hashchange', () => notify('hashchange'));
+  }
+  notify('initial');
 }
 return {
+  currentRoute: currentRoute,
   start: start,
 };
 })();
@@ -1755,25 +1774,35 @@ function request() {
   });
 }
 
-function observe() {
-  if (observer || typeof MutationObserver !== 'function') return;
-  const signal = throttle(() => request(), 400);
-  observer = new MutationObserver(signal);
-  
-  // Observar áreas específicas sin profundidad extrema
+const observedTargets = new WeakSet();
+
+function attachTargets() {
+  if (!observer || typeof document === 'undefined') return;
   const targets = [
     document.querySelector('[data-a-target="side-nav-bar"]'),
     document.querySelector('[data-a-target="video-player"]'),
     document.querySelector('[data-a-target="chat-room-component-layout"]'),
   ].filter(Boolean);
-  
-  // Observar estos con subtree limitado
+
   for (const target of targets) {
-    observer.observe(target, { childList: true, subtree: true });
+    if (!observedTargets.has(target)) {
+      observedTargets.add(target);
+      observer.observe(target, { childList: true, subtree: true });
+    }
   }
-  
-  // Observar body solo para detectar si se recrea algún contenedor principal
-  observer.observe(document.body, { childList: true, subtree: false });
+}
+
+function observe() {
+  if (observer || typeof MutationObserver !== 'function') return;
+  const signal = throttle(() => {
+    attachTargets();
+    request();
+  }, 400);
+  observer = new MutationObserver(signal);
+  attachTargets();
+  if (document.body) {
+    observer.observe(document.body, { childList: true, subtree: false });
+  }
 }
 
 function start() {
@@ -1806,7 +1835,10 @@ function kick() {
   request();
 }
 
-const scheduleRoute = debounce(() => request(), 120);
+const scheduleRoute = debounce(() => {
+  attachTargets();
+  request();
+}, 120);
 
 function isRunning() {
   return !!timer;
@@ -2251,12 +2283,13 @@ const { select: select, selectAll: selectAll } = __m3;
 const CDN = 'https://static-cdn.jtvnw.net/previews-ttv';
 const RESERVED = new Set([
   'directory', 'settings', 'subscriptions', 'inventory', 'wallet', 'drops', 'u', 'downloads',
-  'friends', 'search', 'turbo', 'subscriptions', 'p', 'store', 'prime', 'signup', 'login',
+  'friends', 'search', 'turbo', 'p', 'store', 'prime', 'signup', 'login', 'videos',
+  'messages', 'popout', 'moderator', 'dashboard',
 ]);
 
 function channelFromHref(href) {
   if (!href || !href.startsWith('/') || href.startsWith('//')) return null;
-  const first = href.split(/[\/?​#]/).filter(Boolean)[0];
+  const first = href.split(/[\/?#]/).filter(Boolean)[0];
   if (!first || RESERVED.has(first.toLowerCase())) return null;
   return decodeURIComponent(first).toLowerCase();
 }
@@ -2608,10 +2641,11 @@ function buildMatcher(query) {
   return query.toLowerCase();
 }
 
-function apply() {
+function apply({ keepCursor = false } = {}) {
   const input = qs('.twpp-search-input', bar);
   if (!input) return;
   const raw = input.value.trim();
+  const prevCursor = cursor;
   clearMarks();
   if (!raw) return;
 
@@ -2632,7 +2666,15 @@ function apply() {
     matches.push(line);
   }
   updateCounter();
-  if (matches.length) jump(0);
+  if (matches.length) {
+    if (keepCursor && prevCursor >= 0 && prevCursor < matches.length) {
+      cursor = prevCursor;
+      matches[cursor].classList.add('twpp-chat-current');
+      updateCounter();
+    } else {
+      jump(0);
+    }
+  }
 }
 
 function ensureUI() {
@@ -2727,7 +2769,7 @@ defineFeature({
   tick() {
     if (!ensureUI()) return;
     const input = qs('.twpp-search-input', bar);
-    if (input && input.value.trim()) apply();
+    if (input && input.value.trim()) apply({ keepCursor: true });
   },
   onDisable: destroy,
   onRoute: destroy,
@@ -2748,7 +2790,8 @@ defineFeature({
   default: true,
   css: `
     %SCOPE% [data-a-target="prime-offer"],
-    %SCOPE% .prime-offer, .prime-offer-offer,
+    %SCOPE% .prime-offer,
+    %SCOPE% .prime-offer-offer,
     %SCOPE% [data-test-selector="prime-offer"],
     %SCOPE% [data-a-target="upsell-banner"],
     %SCOPE% [data-test-selector="subscription-upsell"],
@@ -3267,7 +3310,8 @@ function detectUsername() {
   if (username) return username;
   username = currentUsername();
   if (!username) return null;
-  pattern = new RegExp(`@?${username.replace(/[.*+?^${}()|[\]\\]/g, '\\$&')}`, 'i');
+  const escaped = username.replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
+  pattern = new RegExp(`(?:^|[^a-zA-Z0-9_])@?${escaped}(?:[^a-zA-Z0-9_]|$)`, 'i');
   return username;
 }
 
@@ -3882,10 +3926,8 @@ defineFeature({
   },
   onDisable: teardown,
   onRoute() {
-    chatters.clear();
-    counted = new WeakSet();
+    teardown();
     lastUpdate = 0;
-    badge = null;
   },
 });
 return {
@@ -4754,7 +4796,7 @@ const { on: onBus } = __m0;
 const { refresh: refreshCatalog, status: catalogStatus, warm: warmCatalog } = __m9;
 const { onIdle: onIdle, ready: ready } = __m10;
 const { bindGlobal: bindGlobal, register: registerKeybind } = __m11;
-const { setDebug: setDebug, trackedErrors: trackedErrors, track: track } = __m2;
+const { setDebug: setDebug, track: track, trackedErrors: trackedErrors, warn: warn } = __m2;
 const { probe: probe } = __m12;
 const { report: report } = __m13;
 const { applyAll: applyAll, disableAll: disableAll, onRouteAll: onRouteAll, statuses: statuses } = __m6;
@@ -4804,7 +4846,7 @@ declare('autoUpdate', 'bool', true);
 declare('debug', 'bool', false);
 
 function registerKeybinds() {
-  registerKeybind('panel', 'Abrir panel', 'Alt+Shift+T');
+  registerKeybind('panel', 'Abrir panel', 'Alt+Shift+T', { allowWhileTyping: true });
   registerKeybind('chatPause', 'Pausar chat', 'Alt+Shift+P');
   registerKeybind('pauseAll', 'Desactivar todo', 'Alt+Shift+X');
 }
@@ -4844,12 +4886,37 @@ async function networkTasks() {
   }
 }
 
+const BOOT_BUDGET_MS = 150;
+
+const bootReport = {
+  startedAt: 0,
+  completedAt: 0,
+  durationMs: 0,
+  budgetMs: BOOT_BUDGET_MS,
+  slow: false,
+  stages: {
+    styles: { ok: false, error: null },
+    ui: { ok: false, error: null },
+  },
+};
+
 function start() {
+  bootReport.startedAt = Date.now();
+  if (typeof performance !== 'undefined' && performance.mark) {
+    try {
+      performance.mark('twpp-boot-start');
+    } catch {
+      /* ignore */
+    }
+  }
+
   // Capa 1: todo lo que no necesita <body>. Se ejecuta en document-start para
   // que el CSS esté en la página antes de que Twitch pinte el tema claro.
   try {
     bootStyles();
+    bootReport.stages.styles.ok = true;
   } catch (error) {
+    bootReport.stages.styles.error = String(error?.message || error);
     reportBootFailure('estilos', error);
     return;
   }
@@ -4860,8 +4927,27 @@ function start() {
       startScheduler();
       UI.build();
       UI.renderCatalogNote();
+      bootReport.stages.ui.ok = true;
+      bootReport.completedAt = Date.now();
+      bootReport.durationMs = bootReport.completedAt - bootReport.startedAt;
+      bootReport.slow = bootReport.durationMs > bootReport.budgetMs;
+
+      if (typeof performance !== 'undefined' && performance.mark) {
+        try {
+          performance.mark('twpp-boot-end');
+          performance.measure?.('twpp-boot', 'twpp-boot-start', 'twpp-boot-end');
+        } catch {
+          /* ignore */
+        }
+      }
+
+      if (bootReport.slow) {
+        warn(`arranque lento: ${bootReport.durationMs}ms (presupuesto: ${bootReport.budgetMs}ms)`);
+      }
+
       onIdle(networkTasks);
     } catch (error) {
+      bootReport.stages.ui.error = String(error?.message || error);
       reportBootFailure('interfaz', error);
     }
   });
@@ -4920,8 +5006,10 @@ const diagnostics = {
   broken: brokenSelectors,
   probe,
   report,
+  boot: () => ({ ...bootReport, stages: { ...bootReport.stages } }),
 };
 return {
+  bootReport: bootReport,
   start: start,
   setFeature: setFeature,
   diagnostics: diagnostics,

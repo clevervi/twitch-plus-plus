@@ -7,7 +7,8 @@ defineFeature({
   default: true,
   css: `
     %SCOPE% [data-a-target="prime-offer"],
-    %SCOPE% .prime-offer, .prime-offer-offer,
+    %SCOPE% .prime-offer,
+    %SCOPE% .prime-offer-offer,
     %SCOPE% [data-test-selector="prime-offer"],
     %SCOPE% [data-a-target="upsell-banner"],
     %SCOPE% [data-test-selector="subscription-upsell"],

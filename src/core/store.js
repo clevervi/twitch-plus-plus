@@ -183,7 +183,7 @@ export function importJSON(text) {
   cache = all();
   for (const [key, { type, fallback }] of schema) {
     const value = applyValidate(key, coerce(parsed[key], type));
-    cache[key] = value === undefined ? (typeof fallback === 'object' ? clone(fallback) : fallback) : value;
+    cache[key] = value === undefined ? (typeof fallback === 'object' && fallback !== null ? clone(fallback) : fallback) : value;
   }
   cache._v = CONFIG_VERSION;
   persist();

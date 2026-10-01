@@ -129,9 +129,7 @@ defineFeature({
   },
   onDisable: teardown,
   onRoute() {
-    chatters.clear();
-    counted = new WeakSet();
+    teardown();
     lastUpdate = 0;
-    badge = null;
   },
 });

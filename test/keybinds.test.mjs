@@ -79,3 +79,31 @@ test('bindGlobal exige la combinación exacta y no roba teclas al escribir', asy
   stub.window.fire('keydown', { ...key({ key: 'K' }), target: { tagName: 'TEXTAREA' } });
   assert.deepEqual(calls, ['panel', 'suelto'], 'pero no mientras escribes');
 });
+
+test('isTypingTarget detecta role="textbox" y MODIFIERS reconoce mayus', async () => {
+  const { comboOf, setCombo, stub, register, bindGlobal } = await keybinds();
+  register('spanishKey', 'Español', 'Alt+Mayus+A');
+  assert.equal(setCombo('spanishKey', 'Alt+Mayus+A'), true);
+  const combo = comboOf('spanishKey');
+  assert.equal(combo.alt, true);
+  assert.equal(combo.shift, true);
+  assert.equal(combo.key, 'a');
+
+  register('bloqueable', 'Bloqueable', 'Alt+B');
+  setCombo('bloqueable', 'Alt+B');
+  const calls = [];
+  bindGlobal((id) => calls.push(id));
+
+  const keyB = {
+    key: 'b',
+    altKey: true,
+    ctrlKey: false,
+    shiftKey: false,
+    metaKey: false,
+    preventDefault() {},
+    stopPropagation() {},
+    target: { tagName: 'DIV', getAttribute: (attr) => (attr === 'role' ? 'textbox' : null) },
+  };
+  stub.window.fire('keydown', keyB);
+  assert.equal(calls.includes('bloqueable'), false, 'no dispara en role=textbox');
+});

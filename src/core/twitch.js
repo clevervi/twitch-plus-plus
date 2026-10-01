@@ -5,12 +5,13 @@ import { select, selectAll } from './selectors.js';
 const CDN = 'https://static-cdn.jtvnw.net/previews-ttv';
 const RESERVED = new Set([
   'directory', 'settings', 'subscriptions', 'inventory', 'wallet', 'drops', 'u', 'downloads',
-  'friends', 'search', 'turbo', 'subscriptions', 'p', 'store', 'prime', 'signup', 'login',
+  'friends', 'search', 'turbo', 'p', 'store', 'prime', 'signup', 'login', 'videos',
+  'messages', 'popout', 'moderator', 'dashboard',
 ]);
 
 export function channelFromHref(href) {
   if (!href || !href.startsWith('/') || href.startsWith('//')) return null;
-  const first = href.split(/[\/?​#]/).filter(Boolean)[0];
+  const first = href.split(/[\/?#]/).filter(Boolean)[0];
   if (!first || RESERVED.has(first.toLowerCase())) return null;
   return decodeURIComponent(first).toLowerCase();
 }
