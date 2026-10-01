@@ -84,3 +84,11 @@
 ## 2.2.9 — 2026-10-01
 
 - Blindaje integral: fijar escape CSS en modo limpio, limites de regex en menciones, observador dinamico en scheduler, atajo de panel en inputs y soporte de mayus
+
+## 2.2.10 — 2026-10-01
+
+- **Grants que faltaban**: `GM_deleteValue` y `GM_addValueChangeListener` no estaban declarados en el encabezado. Sin ellos, «Restablecer configuración» no borraba nada y la sincronización entre pestañas nunca ocurría.
+- **`managerName()` corregido**: comprobaba `GM_info` con `typeof === 'function'` cuando `GM_info` es un objeto, así que el informe siempre decía «desconocido».
+- **Diagnóstico de APIs**: `TwitchPP.diagnostics.apis()` y la línea «APIs ausentes» en `report()`.
+- **Matriz de compatibilidad** en el README, con lo verificado y lo supuesto.
+- **Tests**: 88 unitarios en verde.

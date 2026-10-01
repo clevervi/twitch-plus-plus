@@ -50,7 +50,7 @@ node scripts/validate-pr.mjs
 
 Si tocas `src/`, tienes que reconstruir y commitear `dist/`. Si no, la comprobación *el bundle no debe haber derivado* falla en CI.
 
-`main` exige pull request. El único que se salta esa regla es el workflow `Release`, que abre sus propios PRs desde ramas `release/**` sin issue asociado: el trabajo ya estaba revisado cuando se pidió el release.
+`main` exige pull request, y no hay excepción: ni siquiera para las releases.
 
 ## Dónde va cada cosa
 

@@ -120,12 +120,18 @@ Reglas: sube `revision` en cada cambio (el script ignora lo que no sea más nuev
 `dist/` se commitea porque es lo que sirven `@downloadURL`/`@updateURL`:
 
 ```bash
-node scripts/bump.mjs minor "selectores nuevos para el chat"
-node scripts/lint.mjs && node scripts/build.mjs && node --test "test/*.test.mjs"
-git add package.json CHANGELOG.md dist/ && git commit -m "chore(release): v2.1.0" && git push
+npm run verify                  # antes de nada
+npm run release                 # bump + build
+git checkout -b chore/release-2.3.0
+git add package.json CHANGELOG.md dist/
+git commit -m "chore(release): v2.3.0"
+git push -u origin chore/release-2.3.0
+gh pr create --fill
 ```
 
-También hay un workflow *Release* en GitHub Actions que hace exactamente eso.
+El release entra por pull request como cualquier otro cambio, y lo hace a propósito: `main` exige la comprobación `verify`, que GitHub no ejecuta en eventos disparados por `GITHUB_TOKEN`. Un workflow que abriera su propio PR se quedaría bloqueado para siempre.
+
+Cuando el PR está mergeado, `dist/` en `main` es la versión que descarga `@updateURL`. No hace falta nada más.
 
 ## Cómo contribute una feature
 
