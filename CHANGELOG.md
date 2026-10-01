@@ -72,3 +72,7 @@
 ## 2.2.6 — 2026-10-01
 
 - Resolución completa de hallazgos v7: throttle() robusto sin doble ejecución ni argumentos obsoletos, scheduler con MIN_RUN_GAP anti-coalescencia, heurística de extensiones invertida a detección explícita EXTENSION_ICON_HINT protegiendo todos los controles de player (Subtitles, CC, PiP, Audio, RewindLive, Studio)
+
+## 2.2.7 — 2026-10-01
+
+- Actualización de selectores con base en informe de consola en vivo: soporte para sideNav.link, sideNav.more, claimBonus y pauseChat en Twitch moderno

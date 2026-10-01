@@ -1,7 +1,7 @@
 // ==UserScript==
 // @name         Twitch++
 // @namespace    https://github.com/clevervi
-// @version      2.2.6
+// @version      2.2.7
 // @description  Twitch limpio, modular y autoactualizable: OLED, sidebar, chat, analítica de viewers, auto Channel Points y pausa de chat.
 // @author       clevervi
 // @license      MIT
@@ -317,15 +317,22 @@ const BASE = {
   'sideNav.more': [
     '[data-a-target="side-nav-more"]',
     'button[data-a-target="side-nav-show-more-button"]',
+    'button[data-a-target="side-nav-more-toggle"]',
     '[data-test-selector="ShowMore"] button',
+    'button[data-test-selector="ShowMore"]',
     '.side-nav__more',
     'button.side-nav-show-more',
+    'button[aria-label*="más" i]',
+    'button[aria-label*="more" i]',
   ],
   'sideNav.link': [
     '[data-a-target="side-nav-link"]',
+    '[data-a-target="side-nav-card-link"]',
     'a[data-test-selector="followed-channel"]',
     'a[data-test-selector="recommended-channel"]',
     'a.side-nav-card__link',
+    '.side-nav-card a',
+    '.side-nav a[href^="/"]',
   ],
   'player': ['[data-a-target="video-player"]', '.video-player', '.persistent-player'],
   'topNav': ['[data-a-target="top-nav-container"]', '.top-nav'],
@@ -340,19 +347,26 @@ const BASE = {
     '[data-a-target="community-points-summary"]',
   ],
   'claimBonus': [
-    'button[aria-label="Claim Bonus"]',
-    'button[aria-label="Reclamar bonificación"]',
+    'button:has([data-test-selector="claimable-bonus-icon"])',
+    'button:has(.claimable-bonus__icon)',
+    'button[aria-label*="Bonus" i]',
+    'button[aria-label*="bonificación" i]',
+    'button[aria-label*="reclamar" i]',
     '.claimable-bonus__icon',
     '[data-test-selector="claimable-bonus-icon"]',
   ],
   'pauseChat': [
     'button[data-a-target="chat-pause-button"]',
     '[data-test-selector="chat-pause-button"]',
-    'button[aria-label="Pause Chat"]',
-    'button[aria-label="Pausar chat"]',
+    'button[aria-label*="pause chat" i]',
+    'button[aria-label*="pausar chat" i]',
+    'button[aria-label*="reanudar chat" i]',
+    'button[aria-label*="resume chat" i]',
+    '[data-a-target="chat-pause-indicator"] button',
+    '.chat-paused-footer button',
   ],
-  'upNext': ['[data-a-target="up-next-queue"]', '.up-next-queue', '[data-test-selector="up-next-queue"]'],
-  'stories': ['[data-a-target="stories-tray"]', '.stories-tray', '[data-test-selector="stories-tray"]'],
+  'upNext': ['[data-a-target="up-next-queue"]', '.up-next-queue', '[data-test-selector="up-next-queue"]', '[class*="up-next-queue"]'],
+  'stories': ['[data-a-target="stories-tray"]', '.stories-tray', '[data-test-selector="stories-tray"]', '[class*="stories-tray"]'],
   'userMenu': ['[data-a-target="user-menu-toggle"]', '[data-a-target="user-menu-button"]'],
 };
 
@@ -1034,7 +1048,7 @@ return {
 /* ---- src/core/version.js ---- */
 const __m8 = (function () {
 /** Sustituido en build. Fuente única de verdad: package.json + header del userscript. */
-const VERSION = '2.2.6';
+const VERSION = '2.2.7';
 const REPO_URL = 'https://github.com/clevervi/twitch-plus-plus';
 const RAW_URL = 'https://raw.githubusercontent.com/clevervi/twitch-plus-plus/main';
 const BRANCH = 'main';
