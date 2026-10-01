@@ -30,5 +30,7 @@ jobs:
           # Las etiquetas se leen de la API y no del payload del evento:
           # `gh pr create --label` crea el PR y lo etiqueta después, así que
           # el payload de `opened` llega vacío y el check falla siempre.
-          PR_LABELS="$(gh pr view "$PR_NUMBER" --json labels --jq '[.labels[].name] | @json')"
-          node scripts/validate-pr.mjs
+          # Asignar en la línea de comando, no con export: solo así la
+          # variable llega al entorno del proceso node.
+          PR_LABELS="$(gh pr view "$PR_NUMBER" --json labels --jq '[.labels[].name] | @json')" \
+            node scripts/validate-pr.mjs
