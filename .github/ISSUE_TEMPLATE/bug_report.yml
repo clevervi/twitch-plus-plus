@@ -1,0 +1,118 @@
+name: Reporte de error
+description: Algo de Twitch++ no funciona como debería. Para selectores rotos por un cambio de Twitch, usa «Selector roto».
+title: "fix: "
+labels:
+  - "tipo:bug"
+  - "estado:revision"
+body:
+  - type: markdown
+    attributes:
+      value: |
+        Gracias por el reporte. Este proyecto se mantiene sobre lo que reporta la gente,
+        así que cuanto más concreto sea el caso, antes se arregla.
+
+        **Antes de continuar:** si el problema es que una feature dejó de funcionar
+        porque Twitch cambió su DOM, usa la plantilla **Selector roto** en lugar de esta.
+
+  - type: checkboxes
+    id: previas
+    attributes:
+      label: Comprobaciones previas
+      options:
+        - label: He buscado los issues existentes y no es un duplicado.
+          required: true
+        - label: Uso la versión publicada más reciente, no una copia antigua instalada a mano.
+          required: true
+        - label: Entiendo que este issue necesita la etiqueta `estado:aprobado` antes de poder abrir un PR.
+          required: false
+
+  - type: input
+    id: version
+    attributes:
+      label: Versión de Twitch++
+      description: Se muestra en la esquina inferior del panel, dentro de Diagnóstico.
+      placeholder: "2.2.8"
+    validations:
+      required: true
+
+  - type: dropdown
+    id: gestor
+    attributes:
+      label: Gestor de scripts
+      multiple: true
+      options:
+        - Tampermonkey
+        - Violentmonkey
+        - Greasemonkey
+        - ScriptCat
+        - Otro
+    validations:
+      required: true
+
+  - type: dropdown
+    id: navegador
+    attributes:
+      label: Navegador
+      multiple: true
+      options:
+        - Chrome
+        - Firefox
+        - Edge
+        - Safari
+        - Brave
+        - Otro
+    validations:
+      required: true
+
+  - type: textarea
+    id: descripcion
+    attributes:
+      label: Qué ocurre
+      description: Qué esperabas y qué pasó en su lugar. Describe el resultado, no la causa.
+    validations:
+      required: true
+
+  - type: textarea
+    id: reproduccion
+    attributes:
+      label: Pasos para reproducir
+      description: Desde una recarga limpia de twitch.tv, paso a paso.
+      value: |
+        1.
+        2.
+        3.
+    validations:
+      required: true
+
+  - type: textarea
+    id: feature
+    attributes:
+      label: ¿Qué feature afectada?
+      description: "Las existentes: OLED, sidebar compacta, miniaturas de sidebar, búsqueda de chat, resaltado de menciones, palabras clave en el chat, pausa de chat, analítica de viewers, auto Channel Points, ocultar bloques, ocultar extensiones, ocultar canales offline, modo limpio, teatro limpio, atajos, panel."
+      placeholder: "Pausa de chat"
+
+  - type: textarea
+    id: diagnostico
+    attributes:
+      label: Informe de diagnóstico
+      description: |
+        Abre la consola de twitch.tv y ejecuta:
+
+        ```js
+        TwitchPP.diagnostics.report()
+        ```
+
+        Pega aquí la salida completa. Es la parte más útil del reporte: dice qué
+        selectores han dejado de resolver y cuál de sus candidatos sigue funcionando.
+      render: text
+      value: |
+        ```
+        ```
+
+  - type: textarea
+    id: extras
+    attributes:
+      label: Contexto adicional
+      description: Capturas, URL del canal, workarounds que hayas encontrado, o cualquier cosa que creas relevante.
+    validations:
+      required: false

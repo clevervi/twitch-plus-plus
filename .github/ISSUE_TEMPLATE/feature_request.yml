@@ -1,0 +1,81 @@
+name: Propuesta de funcionalidad
+description: Una mejora o una feature que no existe todavía.
+title: "feat: "
+labels:
+  - "tipo:mejora"
+  - "estado:revision"
+body:
+  - type: markdown
+    attributes:
+      value: |
+        Las propuestas son bienvenidas. Cuenta primero **qué te obliga a hacerlo a mano
+        hoy**; si hay forma de resolverlo con la configuración existente, suele ser
+        mejor respuesta que una feature nueva.
+
+  - type: checkboxes
+    id: previas
+    attributes:
+      label: Comprobaciones previas
+      options:
+        - label: He buscado los issues existentes y no es un duplicado.
+          required: true
+        - label: Entiendo que este issue necesita la etiqueta `estado:aprobado` antes de poder abrir un PR.
+          required: false
+
+  - type: textarea
+    id: problema
+    attributes:
+      label: Qué problema resuelve
+      description: La situación concreta en la que te encuentras hoy. Sin esto la propuesta no se puede valorar.
+    validations:
+      required: true
+
+  - type: textarea
+    id: solucion
+    attributes:
+      label: Cómo lo usarías
+      description: "Lo que ves desde fuera: dónde aparece, qué opciones tendría, cómo se desactiva."
+    validations:
+      required: true
+
+  - type: dropdown
+    id: area
+    attributes:
+      label: Dónde encaja
+      options:
+        - Panel y ajustes
+        - Chat
+        - Reproductor y vídeo
+        - Sidebar y navegación
+        - Apariencia (OLED, temas, modo limpio)
+        - Analítica y métricas
+        - Automatización (auto-claim, atajos)
+        - Selectores y compatibilidad con Twitch
+        - Infraestructura, CI y empaquetado
+        - Documentación
+    validations:
+      required: true
+
+  - type: dropdown
+    id: impacto
+    attributes:
+      label: Impacto en el proyecto
+      description: "Una feature nueva obliga a tocar el registro, el catálogo, los estilos del panel y las traducciones. Ayuda a decidir el alcance."
+      options:
+        - Bajo: un ajuste y su estilo en el panel
+        - Medio: una feature nueva en src/features/
+        - Alto: cambia el ciclo de vida, el bus o el modelo de configuración
+    validations:
+      required: true
+
+  - type: textarea
+    id: alternativas
+    attributes:
+      label: Alternativas que has probado
+      description: Configuración existente, otros userscripts, Bookmarklets.
+
+  - type: textarea
+    id: extras
+    attributes:
+      label: Contexto adicional
+      description: Capturas, enlaces, referencias.

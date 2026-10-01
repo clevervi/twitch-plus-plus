@@ -1,0 +1,84 @@
+name: Selector roto
+description: Una feature dejó de funcionar porque Twitch cambió el DOM. Es el caso más común en este proyecto.
+title: "selectores: "
+labels:
+  - "tipo:bug"
+  - "nav:twitch-cambio"
+  - "area:selectores"
+  - "estado:revision"
+body:
+  - type: markdown
+    attributes:
+      value: |
+        Este es el caso más habitual en un userscript de Twitch: el script está bien,
+        pero Twitch cambió la estructura del DOM y el selector ya no resuelve.
+
+        Para arreglarlo no hace falta tocar el código: basta con corregir el selector en
+        `catalog.json` subiendo su `revision`. Con este reporte se puede hacer sin reinstallar.
+
+  - type: checkboxes
+    id: previas
+    attributes:
+      label: Comprobaciones previas
+      options:
+        - label: He buscado los issues existentes y no es un duplicado.
+          required: true
+        - label: He comprobado con `TwitchPP.diagnostics.broken()` que el selector aparece en la lista.
+          required: true
+
+  - type: input
+    id: clave
+    attributes:
+      label: Clave del selector
+      description: "La salida de `TwitchPP.diagnostics.broken()` la lista con este formato. Ejemplos: `pauseChat`, `sideNav.channel`, `chat.line`."
+      placeholder: "pauseChat"
+    validations:
+      required: true
+
+  - type: textarea
+    id: sintoma
+    attributes:
+      label: Qué deja de funcionar
+      description: Qué parte de la interfaz desaparece o se comporta mal.
+    validations:
+      required: true
+
+  - type: textarea
+    id: donde
+    attributes:
+      label: ¿Dónde lo has visto?
+      description: "El canal, la página o el estado concreto. Ejemplo: página de canal, sidebar expandida, menú de usuario abierto."
+      placeholder: "Canal propio, sidebar expandida, vista en directo"
+
+  - type: textarea
+    id: sonda
+    attributes:
+      label: Informe de la sonda
+      description: |
+        La forma más precisa es usar `probe.html`:
+
+        1. En twitch.tv, consola: `copy(document.documentElement.outerHTML)`
+        2. Abre `probe.html` y pega el volcado.
+        3. Pulsa **Cargar snapshot y analizar**.
+        4. Pega aquí el informe que genera.
+
+        Si no puedes hacer eso, sirve con la salida de `TwitchPP.diagnostics.report()`.
+      render: text
+      value: |
+        ```
+        ```
+
+  - type: textarea
+    id: selector_nuevo
+    attributes:
+      label: Selector candidato
+      description: Si lo has encontrado tú revisando el DOM, pégalo aquí: ahorra una ida y vuelta.
+      render: css
+      value: |
+        ```
+
+  - type: input
+    id: navegador
+    attributes:
+      label: Navegador
+      placeholder: "Chrome 141"

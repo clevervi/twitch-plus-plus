@@ -1,0 +1,7 @@
+contact_links:
+  - name: Preguntas de uso y configuración
+    url: https://github.com/clevervi/twitch-plus-plus/discussions
+    about: Dudas sobre atajos, presets, importar y exportar la configuración, o cómo combinar Twitch++ con otros userscripts. Para preguntar no hace falta abrir un issue.
+  - name: Ideas sin criterio de aceptación
+    url: https://github.com/clevervi/twitch-plus-plus/discussions
+    about: Funciones que te gustaría ver, sin saber todavía cómo se medirían. Cuando la propuesta tenga forma, se abre un issue con la plantilla de funcionalidad.
