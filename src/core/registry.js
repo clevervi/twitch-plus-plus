@@ -77,6 +77,7 @@ export function apply(id) {
   if (!feature) return;
   const enabled = !!storeGet(id);
   const on = enabled && allowed(feature);
+  const wasOn = document.documentElement.classList.contains(scopeClass(id));
   document.documentElement.classList.toggle(scopeClass(id), on);
   if (on) {
     // el contador de fallos se reinicia al (re)activar, no al apagar
@@ -84,8 +85,8 @@ export function apply(id) {
     lastRun.delete(id);
   }
   try {
-    if (on && feature.onEnable) feature.onEnable();
-    if (!on && feature.onDisable) feature.onDisable();
+    if (on && !wasOn && feature.onEnable) feature.onEnable();
+    if (!on && wasOn && feature.onDisable) feature.onDisable();
   } catch (error) {
     track(`enable:${id}`, error);
   }

@@ -23,6 +23,7 @@ let panel = null;
 let fab = null;
 let noteBox = null;
 let idleTimer = null;
+let prevFocus = null;
 let built = false;
 
 const NODE = {
@@ -311,6 +312,32 @@ function bind() {
     );
   }
 
+  const wakeFab = (event) => {
+    if (!fab) return;
+    const right = get('fabRight') ?? 14;
+    const bottom = get('fabBottom') ?? 56;
+    const winW = (typeof window !== 'undefined' ? window.innerWidth : 1200) || 1200;
+    const winH = (typeof window !== 'undefined' ? window.innerHeight : 800) || 800;
+    const isTop = bottom > winH / 2;
+    const isLeft = right > winW / 2;
+    const fabX = isLeft ? (right + 13) : (winW - right - 13);
+    const fabY = isTop ? (bottom + 13) : (winH - bottom - 13);
+    const dist = Math.hypot(event.clientX - fabX, event.clientY - fabY);
+    if (dist < 140) {
+      fab.classList.add('awake');
+      scheduleIdle();
+    }
+  };
+  document.addEventListener('mousemove', wakeFab, { passive: true });
+
+  const onEscape = (event) => {
+    if (event.key === 'Escape' && panel && !panel.hidden) {
+      togglePanel(false);
+    }
+  };
+  shadow.addEventListener('keydown', onEscape);
+  document.addEventListener('keydown', onEscape);
+
   fab.addEventListener('click', () => {
     if (dragFlag) { dragFlag = false; return; }
     togglePanel();
@@ -438,11 +465,24 @@ export function togglePanel(force) {
   const open = typeof force === 'boolean' ? force : panel.hidden;
   panel.hidden = !open;
   if (open) {
+    prevFocus = document.activeElement;
     applyPlacement(get('fabRight'), get('fabBottom'));
     fab.classList.add('awake');
     clearTimeout(idleTimer);
+    setTimeout(() => {
+      const search = node('search');
+      if (search && typeof search.focus === 'function') search.focus();
+    }, 0);
   } else {
     scheduleIdle();
+    if (prevFocus && prevFocus.isConnected && typeof prevFocus.focus === 'function') {
+      try {
+        prevFocus.focus();
+      } catch {
+        /* ignore */
+      }
+    }
+    prevFocus = null;
   }
   return open;
 }

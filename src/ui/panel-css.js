@@ -27,11 +27,11 @@ export const PANEL_CSS = `
     background: #9147ff; color: #fff; font-size: 11px; font-weight: 800;
     letter-spacing: -1px; cursor: pointer; padding: 0;
     box-shadow: 0 3px 10px rgba(0,0,0,.4);
-    opacity: .22; pointer-events: auto;
-    transform: scale(1);
+    opacity: 0; pointer-events: none;
+    transform: scale(.85);
     transition: opacity .22s ease, transform .22s ease, background .18s ease;
   }
-  .fab:hover, .fab.reveal:hover { opacity: 1; transform: scale(1.15); background: #a970ff; }
+  .fab:hover, .fab.reveal:hover { opacity: 1; transform: scale(1.15); background: #a970ff; pointer-events: auto; }
   .fab.awake, .fab.reveal { opacity: .6; pointer-events: auto; transform: scale(1); }
   .fab.flash { opacity: .75; pointer-events: auto; transform: scale(1.05); }
   .fab.active { background: #ff5c5c; opacity: .95; pointer-events: auto; }

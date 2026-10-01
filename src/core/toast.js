@@ -5,11 +5,16 @@ const queue = [];
 
 export function setHost(node) {
   host = node;
-  while (queue.length && host) show(queue.shift());
+  while (queue.length && host) {
+    const item = queue.shift();
+    if (Array.isArray(item)) show(item[0], item[1]);
+    else show(item);
+  }
 }
 
 export function show(message, duration = 1800) {
   if (!host) {
+    console.info(`[Twitch++] ${message}`);
     log('toast (sin host):', message);
     queue.push([message, duration]);
     return;

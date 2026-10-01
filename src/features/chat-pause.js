@@ -86,11 +86,12 @@ export const ChatPause = {
   pause() {
     const native = nativeButton();
     if (native) {
+      const wasPaused = nativeSaysPaused(native);
       native.click();
-      state.active = true;
-      state.mode = 'native';
-      state.native = native;
-      toast('Chat pausado');
+      state.active = !wasPaused;
+      state.mode = state.active ? 'native' : null;
+      state.native = state.active ? native : null;
+      toast(state.active ? 'Chat pausado' : 'Chat reanudado');
       return true;
     }
     if (!attach()) return false;
@@ -103,7 +104,9 @@ export const ChatPause = {
 
   resume() {
     if (state.mode === 'native' && state.native && state.native.isConnected) {
-      state.native.click();
+      if (nativeSaysPaused(state.native)) {
+        state.native.click();
+      }
     }
     state.native = null;
     state.active = false;

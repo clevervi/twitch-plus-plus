@@ -64,9 +64,19 @@ defineFeature({
     if (!button || !isVisible(button)) return;
     if (now - lastClick < cooldown()) return;
     lastClick = now;
-    button.click();
-    log('channel points reclamados');
-    toast('Channel Points reclamados');
+
+    try {
+      button.click();
+    } catch {
+      return;
+    }
+
+    setTimeout(() => {
+      const still = findButton();
+      if (still === button && isVisible(still)) return;
+      log('channel points reclamados');
+      toast('Channel Points reclamados');
+    }, 250);
   },
   onDisable() {
     lastClick = 0;

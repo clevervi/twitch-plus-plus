@@ -1,6 +1,6 @@
 {
   "name": "twitch-plus-plus",
-  "version": "2.2.4",
+  "version": "2.2.5",
   "description": "Twitch++ — userscript modular, autoactualizable y extensible desde el repo (OLED, sidebar, chat, analítica de viewers, auto Channel Points, pausa de chat).",
   "type": "module",
   "license": "MIT",

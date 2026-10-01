@@ -119,6 +119,7 @@ function destroy() {
   clearMarks();
   bar?.remove();
   bar = null;
+  document.querySelectorAll('.twpp-search').forEach((el) => el.remove());
 }
 
 defineFeature({

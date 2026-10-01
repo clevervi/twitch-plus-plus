@@ -62,6 +62,33 @@ export function deleteValue(key) {
   }
 }
 
+export function addValueChangeListener(key, fn) {
+  try {
+    if (has('GM_addValueChangeListener')) {
+      return globalThis.GM_addValueChangeListener(key, (name, oldV, newV, remote) => {
+        if (!remote) return;
+        fn(newV);
+      });
+    }
+  } catch {
+    /* ignore */
+  }
+  if (typeof window !== 'undefined' && window.addEventListener) {
+    const handler = (event) => {
+      if (event.key === PREFIX + key) {
+        try {
+          fn(event.newValue ? JSON.parse(event.newValue) : null);
+        } catch {
+          /* ignore */
+        }
+      }
+    };
+    window.addEventListener('storage', handler);
+    return () => window.removeEventListener('storage', handler);
+  }
+  return () => {};
+}
+
 export function openInTab(url) {
   if (has('GM_openInTab')) return globalThis.GM_openInTab(url, { active: true });
   globalThis.open(url, '_blank', 'noopener');

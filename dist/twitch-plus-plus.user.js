@@ -1,7 +1,7 @@
 // ==UserScript==
 // @name         Twitch++
 // @namespace    https://github.com/clevervi
-// @version      2.2.4
+// @version      2.2.5
 // @description  Twitch limpio, modular y autoactualizable: OLED, sidebar, chat, analítica de viewers, auto Channel Points y pausa de chat.
 // @author       clevervi
 // @license      MIT
@@ -124,6 +124,33 @@ function deleteValue(key) {
   }
 }
 
+function addValueChangeListener(key, fn) {
+  try {
+    if (has('GM_addValueChangeListener')) {
+      return globalThis.GM_addValueChangeListener(key, (name, oldV, newV, remote) => {
+        if (!remote) return;
+        fn(newV);
+      });
+    }
+  } catch {
+    /* ignore */
+  }
+  if (typeof window !== 'undefined' && window.addEventListener) {
+    const handler = (event) => {
+      if (event.key === PREFIX + key) {
+        try {
+          fn(event.newValue ? JSON.parse(event.newValue) : null);
+        } catch {
+          /* ignore */
+        }
+      }
+    };
+    window.addEventListener('storage', handler);
+    return () => window.removeEventListener('storage', handler);
+  }
+  return () => {};
+}
+
 function openInTab(url) {
   if (has('GM_openInTab')) return globalThis.GM_openInTab(url, { active: true });
   globalThis.open(url, '_blank', 'noopener');
@@ -179,6 +206,7 @@ return {
   getValue: getValue,
   setValue: setValue,
   deleteValue: deleteValue,
+  addValueChangeListener: addValueChangeListener,
   openInTab: openInTab,
   getJson: getJson,
   managerName: managerName,
@@ -555,7 +583,7 @@ return {
 
 /* ---- src/core/store.js ---- */
 const __m5 = (function () {
-const { deleteValue: deleteValue, getValue: getValue, setValue: setValue } = __m1;
+const { addValueChangeListener: addValueChangeListener, deleteValue: deleteValue, getValue: getValue, setValue: setValue } = __m1;
 const { log: log, warn: warn } = __m2;
 const { CONFIG_VERSION: CONFIG_VERSION, migrate: migrate } = __m4;
 
@@ -574,6 +602,13 @@ const schema = new Map();
 const listeners = new Set();
 let cache = null;
 let importedFromLegacy = null;
+
+addValueChangeListener(KEY, (remote) => {
+  if (!remote || typeof remote !== 'object') return;
+  cache = null;
+  all();
+  for (const key of schema.keys()) changed(key);
+});
 
 function coerce(value, type) {
   switch (type) {
@@ -832,6 +867,7 @@ function apply(id) {
   if (!feature) return;
   const enabled = !!storeGet(id);
   const on = enabled && allowed(feature);
+  const wasOn = document.documentElement.classList.contains(scopeClass(id));
   document.documentElement.classList.toggle(scopeClass(id), on);
   if (on) {
     // el contador de fallos se reinicia al (re)activar, no al apagar
@@ -839,8 +875,8 @@ function apply(id) {
     lastRun.delete(id);
   }
   try {
-    if (on && feature.onEnable) feature.onEnable();
-    if (!on && feature.onDisable) feature.onDisable();
+    if (on && !wasOn && feature.onEnable) feature.onEnable();
+    if (!on && wasOn && feature.onDisable) feature.onDisable();
   } catch (error) {
     track(`enable:${id}`, error);
   }
@@ -998,7 +1034,7 @@ return {
 /* ---- src/core/version.js ---- */
 const __m8 = (function () {
 /** Sustituido en build. Fuente única de verdad: package.json + header del userscript. */
-const VERSION = '2.2.4';
+const VERSION = '2.2.5';
 const REPO_URL = 'https://github.com/clevervi/twitch-plus-plus';
 const RAW_URL = 'https://raw.githubusercontent.com/clevervi/twitch-plus-plus/main';
 const BRANCH = 'main';
@@ -1686,11 +1722,16 @@ const queue = [];
 
 function setHost(node) {
   host = node;
-  while (queue.length && host) show(queue.shift());
+  while (queue.length && host) {
+    const item = queue.shift();
+    if (Array.isArray(item)) show(item[0], item[1]);
+    else show(item);
+  }
 }
 
 function show(message, duration = 1800) {
   if (!host) {
+    console.info(`[Twitch++] ${message}`);
     log('toast (sin host):', message);
     queue.push([message, duration]);
     return;
@@ -1888,11 +1929,12 @@ const ChatPause = {
   pause() {
     const native = nativeButton();
     if (native) {
+      const wasPaused = nativeSaysPaused(native);
       native.click();
-      state.active = true;
-      state.mode = 'native';
-      state.native = native;
-      toast('Chat pausado');
+      state.active = !wasPaused;
+      state.mode = state.active ? 'native' : null;
+      state.native = state.active ? native : null;
+      toast(state.active ? 'Chat pausado' : 'Chat reanudado');
       return true;
     }
     if (!attach()) return false;
@@ -1905,7 +1947,9 @@ const ChatPause = {
 
   resume() {
     if (state.mode === 'native' && state.native && state.native.isConnected) {
-      state.native.click();
+      if (nativeSaysPaused(state.native)) {
+        state.native.click();
+      }
     }
     state.native = null;
     state.active = false;
@@ -2023,9 +2067,19 @@ defineFeature({
     if (!button || !isVisible(button)) return;
     if (now - lastClick < cooldown()) return;
     lastClick = now;
-    button.click();
-    log('channel points reclamados');
-    toast('Channel Points reclamados');
+
+    try {
+      button.click();
+    } catch {
+      return;
+    }
+
+    setTimeout(() => {
+      const still = findButton();
+      if (still === button && isVisible(still)) return;
+      log('channel points reclamados');
+      toast('Channel Points reclamados');
+    }, 250);
   },
   onDisable() {
     lastClick = 0;
@@ -2478,6 +2532,7 @@ function destroy() {
   clearMarks();
   bar?.remove();
   bar = null;
+  document.querySelectorAll('.twpp-search').forEach((el) => el.remove());
 }
 
 defineFeature({
@@ -3122,12 +3177,10 @@ defineFeature({
       min-width: var(--twpp-sidebar-width, 72px) !important;
       max-width: var(--twpp-sidebar-width, 72px) !important;
     }
-    %SCOPE% [data-a-target="side-nav-card"] > *:not(:first-child),
-    %SCOPE% .side-nav-card > *:not(:first-child) { display: none !important; }
+    %SCOPE% [data-a-target="side-nav-card"] > *:not([data-a-target="side-nav-card-avatar"]):not(img):not(:first-child),
+    %SCOPE% .side-nav-card > *:not([data-a-target="side-nav-card-avatar"]):not(img):not(:first-child) { display: none !important; }
     %SCOPE% [data-a-target="side-nav-card"] p,
-    %SCOPE% .side-nav-card p,
-    %SCOPE% [data-a-target="side-nav-card"] span,
-    %SCOPE% .side-nav-card span { display: none !important; }
+    %SCOPE% .side-nav-card p { display: none !important; }
     %SCOPE% [data-a-target="side-nav-card"],
     %SCOPE% .side-nav-card {
       justify-content: center !important;
@@ -3630,11 +3683,11 @@ const PANEL_CSS = `
     background: #9147ff; color: #fff; font-size: 11px; font-weight: 800;
     letter-spacing: -1px; cursor: pointer; padding: 0;
     box-shadow: 0 3px 10px rgba(0,0,0,.4);
-    opacity: .22; pointer-events: auto;
-    transform: scale(1);
+    opacity: 0; pointer-events: none;
+    transform: scale(.85);
     transition: opacity .22s ease, transform .22s ease, background .18s ease;
   }
-  .fab:hover, .fab.reveal:hover { opacity: 1; transform: scale(1.15); background: #a970ff; }
+  .fab:hover, .fab.reveal:hover { opacity: 1; transform: scale(1.15); background: #a970ff; pointer-events: auto; }
   .fab.awake, .fab.reveal { opacity: .6; pointer-events: auto; transform: scale(1); }
   .fab.flash { opacity: .75; pointer-events: auto; transform: scale(1.05); }
   .fab.active { background: #ff5c5c; opacity: .95; pointer-events: auto; }
@@ -3820,6 +3873,7 @@ let panel = null;
 let fab = null;
 let noteBox = null;
 let idleTimer = null;
+let prevFocus = null;
 let built = false;
 
 const NODE = {
@@ -4108,6 +4162,32 @@ function bind() {
     );
   }
 
+  const wakeFab = (event) => {
+    if (!fab) return;
+    const right = get('fabRight') ?? 14;
+    const bottom = get('fabBottom') ?? 56;
+    const winW = (typeof window !== 'undefined' ? window.innerWidth : 1200) || 1200;
+    const winH = (typeof window !== 'undefined' ? window.innerHeight : 800) || 800;
+    const isTop = bottom > winH / 2;
+    const isLeft = right > winW / 2;
+    const fabX = isLeft ? (right + 13) : (winW - right - 13);
+    const fabY = isTop ? (bottom + 13) : (winH - bottom - 13);
+    const dist = Math.hypot(event.clientX - fabX, event.clientY - fabY);
+    if (dist < 140) {
+      fab.classList.add('awake');
+      scheduleIdle();
+    }
+  };
+  document.addEventListener('mousemove', wakeFab, { passive: true });
+
+  const onEscape = (event) => {
+    if (event.key === 'Escape' && panel && !panel.hidden) {
+      togglePanel(false);
+    }
+  };
+  shadow.addEventListener('keydown', onEscape);
+  document.addEventListener('keydown', onEscape);
+
   fab.addEventListener('click', () => {
     if (dragFlag) { dragFlag = false; return; }
     togglePanel();
@@ -4235,11 +4315,24 @@ function togglePanel(force) {
   const open = typeof force === 'boolean' ? force : panel.hidden;
   panel.hidden = !open;
   if (open) {
+    prevFocus = document.activeElement;
     applyPlacement(get('fabRight'), get('fabBottom'));
     fab.classList.add('awake');
     clearTimeout(idleTimer);
+    setTimeout(() => {
+      const search = node('search');
+      if (search && typeof search.focus === 'function') search.focus();
+    }, 0);
   } else {
     scheduleIdle();
+    if (prevFocus && prevFocus.isConnected && typeof prevFocus.focus === 'function') {
+      try {
+        prevFocus.focus();
+      } catch {
+        /* ignore */
+      }
+    }
+    prevFocus = null;
   }
   return open;
 }

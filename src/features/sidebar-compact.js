@@ -24,12 +24,10 @@ defineFeature({
       min-width: var(--twpp-sidebar-width, 72px) !important;
       max-width: var(--twpp-sidebar-width, 72px) !important;
     }
-    %SCOPE% [data-a-target="side-nav-card"] > *:not(:first-child),
-    %SCOPE% .side-nav-card > *:not(:first-child) { display: none !important; }
+    %SCOPE% [data-a-target="side-nav-card"] > *:not([data-a-target="side-nav-card-avatar"]):not(img):not(:first-child),
+    %SCOPE% .side-nav-card > *:not([data-a-target="side-nav-card-avatar"]):not(img):not(:first-child) { display: none !important; }
     %SCOPE% [data-a-target="side-nav-card"] p,
-    %SCOPE% .side-nav-card p,
-    %SCOPE% [data-a-target="side-nav-card"] span,
-    %SCOPE% .side-nav-card span { display: none !important; }
+    %SCOPE% .side-nav-card p { display: none !important; }
     %SCOPE% [data-a-target="side-nav-card"],
     %SCOPE% .side-nav-card {
       justify-content: center !important;

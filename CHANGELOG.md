@@ -64,3 +64,7 @@
 ## 2.2.4 — 2026-10-01
 
 - Fix tooltip miniatura sidebar en layout moderno, aspect ratio 16:9 estricto, optimizaciones de CPU y sync de ajustes en panel
+
+## 2.2.5 — 2026-10-01
+
+- Auditoría exhaustiva de los 20 bugs del inventario v1.3.0: autoClaim post-click check, chatPause estado nativo sincronizado, sidebarCompact protección de avatar, multi-pestaña GM_addValueChangeListener, FAB con detección de proximidad y pointer-events seguros, restauración de foco previo y Escape en el panel, cola de toasts y limpieza de chatSearch

@@ -2,7 +2,7 @@
  * Store con esquema declarado: cada clave tiene tipo y default, así una config
  * corrupta, de una versión vieja o editada a mano nunca rompe el arranque.
  */
-import { deleteValue, getValue, setValue } from './gm.js';
+import { addValueChangeListener, deleteValue, getValue, setValue } from './gm.js';
 import { log, warn } from './log.js';
 import { CONFIG_VERSION, migrate } from './migrations.js';
 
@@ -13,6 +13,13 @@ const schema = new Map();
 const listeners = new Set();
 let cache = null;
 let importedFromLegacy = null;
+
+addValueChangeListener(KEY, (remote) => {
+  if (!remote || typeof remote !== 'object') return;
+  cache = null;
+  all();
+  for (const key of schema.keys()) changed(key);
+});
 
 function coerce(value, type) {
   switch (type) {
