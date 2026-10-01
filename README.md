@@ -121,14 +121,25 @@ Reglas: sube `revision` en cada cambio (el script ignora lo que no sea más nuev
 `dist/` se commitea porque es lo que sirven `@downloadURL`/`@updateURL`:
 
 ```bash
+# Las notas van en un archivo, no en la línea de comandos. En Windows, el texto
+# con acentos que pasa por los argumentos llega estropeado al proceso.
+cat > notas.md <<'EOF'
+- **Botón flotante**: la regla base era `opacity: 0` y `pointer-events: none`.
+- **La sonda**: ahora restaura la configuración en un `finally`.
+EOF
+
 npm run verify                  # antes de nada
-npm run release                 # bump + build
+node scripts/bump.mjs patch @notas.md
+node scripts/build.mjs
+
 git checkout -b chore/release-2.3.0
 git add package.json CHANGELOG.md dist/
 git commit -m "chore(release): v2.3.0"
 git push -u origin chore/release-2.3.0
 gh pr create --fill
 ```
+
+Las notas también se pueden pasar en la línea de comandos (`node scripts/bump.mjs patch "texto"`), y en Linux o macOS no hay problema. En Windows, usa el archivo: es la diferencia entre `«¿Sí?»` y `Â¿Si?`. Si el texto es castellano y no tiene ni un acento, `bump.mjs` avisa por si acaso.
 
 El release entra por pull request como cualquier otro cambio, y lo hace a propósito: `main` exige la comprobación `verify`, que GitHub no ejecuta en eventos disparados por `GITHUB_TOKEN`. Un workflow que abriera su propio PR se quedaría bloqueado para siempre.
 
