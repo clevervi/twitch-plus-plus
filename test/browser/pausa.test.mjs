@@ -1,4 +1,4 @@
-/**
+﻿/**
  * `chat-pause` es la única feature que manipula el scroll del chat y la única
  * que hace clic en un botón de Twitch. Un fallo aquí deja el chat congelado,
  * que es de las pocas cosas que el usuario no puede salir.
@@ -41,6 +41,27 @@ const IR_A = (y) =>
     document.querySelector('.chat-scrollable-area__message-container').scrollTop = v;
   }, y);
 
+/**
+ * Espera a que el scroll llegue a una posicion concreta.
+ *
+ * Este fichero usaba esperas fijas de 150-300 ms y con eso pasaba en local y
+ * fallaba con la maquina ocupada: verde aqui, rojo en CI, sin cambio de
+ * codigo. Espera corta no significa reliable.
+ *
+ * Sondea hasta 6 s en vez de 4: el suite completo corre varios navegadores y
+ * bajo carga el latido del scheduler se retrasa. Prefiere tardar de mas a
+ * fallar por reloj.
+ */
+async function esperarTop(esperado, ms = 6000) {
+  const limite = Date.now() + ms;
+  let visto = null;
+  while (Date.now() < limite) {
+    visto = (await MEDIDA()).top;
+    if (visto === esperado) return visto;
+    await pagina.waitForTimeout(80);
+  }
+  return visto;
+}
 const PAUSAR = () => pagina.evaluate(() => window.__twpp.shadow.querySelector('[data-action="pause"]').click());
 
 /**
@@ -82,43 +103,30 @@ describe('el contenedor de chat tiene por donde hacer scroll', () => {
 describe('pausar el chat congela el scroll', () => {
   it('al pausar, el scroll vuelve a la posicion pausada', async () => {
     await IR_A(300);
-    await pagina.waitForTimeout(150);
-    assert.equal((await MEDIDA()).top, 300, 'partimos de 300');
+    assert.equal(await esperarTop(300), 300, 'partimos de 300');
 
     await PAUSAR();
-    await pagina.waitForTimeout(200);
-    assert.equal((await MEDIDA()).top, 300, 'pausar no debe mover el chat');
+    assert.equal(await esperarTop(300), 300, 'pausar no debe mover el chat');
 
     await IR_A(0);
-    await pagina.waitForTimeout(300);
-    assert.equal((await MEDIDA()).top, 300, 'el scroll tiene que volver a la pausa');
+    assert.equal(await esperarTop(300), 300, 'el scroll tiene que volver a la pausa');
   });
 
   it('tambien bloquea si se intenta ir mas abajo', async () => {
     await IR_A(300);
-    await pagina.waitForTimeout(150);
     await PAUSAR();
-    await pagina.waitForTimeout(200);
-
     await IR_A(900);
-    await pagina.waitForTimeout(300);
-    assert.equal((await MEDIDA()).top, 300, 'tampoco puede bajar');
+    assert.equal(await esperarTop(300), 300, 'tampoco puede bajar');
   });
 
   it('al reanudar, el chat vuelve a moverse', async () => {
     await IR_A(300);
-    await pagina.waitForTimeout(150);
     await PAUSAR();
-    await pagina.waitForTimeout(200);
-
     await PAUSAR(); // reanudar
-    await pagina.waitForTimeout(200);
-
     await IR_A(0);
-    await pagina.waitForTimeout(300);
     // Este es el que importa: si `detach()` faltara, el chat se quedaría
     // congelado para siempre y no habría forma de salir desde la interfaz.
-    assert.equal((await MEDIDA()).top, 0, 'tras reanudar debe poder desplazarse libremente');
+    assert.equal(await esperarTop(0), 0, 'tras reanudar debe poder desplazarse libremente');
   });
 
   it('un ciclo largo de pausar y reanudar no deja el chat bloqueado', async () => {
@@ -129,18 +137,14 @@ describe('pausar el chat congela el scroll', () => {
       await pagina.waitForTimeout(80);
     }
     await IR_A(120);
-    await pagina.waitForTimeout(300);
-    assert.equal((await MEDIDA()).top, 120, 'el último estado debe ser reanudado y libre');
+    assert.equal(await esperarTop(120), 120, 'el último estado debe ser reanudado y libre');
   });
 });
 
 describe('el usuario puede salir de la pausa con la rueda', () => {
   it('una rueda permite desplazarse aunque este pausado', async () => {
     await IR_A(300);
-    await pagina.waitForTimeout(150);
     await PAUSAR();
-    await pagina.waitForTimeout(200);
-
     // El chat da al usuario 150 ms de escapada tras mover la rueda, para que no
     // se sienta que le han cerrado el chat en la cara.
     await pagina.evaluate(() => {
@@ -149,8 +153,6 @@ describe('el usuario puede salir de la pausa con la rueda', () => {
     });
     await pagina.waitForTimeout(50);
     await IR_A(120);
-    await pagina.waitForTimeout(150);
-
     const conRueda = (await MEDIDA()).top;
     assert.equal(conRueda, 120, 'tras la rueda el usuario puede desplazarse');
 
@@ -160,7 +162,6 @@ describe('el usuario puede salir de la pausa con la rueda', () => {
     // original, el chat daría un salto de 180 px solo.
     await pagina.waitForTimeout(400);
     await IR_A(600);
-    await pagina.waitForTimeout(300);
-    assert.equal((await MEDIDA()).top, 120, 'la pausa se reancla donde el usuario soltó');
+    assert.equal(await esperarTop(120), 120, 'la pausa se reancla donde el usuario soltó');
   });
 });
