@@ -168,6 +168,82 @@ describe('el harness ejecuta de verdad lo que dice ejecutar', () => {
   });
 });
 
+describe('ninguna feature deja restos al apagarse', () => {
+  /**
+   * Cualquier marca que el script ponga en el DOM con nombre `twpp-*` o
+   * `data-twpp-*`. Cuando una feature se apaga, no puede quedar ninguna.
+   *
+   * Esto no es un test de una feature concreta: es la red que cubre toda la
+   * familia de fallos «el estado se marca en un sitio y se limpia en otro»,
+   * que han sido tres de los cinco bugs encontrados en la auditoría.
+   */
+  const marcasQueQuedan = () =>
+    page.evaluate(() => {
+      const found = [];
+      for (const el of document.querySelectorAll('*')) {
+        for (const clase of el.classList || []) {
+          if (clase.startsWith('twpp-')) found.push(`clase ${clase} en <${el.tagName.toLowerCase()}>`);
+        }
+        for (const attr of el.getAttributeNames()) {
+          if (attr.startsWith('data-twpp')) found.push(`atributo ${attr} en <${el.tagName.toLowerCase()}>`);
+        }
+      }
+      return {
+        found,
+        scopeHtml: document.documentElement.className,
+        declaracionesHtml: [...document.documentElement.style].map(
+          (prop) => `${prop}=${document.documentElement.style.getPropertyValue(prop)}`,
+        ),
+      };
+    });
+
+  const todasLasFeatures = () => page.evaluate(() => window.TwitchPP.diagnostics.features().map((f) => f.id));
+
+  const ponerTodas = (accion) =>
+    page.evaluate((acc) => {
+      const f = window.TwitchPP;
+      window.TwitchPP.diagnostics.features().forEach((x) => f[acc](x.id));
+    }, accion);
+
+  it('encender y apagar del todo no deja ni una marca', async () => {
+    const ids = await todasLasFeatures();
+    assert.ok(ids.length >= 15, `se esperaban todas las features, hay ${ids.length}`);
+
+    await ponerTodas('enable');
+    await page.waitForTimeout(2000);
+    const encendidas = await marcasQueQuedan();
+    assert.ok(encendidas.found.length > 0, 'con las features encendidas tiene que haber marcas: si no, el test no comprueba nada');
+
+    await ponerTodas('disable');
+    await page.waitForTimeout(2500);
+
+    const apagadas = await marcasQueQuedan();
+    assert.deepEqual(apagadas.found, [], `marcas sin limpiar: ${apagadas.found.join(', ')}`);
+    assert.equal(apagadas.scopeHtml, '', 'las clases de scope del <html> deben desaparecer');
+    // Se mira el estilo *declarado*, no el atributo: removeProperty() deja un
+    // `style=""` vacío detrás, que es ruido del navegador y no del script.
+    // `sidebarCompact` es la única que escribe aquí (`--twpp-sidebar-width`).
+    assert.deepEqual(apagadas.declaracionesHtml, [], `variables CSS sin limpiar: ${apagadas.declaracionesHtml.join(', ')}`);
+  });
+
+  it('apagar enseguida tampoco deja marcas: ningun temporizador puede revivir', async () => {
+    // Este es el escenario que pilla los setTimeout sin handle guardado. El
+    // primero espera 2 s antes de apagar, y ahí el temporizador ya ha disparado
+    // y su efecto lo limpia teardown(): el bug no se ve.
+    await ponerTodas('enable');
+    await page.waitForTimeout(50); // dentro de la ventana de viewer-analytics (400 ms)
+    await ponerTodas('disable');
+    await page.waitForTimeout(2000);
+
+    const restos = await marcasQueQuedan();
+    assert.deepEqual(
+      restos.found,
+      [],
+      `un temporizador revivio la feature tras apagarla: ${restos.found.join(', ')}`,
+    );
+  });
+});
+
 describe('mention-highlight marca menciones y limpia al apagar', () => {
   const lineaDe = (indice) =>
     page.evaluate((i) => {
