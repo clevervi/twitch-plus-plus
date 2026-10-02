@@ -124,6 +124,53 @@ async function estilosFab() {
   }`);
 }
 
+/**
+ * La cabecera de canal no esta en la fixture, que es donde vive el contador de
+ * viewers. Se inyecta el ancla que `viewer-analytics` busca, para poder probar
+ * la feature de verdad en vez de asumir que no hace nada.
+ */
+async function ponerCabeceraDeCanal() {
+  return page.evaluate(() => {
+    const barra = document.createElement('div');
+    barra.className = 'channel-info-bar';
+    barra.innerHTML = '<strong data-a-target="animated-channel-viewers-count">1.234</strong>';
+    const nav = document.querySelector('[data-a-target="side-nav-bar"]');
+    if (!nav) return false;
+    nav.after(barra);
+    return true;
+  });
+}
+
+const contarBadges = () => page.evaluate(() => document.querySelectorAll('.twpp-viewer-badge').length);
+
+describe('viewer-analytics no deja el badge huerfano al apagarla', () => {
+  it('apagarla despues de 1 s no deja nada', async () => {
+    assert.ok(await ponerCabeceraDeCanal(), 'la fixture necesita la barra lateral para anclar la cabecera');
+    await page.evaluate(() => window.TwitchPP.enable('viewerAnalytics'));
+    await page.waitForTimeout(900);
+    assert.equal(await contarBadges(), 1, 'con la feature activa hay un badge');
+
+    await page.evaluate(() => window.TwitchPP.disable('viewerAnalytics'));
+    assert.equal(await contarBadges(), 0, 'teardown lo quita en el acto');
+    await page.waitForTimeout(700);
+    assert.equal(await contarBadges(), 0, 'y no reaparece');
+  });
+
+  it('apagarla dentro de los 400 ms cancela el temporizador', async () => {
+    await ponerCabeceraDeCanal();
+    await page.evaluate(() => window.TwitchPP.enable('viewerAnalytics'));
+    // 50 ms: el setTimeout de 400 ms de onEnable sigue pendiente.
+    await page.waitForTimeout(50);
+    await page.evaluate(() => window.TwitchPP.disable('viewerAnalytics'));
+    assert.equal(await contarBadges(), 0, 'todavia no hay nada');
+
+    // Sin el clearTimeout, update() dispara aqui y ensureBadge() reinserta el
+    // badge con la feature apagada. Reproducido en Chromium: 1 badge huerfano.
+    await page.waitForTimeout(800);
+    assert.equal(await contarBadges(), 0, 'el temporador no puede recrear el badge tras apagar');
+  });
+});
+
 describe('el boton flotante se ve y se puede pulsar', () => {
   it('el panel monta un shadow root con el boton dentro', async () => {
     const estilos = await estilosFab();
