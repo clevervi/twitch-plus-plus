@@ -163,10 +163,12 @@ function notes() {
   }
 }
 
-function build() {
-  const started = Date.now();
-  mkdirSync(dirname(OUT), { recursive: true });
-
+/**
+ * Produce el bundle y el manifiesto **sin tocar el disco**. Lo usan tanto
+ * `build()` como `--check`, para que el check no pueda desviarse de lo que
+ * realmente se publica.
+ */
+function produce() {
   const { repo, raw } = repoInfo();
   const body = compile()
     .replace(/__VERSION__/g, pkg.version)
@@ -174,9 +176,57 @@ function build() {
     .replace(/__RAW__/g, raw)
     .replace(/__BRANCH__/g, branch);
 
-  const code = `${header()}\n\n(function () {\n'use strict';\n${body}\n})();\n`;
+  return {
+    code: `${header()}\n\n(function () {\n'use strict';\n${body}\n})();\n`,
+    latest: `${JSON.stringify(latestManifest(), null, 2)}\n`,
+  };
+}
+
+/**
+ * Comprueba que `dist/` committed corresponde a `src/`, sin escribir nada.
+ *
+ * Existe porque `npm run verify` reconstruye antes de testear: si alguien
+ * cambia `src/` y no sube el `dist/` reconstruido, los tests pasan igual porque
+ * se ejecutan contra el bundle recién hecho. En CI lo cazaba
+ * `git diff --exit-code dist/`; esto da el mismo fallo con un mensaje que dice
+ * qué hacer, y además funciona en local, donde el rojo de CI llega tarde.
+ */
+function check() {
+  const { code, latest } = produce();
+  const drift = [];
+
+  let actual = null;
+  try {
+    actual = readFileSync(OUT, 'utf8');
+  } catch {
+    drift.push('dist/twitch-plus-plus.user.js no existe');
+  }
+  if (actual !== null && actual !== code) drift.push('dist/twitch-plus-plus.user.js');
+
+  let actualLatest = null;
+  try {
+    actualLatest = readFileSync(LATEST, 'utf8');
+  } catch {
+    drift.push('dist/latest.json no existe');
+  }
+  if (actualLatest !== null && actualLatest !== latest) drift.push('dist/latest.json');
+
+  if (drift.length) {
+    process.stderr.write(`  dist/ ha derivado de src/:\n`);
+    for (const file of drift) process.stderr.write(`    - ${file}\n`);
+    process.stderr.write('  ejecuta `npm run build` y sube el dist/ con el cambio.\n');
+    process.exit(1);
+  }
+  process.stdout.write('  dist/ al día con src/\n');
+}
+
+function build() {
+  const started = Date.now();
+  mkdirSync(dirname(OUT), { recursive: true });
+
+  const { code, latest } = produce();
   writeFileSync(OUT, code, 'utf8');
-  writeFileSync(LATEST, `${JSON.stringify(latestManifest(), null, 2)}\n`, 'utf8');
+  writeFileSync(LATEST, latest, 'utf8');
 
   const check = spawnSync(process.execPath, ['--check', OUT], { encoding: 'utf8' });
   if (check.status !== 0) {
@@ -212,7 +262,8 @@ function latestManifest() {
 }
 
 if (process.argv[1] && pathToFileURL(process.argv[1]).href === import.meta.url) {
-  build();
+  if (process.argv.includes('--check')) check();
+  else build();
   if (process.argv.includes('--watch')) {
     let timer = null;
     process.stdout.write('  vigilando src/ …\n');
@@ -229,4 +280,4 @@ if (process.argv[1] && pathToFileURL(process.argv[1]).href === import.meta.url) 
   }
 }
 
-export { build, compile, collect };
+export { build, check, compile, collect };

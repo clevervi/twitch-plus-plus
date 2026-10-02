@@ -20,13 +20,16 @@ jobs:
           node-version: 20
 
       # `npm run verify` es la única definición de qué hay que comprobar:
-      # lint + detector de idioma + build + tests. Reimplementar los pasos aquí
-      # a mano ya ha causado que un paso se quedara fuera sin que nadie lo notase.
+      # lint + detector de idioma + deriva de dist/ + build + tests.
+      # Reimplementar los pasos aquí a mano ya ha causado que un paso se quedara
+      # fuera sin que nadie lo notase.
+      #
+      # La deriva de `dist/` la comprueba `build.mjs --check` dentro de verify,
+      # antes de reconstruir. Este paso de antes, `git diff --exit-code dist/`,
+      # hacía lo mismo pero con un volcado de diff y sin decir qué hacer, y
+      # llegaba aquí tarde: primero tenía que pasar todo el build y los tests.
       - name: Verificar (lint, idioma, build y tests)
         run: npm run verify
-
-      - name: El bundle no debe haber derivado
-        run: git diff --exit-code dist/
 
       - name: El YAML de .github debe ser válido
         run: |
