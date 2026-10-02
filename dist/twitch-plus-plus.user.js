@@ -2661,12 +2661,33 @@ function isDarkTheme() {
   if (document.documentElement.classList.contains('tw-root--theme-dark')) return true;
   if (document.body?.classList.contains('tw-root--theme-dark')) return true;
   if (qs('.tw-root--theme-dark')) return true;
+  // Camino simetrico del anterior. Si Twitch no usara nunca esta clase, esta
+  // comprobacion no llega a dispararse y el comportamiento no cambia: por eso
+  // se puede anadir sin haber verificado el nombre en la pagina real.
+  if (document.documentElement.classList.contains('tw-root--theme-light')) return false;
 
-  const style = getComputedStyle(document.body || document.documentElement);
-  const color = style?.backgroundColor || style?.color || '';
-  const [r, g, b] = (String(color).match(/[\d.]+/g) || []).map(Number);
-  if ([r, g, b].length < 3 || [r, g, b].some(Number.isNaN)) return true;
-  return (r * 299 + g * 587 + b * 114) / 1000 < 128;
+  // La luminancia se lee del <html> y NO del <body>, a proposito.
+  //
+  // `dark-mode` pone `%SCOPE% body { background-color: #000000 !important }`
+  // cuando esta activa, asi que leer el cuerpo era leerse a si mismo: el script
+  // pintaba la pagina de negro y la deteccion contestaba "es oscuro", con lo
+  // cual la feature no podia apagarse nunca y el ajuste "solo en tema oscuro de
+  // Twitch" no podia cumplirse.
+  //
+  // El <html> si lo deja intacto. Pero suele ser transparente, y un fondo
+  // transparente no dice nada del tema, asi que se comprueba que sea opaco.
+  // Si no se sabe, se devuelve true, que es lo que se hacia antes y lo mas
+  // conservador: sin pruebas, no se toip.
+  const raw = String(getComputedStyle(document.documentElement)?.backgroundColor || '');
+  const partes = raw.match(/[\d.]+/g) || [];
+  if (partes.length >= 3) {
+    const alfa = partes.length > 3 ? Number(partas[3]) : 1;
+    const [r, g, b] = partes.map(Number);
+    if (alfa !== 0 && ![r, g, b].some(Number.isNaN)) {
+      return (r * 299 + g * 587 + b * 114) / 1000 < 128;
+    }
+  }
+  return true;
 }
 
 function hoverDialog() {
