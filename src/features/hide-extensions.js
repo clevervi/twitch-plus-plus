@@ -86,7 +86,24 @@ function extensionLike(element) {
   return EXTENSION_HINT.test(hay);
 }
 
+const OVERLAY_SELECTOR = [
+  '.extension-container',
+  '.extension-view',
+  '[class*="extension-overlay"]',
+  '[class*="extensions-overlay"]',
+  '[class*="video-extension"]',
+  '[data-test-selector="extension-overlay"]',
+  '[data-a-target="extension-overlay"]',
+  '[data-test-selector="video-extension-overlay"]',
+  '[data-a-target="video-extension-overlay"]',
+].join(',');
+
 function playerOverlaySweep() {
+  // Purgar nodos que ya no están en el DOM para evitar fugas de memoria tras navegación
+  for (const [elemento] of ocultos) {
+    if (!elemento?.isConnected) ocultos.delete(elemento);
+  }
+
   for (const player of selectAll('player')) {
     // 1) iframes de extensión dentro del player
     for (const frame of qsAll('iframe', player)) {
@@ -96,18 +113,7 @@ function playerOverlaySweep() {
     // 2) Overlays de extensión SOLO con clases específicas.
     //    Ya NO usamos div[class*="overlay"] porque matchea los overlays
     //    legítimos del player (controles de pausa, settings, etc.).
-    const overlaySelectors = [
-      '.extension-container',
-      '.extension-view',
-      '[class*="extension-overlay"]',
-      '[class*="extensions-overlay"]',
-      '[class*="video-extension"]',
-      '[data-test-selector="extension-overlay"]',
-      '[data-a-target="extension-overlay"]',
-      '[data-test-selector="video-extension-overlay"]',
-      '[data-a-target="video-extension-overlay"]',
-    ];
-    for (const box of qsAll(overlaySelectors.join(','), player)) {
+    for (const box of qsAll(OVERLAY_SELECTOR, player)) {
       if (!box.querySelector('iframe')) continue;
       kill(box);
     }
@@ -213,4 +219,9 @@ defineFeature({
     if (storeGet('extensionHeuristic')) unknownButtonSweep();
   },
   onDisable: restore,
+  onRoute() {
+    for (const [elemento] of ocultos) {
+      if (!elemento?.isConnected) ocultos.delete(elemento);
+    }
+  },
 });
