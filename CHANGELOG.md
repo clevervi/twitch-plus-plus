@@ -130,3 +130,11 @@
 - La feature marca cada línea de chat con dos señales: una clase para pintar el resaltado, y un atributo para no volver a mirar esa misma línea.
 - El atributo se ponía en todas las líneas, pero al desactivar solo se limpiaban las que tenían la clase. Las demás se quedaban con el atributo puesto para siempre.
 - Y ahí está el problema: al volver a encender, la feature salta las líneas que ya tienen el atributo, precisamente las que debería volver a mirar. Un ciclo de apagar y encender dejaba esas líneas sin posibilidad de volver a resaltarse, aunque su texto hubiera cambiado y ahora fueran una mención.
+
+## 2.2.15 — 2026-10-02
+
+- ## Corrección: pausar el chat no pausaba el chat
+- La función que congela la lista de mensajes cuando pulsas «Pausar chat» iba a mirar por dónde podía deslizarse, pero empezaba a mirar **un nivel por encima de donde está el chat**. Así que nunca llegaba a mirar el chat.
+- El resultado era que el bloqueo se ponía sobre un elemento que no se puede desplazar. El script escuchaba a los scrolls, los interceptaba, y escribía la posición allí donde no se nota. El chat seguía bajando igual.
+- Afectaba a quien no ve el botón de pausa propio de Twitch, porque si lo tiene, el script pulsa ese y sí funciona. El botón desaparece cuando el chat está plegado, o cuando Twitch cambia sus etiquetas internas. Ahí «Pausar chat» no hacía nada, sin avisar.
+- Ahora sí. Y si vas hacia arriba con la rueda mientras está pausado, tienes un momento para leer, y el chat vuelve a pararse donde lo dejes.
