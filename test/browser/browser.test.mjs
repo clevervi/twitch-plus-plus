@@ -168,6 +168,51 @@ describe('el harness ejecuta de verdad lo que dice ejecutar', () => {
   });
 });
 
+describe('mention-highlight marca menciones y limpia al apagar', () => {
+  const lineaDe = (indice) =>
+    page.evaluate((i) => {
+      const l = document.querySelectorAll('[data-a-target="chat-line-message"]')[i];
+      return {
+        texto: l.textContent.trim(),
+        attr: l.hasAttribute('data-twpp-mention'),
+        clase: l.classList.contains('twpp-mention'),
+      };
+    }, indice);
+
+  it('resalta la linea con mencion y no las otras', async () => {
+    await page.evaluate(() => window.TwitchPP.enable('mentionHighlight'));
+    await page.waitForTimeout(1200);
+
+    const conMencion = await lineaDe(2);
+    assert.match(conMencion.texto, /@darkt/, 'la linea 2 de la fixture es una mencion');
+    assert.equal(conMencion.clase, true, 'una mencion debe quedar resaltada');
+
+    const sinMencion = await lineaDe(0);
+    assert.doesNotMatch(sinMencion.texto, /@darkt/);
+    assert.equal(sinMencion.clase, false, 'una linea corriente no debe resaltarse');
+  });
+
+  it('apagar quita el atributo de TODAS las lineas, no solo de las resaltadas', async () => {
+    await page.evaluate(() => window.TwitchPP.enable('mentionHighlight'));
+    await page.waitForTimeout(1000);
+
+    const antes = await page.evaluate(
+      () => document.querySelectorAll('[data-a-target="chat-line-message"][data-twpp-mention]').length,
+    );
+    assert.ok(antes >= 3, `sweep() marca todas las lineas, no solo las que casa (habia ${antes})`);
+
+    await page.evaluate(() => window.TwitchPP.disable('mentionHighlight'));
+
+    const despues = await page.evaluate(() => ({
+      attr: document.querySelectorAll('[data-twpp-mention]').length,
+      clase: document.querySelectorAll('.twpp-mention').length,
+    }));
+    // Con clear() buscando solo `.twpp-mention` quedaban atributos sin limpiar,
+    // y esas lineas ya no se reevaluaban nunca al reactivar.
+    assert.deepEqual(despues, { attr: 0, clase: 0 }, 'no puede quedar ni un atributo sin limpiar');
+  });
+});
+
 describe('viewer-analytics no deja el badge huerfano al apagarla', () => {
   it('apagarla despues de 1 s no deja nada', async () => {
     await page.evaluate(() => window.TwitchPP.enable('viewerAnalytics'));

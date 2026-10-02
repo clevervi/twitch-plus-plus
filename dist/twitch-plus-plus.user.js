@@ -3682,8 +3682,13 @@ function sweep() {
   }
 }
 
+// Se buscan los DOS marcadores, no solo los que tienen la clase. Con
+// `.twpp-mention` como único criterio, los nodos que ya tenían el atributo
+// puesto pero no llegaron a resaltarse se quedaban marcados para siempre: en el
+// siguiente sweep() la línea se saltaba por tener el atributo y no se reevaluaba
+// nunca más.
 function clear() {
-  for (const line of document.querySelectorAll(`.${CLASS}`)) {
+  for (const line of document.querySelectorAll(`.${CLASS}, [${ATTR}]`)) {
     line.classList.remove(CLASS);
     line.removeAttribute(ATTR);
   }
@@ -3712,9 +3717,7 @@ defineFeature({
   onRoute() {
     username = null;
     pattern = null;
-    document.querySelectorAll(`[${ATTR}]`).forEach(el => {
-      el.removeAttribute(ATTR);
-    });
+    clear();
   },
 });
 return {
