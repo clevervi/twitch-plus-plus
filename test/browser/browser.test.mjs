@@ -56,6 +56,16 @@ before(async () => {
   // sobre esto en el fixture.
   await context.route('**/bundle.js', (ruta) => ruta.fulfill({ status: 200, contentType: 'text/javascript; charset=utf-8', body: bundle }));
 
+  // El scheduler sale por `if (running || document.hidden) return`, así que si
+  // la página llegara a estar oculta no correría ni un tick y toda feature con
+  // `interval` parecería rota sin estarlo. Hoy Chromium headless ya reporta
+  // visible, pero el test `el scheduler avanza` vigila que siga siendo así y
+  // avisa con un número en vez de dejar tests que pasan por la razón equivocada.
+  await context.addInitScript(() => {
+    Object.defineProperty(document, 'hidden', { get: () => false, configurable: true });
+    Object.defineProperty(document, 'visibilityState', { get: () => 'visible', configurable: true });
+  });
+
   page = await context.newPage();
   page.on('pageerror', (error) => errores.push(String(error)));
   await page.goto('https://www.twitch.tv/');
@@ -124,28 +134,42 @@ async function estilosFab() {
   }`);
 }
 
-/**
- * La cabecera de canal no esta en la fixture, que es donde vive el contador de
- * viewers. Se inyecta el ancla que `viewer-analytics` busca, para poder probar
- * la feature de verdad en vez de asumir que no hace nada.
- */
-async function ponerCabeceraDeCanal() {
-  return page.evaluate(() => {
-    const barra = document.createElement('div');
-    barra.className = 'channel-info-bar';
-    barra.innerHTML = '<strong data-a-target="animated-channel-viewers-count">1.234</strong>';
-    const nav = document.querySelector('[data-a-target="side-nav-bar"]');
-    if (!nav) return false;
-    nav.after(barra);
-    return true;
-  });
-}
-
 const contarBadges = () => page.evaluate(() => document.querySelectorAll('.twpp-viewer-badge').length);
+
+describe('el harness ejecuta de verdad lo que dice ejecutar', () => {
+  // Estos tres tests no comprueban el script: comprueban que el entorno de
+  // pruebas sirve para comprobar el script. Sin ellos, una feature que no hace
+  // nada por falta de un ancla en el DOM pasa igual que una feature correcta.
+  it('el scheduler avanza', async () => {
+    const antes = await page.evaluate(() => window.TwitchPP.diagnostics.perf().ticks);
+    await page.waitForTimeout(1200);
+    const despues = await page.evaluate(() => window.TwitchPP.diagnostics.perf().ticks);
+    assert.ok(despues > antes, `los ticks deben avanzar (antes ${antes}, despues ${despues})`);
+  });
+
+  it('la pagina no esta oculta', async () => {
+    const oculto = await page.evaluate(() => document.hidden);
+    assert.equal(oculto, false, 'con document.hidden en true el scheduler no ejecuta nada');
+  });
+
+  it('la fixture da lo que necesitan las features de chat', async () => {
+    const listo = await page.evaluate(() => ({
+      cabecera: !!document.querySelector('[data-a-target="animated-channel-viewers-count"]'),
+      menuConAlt: !!document.querySelector('[data-a-target="user-menu-button"] img[alt]'),
+      lineasChat: document.querySelectorAll('[data-a-target="chat-line-message"]').length,
+      conMencia: [...document.querySelectorAll('[data-a-target="chat-line-message"]')].filter((l) =>
+        /@darkt/.test(l.textContent),
+      ).length,
+    }));
+    assert.ok(listo.cabecera, 'sin contador de viewers, viewer-analytics no inserta nada');
+    assert.ok(listo.menuConAlt, 'sin img.alt, currentUsername() devuelve null y las menciones no funcionan');
+    assert.ok(listo.lineasChat >= 3, 'hacen falta lineas de chat para probar');
+    assert.ok(listo.conMencia >= 1, 'hace falta al menos una linea que sea mencion');
+  });
+});
 
 describe('viewer-analytics no deja el badge huerfano al apagarla', () => {
   it('apagarla despues de 1 s no deja nada', async () => {
-    assert.ok(await ponerCabeceraDeCanal(), 'la fixture necesita la barra lateral para anclar la cabecera');
     await page.evaluate(() => window.TwitchPP.enable('viewerAnalytics'));
     await page.waitForTimeout(900);
     assert.equal(await contarBadges(), 1, 'con la feature activa hay un badge');
@@ -157,7 +181,6 @@ describe('viewer-analytics no deja el badge huerfano al apagarla', () => {
   });
 
   it('apagarla dentro de los 400 ms cancela el temporizador', async () => {
-    await ponerCabeceraDeCanal();
     await page.evaluate(() => window.TwitchPP.enable('viewerAnalytics'));
     // 50 ms: el setTimeout de 400 ms de onEnable sigue pendiente.
     await page.waitForTimeout(50);

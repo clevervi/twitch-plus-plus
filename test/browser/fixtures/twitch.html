@@ -28,6 +28,8 @@
     .side-nav-card { display: block; padding: 6px; border-radius: 4px; }
     .tw-transition-group { margin-bottom: 8px; }
     [data-a-target="top-nav-container"] { display: flex; justify-content: flex-end; gap: 8px; padding: 8px; }
+    .channel-info-bar { display: flex; align-items: center; gap: 8px; padding: 6px 10px; background: #18181b; }
+    .channel-info-bar__title { font-weight: 700; }
   </style>
   <!--
     El bundle se carga como un script normal, en el <head>, que es lo más
@@ -43,8 +45,18 @@
   <script src="./bundle.js"></script>
 </head>
 <body>
+  <!--
+    El botón de perfil lleva la misma forma que en Twitch: una imagen dentro con
+    el nombre en el alt. `currentUsername()` lee el alt primero, y si no lo
+    encuentra parsea el aria-label buscando "X's user menu". Sin ninguna de las
+    dos cosas devuelve null y las features que dependen de saber quién eres
+    (menciones, chatters) no hacen nada: sus tests pasarían sin comprobar nada.
+  -->
   <div data-a-target="top-nav-container">
-    <button data-a-target="user-menu-button">Perfil</button>
+    <button data-a-target="user-menu-button" aria-label="darkt's user menu">
+      Perfil
+      <img alt="darkt" width="24" height="24">
+    </button>
   </div>
 
   <div class="layout">
@@ -66,6 +78,16 @@
         <video style="width:100%;height:100%"></video>
         <div class="player-controls"></div>
       </div>
+      <!--
+        Cabecera del canal con el contador de viewers. `viewer-analytics` busca
+        aquí su ancla para insertar el badge; sin ella la feature se activa,
+        recorre el chat y no inserta nada, que es indistinguible de que esté
+        rota.
+      -->
+      <div class="channel-info-bar" data-a-target="channel-info-bar">
+        <span class="channel-info-bar__title">darkt</span>
+        <strong data-a-target="animated-channel-viewers-count">1.234</strong>
+      </div>
     </main>
 
     <aside data-a-target="chat-room-component-layout" class="chat">
@@ -75,6 +97,17 @@
         </div>
         <div class="chat-line__message" data-a-target="chat-line-message">
           <span class="chat-line__username">viewer2</span>Buenas
+        </div>
+        <!--
+          Una mención al usuario de la sesión. Las features de chat necesitan
+          una línea que case con el patrón para poder demostrar que marcan, y
+          dos que no, para demostrar que no marcan de más.
+        -->
+        <div class="chat-line__message" data-a-target="chat-line-message">
+          <span class="chat-line__username">viewer3</span>oye @darkt 你看得见这条吗
+        </div>
+        <div class="chat-line__message" data-a-target="chat-line-message">
+          <span class="chat-line__username">darkt</span>saludos a todos
         </div>
       </div>
       <div class="chat-input">
