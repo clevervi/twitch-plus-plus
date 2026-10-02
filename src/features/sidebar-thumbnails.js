@@ -21,11 +21,26 @@ function width() {
   return Number.isFinite(value) && value >= 160 ? value : 320;
 }
 
+const MAX_CACHE_SIZE = 100;
+
+function pruneCache(now) {
+  const maxAge = ttl();
+  for (const [key, stamp] of cache) {
+    // `>=` y no `>`: con el tope exacto alcanzado no se borraba nada, la caché
+    // crecía a 101 y solo purgaba en la siguiente llamada. El límite se
+    // sobrepasaba siempre en uno.
+    if (now - stamp > maxAge || cache.size >= MAX_CACHE_SIZE) {
+      cache.delete(key);
+    }
+  }
+}
+
 function preload(channel) {
   if (!channel) return;
   const now = Date.now();
   const stamp = cache.get(channel);
   if (stamp && now - stamp < ttl()) return;
+  if (cache.size >= MAX_CACHE_SIZE) pruneCache(now);
   cache.set(channel, now);
   const image = new Image();
   image.decoding = 'async';
