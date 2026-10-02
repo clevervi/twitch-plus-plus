@@ -1,6 +1,7 @@
 /** Buscador dentro del chat: filtra, cuenta y permite saltar entre coincidencias. */
 import { qs } from '../core/dom.js';
 import { defineFeature } from '../core/registry.js';
+import { compilarSeguro } from '../core/regex.js';
 import { get as storeGet } from '../core/store.js';
 import { chatContainer, chatLines, messageText } from '../core/twitch.js';
 
@@ -46,48 +47,11 @@ function jump(step) {
   updateCounter();
 }
 
-/** Patrón más largo que se acepta. */
-const MAX_PATRON = 200;
-
-/**
- * Patrones con cuantificador anidado, que son los que hacen backtracking
- * exponencial: `(a+)+`, `(a*)*`, `(a|a)+`. Un grupo que se repite y dentro
- * del grupo hay otro cuantificador, o una alternancia repetida.
- *
- * No es una lista exhaustiva y no pretende serlo: el que escribe el patrón no
- * es un atacante, es alguien copiando una expresión de internet. Esto corta
- * los casos reales, no todos los posibles.
- */
-const CUANTIFICADO = /[+*]|\{\d+,\d*\}/;
-const NESTADO = /\((?:\?[:=!]?)?[^()]*[+*][^()]*\)[+*{]/;
-const NESTADO_ALTERNATIVA = /\([^()]*\|[^()]*\)[+*{]/;
-const REPETICION_AGRUPADA = /\((?:\?[:=!]?)?[^()]*\)\{\d+,\}/;
-
-function patronPeligroso(query) {
-  if (NESTADO.test(query)) return true;
-  if (NESTADO_ALTERNATIVA.test(query) && CUANTIFICADO.test(query)) return true;
-  if (REPETICION_AGRUPADA.test(query)) return true;
-  return false;
-}
-
-/**
- * Compila la búsqueda.
- *
- * Nada de esto interrumpe un `regex.test()` que ya está corriendo: si el
- * patrón es malo, el daño está hecho cuando se vuelve a mirar el reloj. Por
- * eso el corte es ANTES de compilar, no durante la búsqueda.
- */
 export function buildMatcher(query) {
   const texto = query.toLowerCase();
   if (!storeGet('chatSearchRegex')) return { texto, regex: null, rechazado: '' };
-  if (query.length > MAX_PATRON) return { texto, regex: null, rechazado: 'patrón demasiado largo' };
-  if (patronPeligroso(query)) return { texto, regex: null, rechazado: 'patrón con repetir exponencial' };
-  try {
-    return { texto, regex: new RegExp(query, 'i'), rechazado: '' };
-  } catch {
-    // Patrón inválido: se cae a texto plano, que es lo que se hacía antes.
-    return { texto, regex: null, rechazado: '' };
-  }
+  const { regex, rechazado } = compilarSeguro(query);
+  return { texto, regex, rechazado };
 }
 
 function apply({ keepCursor = false } = {}) {
