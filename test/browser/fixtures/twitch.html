@@ -71,6 +71,37 @@
         </a>
       </div>
       <a data-a-target="side-nav-more" href="/directory/category/99">Más</a>
+      <!--
+        Cards de la sidebar con las cuatro formas en las que Twitch marca una
+        como desconectada. La feature `hideOfflineChannels` decide mirando
+        esto, así que los tests necesitan las cuatro para poder comprobar que
+        acierta y, sobre todo, que NO esconde una card que está en directo.
+      -->
+      <div class="tw-transition-group" data-test-selector="cards-prueba">
+        <a class="side-nav-card" data-a-target="side-nav-card" href="/en-directo" data-estado="vivo-indicador">
+          <span class="tw-channel-status-indicator"></span>
+          <span>en_directo</span>
+        </a>
+        <a class="side-nav-card" data-a-target="side-nav-card" href="/con-contador" data-estado="vivo-contador">
+          <span data-a-target="side-nav-card-viewer-count">1,2 mil</span>
+          <span>con_contador</span>
+        </a>
+        <a class="side-nav-card" data-a-target="side-nav-card" href="/muerto-texto" data-estado="offline-texto">
+          <span>muerto_texto</span>
+          <span>Desconectado</span>
+        </a>
+        <a class="side-nav-card" data-a-target="side-nav-card" href="/muerto-clase" data-estado="offline-clase">
+          <span class="side-nav-card--offline">muerto_clase</span>
+        </a>
+        <a class="side-nav-card" data-a-target="side-nav-card" href="/muerto-aria" data-estado="offline-aria"
+           aria-label="muerto_aria, canal desconectado">
+          <span>muerto_aria</span>
+        </a>
+        <a class="side-nav-card" data-a-target="side-nav-card" href="/offline_tv" data-estado="vivo-se-llama-offline">
+          <span class="tw-channel-status-indicator"></span>
+          <span>offline_tv</span>
+        </a>
+      </div>
     </nav>
 
     <main class="main">
@@ -78,6 +109,17 @@
         <video style="width:100%;height:100%"></video>
         <div class="player-controls"></div>
       </div>
+      <!--
+        Bloques que las features de "Modo limpio" esconden. Están aquí para que
+        los tests puedan comprobar que display:none se aplica de verdad, con
+        estilos calculados, y no solo que la feature "está activa".
+      -->
+      <div data-a-target="up-next-queue">A continuación</div>
+      <div data-a-target="recommended-channels">Recomendados</div>
+      <div data-a-target="stories-tray">Stories</div>
+      <button data-a-target="stories-button">Stories</button>
+      <div data-a-target="prime-offer">Prueba Prime</div>
+      <div data-a-target="gift-sub-banner">Regala una subscripción</div>
       <!--
         Cabecera del canal con el contador de viewers. `viewer-analytics` busca
         aquí su ancla para insertar el badge; sin ella la feature se activa,
@@ -115,6 +157,10 @@
           <textarea data-a-target="chat-input" placeholder="Enviar mensaje"></textarea>
         </div>
         <button data-a-target="chat-send-button">Enviar</button>
+        <button data-a-target="chat-input-upsell">Suscríbete</button>
+        <button data-a-target="bits-button">Bits</button>
+        <button data-a-target="chat-rules-button">Normas</button>
+        <button data-a-target="chat-commands-button">Comandos</button>
       </div>
     </aside>
   </div>
