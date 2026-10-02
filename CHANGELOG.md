@@ -113,3 +113,13 @@
 - **Suite de navegador**: 15 tests en Chromium real que leen estilos computados, para lo que el DOM stub no puede comprobar. No forma parte de `npm run verify`, que sigue funcionando sin instalar nada.
 - **Las notas del CHANGELOG se leen de un archivo**: en Windows, el texto con acentos que pasa por la línea de comandos llegaba estropeado.
 - **Tests**: 182 en verde, antes 143.
+
+## 2.2.13 — 2026-10-02
+
+- ## Corrección: el resaltado de palabras clave cuelgaba la pestaña igual que el buscador
+- Con *Tratar como regex* activado, las palabras del cuadro de texto se unían con `|` y se compilaban. Solo se escapaba la barra invertida y la propia barra, así que escribir `(a+)+$` construía un patrón catastrófico sin haber pedido una regex: solo esperar que se resalte una palabra.
+- Una sola línea de chat de 41 caracteres tardaba **137 segundos** con ese patrón, y el resaltado revisa la pantalla cada segundo.
+- Ahora las dos features donde el usuario escribe expresiones pasan por el mismo comprobador, en `src/core/regex.js`:
+- **Buscador de chat**: ya lo usaba desde la versión anterior. Lo que cambia es el texto del aviso: dice cuántos caracteres acepta en vez de un «demasiado largo» sin número.
+- **Resaltado de palabras clave**: es el que se arregla aquí. Antes no comprobaba nada.
+- Un patrón con **sintaxis inválida** sigue cayendo a texto plano sin avisar, porque es un error de quien escribe y no un problema de rendimiento. Solo se avisa cuando el patrón cuelga el navegador de verdad.
