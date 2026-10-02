@@ -7,6 +7,7 @@ const chatters = new Map();
 let counted = new WeakSet();
 let badge = null;
 let lastUpdate = 0;
+let updateTimer = null;
 
 const UPDATE_EVERY = 4000;
 
@@ -84,6 +85,12 @@ function update() {
 }
 
 function teardown() {
+  // El setTimeout de onEnable no tenía handle guardado, así que teardown() no
+  // podía cancelarlo: apagar antes de los 400 ms dejaba el temporador vivo, y
+  // al dispararse update() volvía a insertar el badge con la feature apagada.
+  // El handle se guarda y se limpia aquí.
+  clearTimeout(updateTimer);
+  updateTimer = null;
   badge?.remove();
   badge = null;
   chatters.clear();
@@ -125,7 +132,8 @@ defineFeature({
   onEnable() {
     chatters.clear();
     lastUpdate = 0;
-    setTimeout(update, 400);
+    clearTimeout(updateTimer);
+    updateTimer = setTimeout(update, 400);
   },
   onDisable: teardown,
   onRoute() {
