@@ -28,7 +28,7 @@ describe('el buscador de chat no se puede colgar', () => {
   it('rechaza un patron mas largo que el limite, sin mirarlo', () => {
     const matcher = buildMatcher('a'.repeat(500));
     assert.equal(matcher.regex, null);
-    assert.match(matcher.rechazado, /largo/);
+    assert.match(matcher.rechazado, /200/);
   });
 
   it('un patron valido y corriente se compila y funciona', () => {

@@ -2498,8 +2498,88 @@ return {
 };
 })();
 
-/* ---- src/core/twitch.js ---- */
+/* ---- src/core/regex.js ---- */
 const __m21 = (function () {
+/**
+ * Compilación de expresiones regulares que el usuario puede escribir.
+ *
+ * Existe por un motivo concreto: un patrón con cuantificadores anidados como
+ * `(a+)+$` compila bien y luego se pasa **minutos** calculando. Comprobado en
+ * este repo: 137 segundos contra una única línea de chat de 41 caracteres.
+ *
+ * Y como el script corre en la pestaña de Twitch, eso no congela una página:
+ * congela Twitch.
+ *
+ * No se intenta interrumpir una expresión en curso. El daño ocurre dentro de
+ * un solo `regex.test()`, así que cuando se vuelve a mirar el reloj ya es
+ * tarde. El corte va ANTES de compilar, que es el único sitio donde sirve.
+ */
+
+/** Patrón más largo que se acepta. */
+const MAX_PATRON = 200;
+
+/**
+ * Cuantificador anidado: un grupo que se repite y dentro del grupo hay otro
+ * cuantificador.
+ *
+ *   NESTADO             (a+)+   (a*)*   (\w+)*
+ *   NESTADO_ALTERNATIVA (a|b)+  (x|y)*
+ *   REPETICION_AGRUPADA (a){2,} (x){3,5}
+ *
+ * No es una lista exhaustiva, y no pretende serlo. Quien escribe el patrón no
+ * es un atacante, es alguien copiando una expresión de internet. Esto corta
+ * los casos reales, no todos los posibles.
+ */
+const NESTADO = /\((?:\?[:=!]?)?[^()]*[+*][^()]*\)[+*{]/;
+const NESTADO_ALTERNATIVA = /\([^()]*\|[^()]*\)[+*{]/;
+const REPETICION_AGRUPADA = /\((?:\?[:=!]?)?[^()]*\)\{\d+,\}/;
+const CUANTIFICADO = /[+*]|\{\d+,\d*\}/;
+
+function patronPeligroso(patron) {
+  if (typeof patron !== 'string' || !patron) return false;
+  if (patron.length > MAX_PATRON) return true;
+  if (NESTADO.test(patron)) return true;
+  if (NESTADO_ALTERNATIVA.test(patron) && CUANTIFICADO.test(patron)) return true;
+  if (REPETICION_AGRUPADA.test(patron)) return true;
+  return false;
+}
+
+/**
+ * Compila un patrón escrito por el usuario.
+ *
+ * Devuelve siempre un objeto:
+ *   { regex, rechazado }
+ *
+ * - `rechazado` es `''` si todo va bien, o el motivo si no.
+ * - Un patrón con **sintaxis** inválida no se marca como rechazado: no es un
+ *   problema de rendimiento, y el llamante puede caer a texto plano sin
+ *   avisar de nada.
+ */
+function compilarSeguro(patron, flags = 'i') {
+  const vacio = { regex: null, rechazado: '' };
+  if (typeof patron !== 'string' || !patron) return vacio;
+
+  if (patron.length > MAX_PATRON) {
+    return { regex: null, rechazado: `patrón de más de ${MAX_PATRON} caracteres` };
+  }
+  if (patronPeligroso(patron)) {
+    return { regex: null, rechazado: 'patrón con repetición anidada, se cuelga el navegador' };
+  }
+  try {
+    return { regex: new RegExp(patron, flags), rechazado: '' };
+  } catch {
+    return vacio;
+  }
+}
+return {
+  MAX_PATRON: MAX_PATRON,
+  patronPeligroso: patronPeligroso,
+  compilarSeguro: compilarSeguro,
+};
+})();
+
+/* ---- src/core/twitch.js ---- */
+const __m22 = (function () {
 const { qs: qs, qsAll: qsAll, isVisible: isVisible } = __m11;
 const { select: select, selectAll: selectAll } = __m3;
 
@@ -2695,12 +2775,16 @@ return {
 })();
 
 /* ---- src/features/chat-keywords.js ---- */
-const __m22 = (function () {
+const __m23 = (function () {
 const { defineFeature: defineFeature } = __m6;
+const { warn: warn } = __m2;
+const { compilarSeguro: compilarSeguro } = __m21;
 const { get: storeGet, onChange: onChange } = __m5;
-const { chatContainer: chatContainer, chatLines: chatLines, messageText: messageText } = __m21;
+const { chatContainer: chatContainer, chatLines: chatLines, messageText: messageText } = __m22;
 
 /** Resalta mensajes que contienen palabras clave (por defecto o regex). */
+
+
 
 
 
@@ -2724,11 +2808,13 @@ function buildMatcher() {
   if (!list.length) return null;
 
   if (storeGet('chatKeywordRegex')) {
-    try {
-      cache.matcher = new RegExp(list.map((word) => word.replace(/[\\|]/g, (char) => `\\${char}`)).join('|'), 'i');
-    } catch {
-      cache.matcher = null;
-    }
+    // Las palabras se unen con `|`, así que un usuario que escriba `(a+)+$`
+    // construye un patrón catastrófico sin querer. Pasa por el mismo
+    // comprobador que el buscador: el corte va antes de compilar.
+    const unido = list.map((word) => word.replace(/[\\|]/g, (char) => `\\${char}`)).join('|');
+    const { regex, rechazado } = compilarSeguro(unido);
+    if (rechazado) warn('palabras clave rechazadas:', rechazado);
+    cache.matcher = regex;
     return cache.matcher;
   }
 
@@ -2814,13 +2900,15 @@ return {
 })();
 
 /* ---- src/features/chat-search.js ---- */
-const __m23 = (function () {
+const __m24 = (function () {
 const { qs: qs } = __m11;
 const { defineFeature: defineFeature } = __m6;
+const { compilarSeguro: compilarSeguro } = __m21;
 const { get: storeGet } = __m5;
-const { chatContainer: chatContainer, chatLines: chatLines, messageText: messageText } = __m21;
+const { chatContainer: chatContainer, chatLines: chatLines, messageText: messageText } = __m22;
 
 /** Buscador dentro del chat: filtra, cuenta y permite saltar entre coincidencias. */
+
 
 
 
@@ -2868,48 +2956,11 @@ function jump(step) {
   updateCounter();
 }
 
-/** Patrón más largo que se acepta. */
-const MAX_PATRON = 200;
-
-/**
- * Patrones con cuantificador anidado, que son los que hacen backtracking
- * exponencial: `(a+)+`, `(a*)*`, `(a|a)+`. Un grupo que se repite y dentro
- * del grupo hay otro cuantificador, o una alternancia repetida.
- *
- * No es una lista exhaustiva y no pretende serlo: el que escribe el patrón no
- * es un atacante, es alguien copiando una expresión de internet. Esto corta
- * los casos reales, no todos los posibles.
- */
-const CUANTIFICADO = /[+*]|\{\d+,\d*\}/;
-const NESTADO = /\((?:\?[:=!]?)?[^()]*[+*][^()]*\)[+*{]/;
-const NESTADO_ALTERNATIVA = /\([^()]*\|[^()]*\)[+*{]/;
-const REPETICION_AGRUPADA = /\((?:\?[:=!]?)?[^()]*\)\{\d+,\}/;
-
-function patronPeligroso(query) {
-  if (NESTADO.test(query)) return true;
-  if (NESTADO_ALTERNATIVA.test(query) && CUANTIFICADO.test(query)) return true;
-  if (REPETICION_AGRUPADA.test(query)) return true;
-  return false;
-}
-
-/**
- * Compila la búsqueda.
- *
- * Nada de esto interrumpe un `regex.test()` que ya está corriendo: si el
- * patrón es malo, el daño está hecho cuando se vuelve a mirar el reloj. Por
- * eso el corte es ANTES de compilar, no durante la búsqueda.
- */
 function buildMatcher(query) {
   const texto = query.toLowerCase();
   if (!storeGet('chatSearchRegex')) return { texto, regex: null, rechazado: '' };
-  if (query.length > MAX_PATRON) return { texto, regex: null, rechazado: 'patrón demasiado largo' };
-  if (patronPeligroso(query)) return { texto, regex: null, rechazado: 'patrón con repetir exponencial' };
-  try {
-    return { texto, regex: new RegExp(query, 'i'), rechazado: '' };
-  } catch {
-    // Patrón inválido: se cae a texto plano, que es lo que se hacía antes.
-    return { texto, regex: null, rechazado: '' };
-  }
+  const { regex, rechazado } = compilarSeguro(query);
+  return { texto, regex, rechazado };
 }
 
 function apply({ keepCursor = false } = {}) {
@@ -3054,7 +3105,7 @@ return {
 })();
 
 /* ---- src/features/clean-mode.js ---- */
-const __m24 = (function () {
+const __m25 = (function () {
 const { defineFeature: defineFeature } = __m6;
 
 defineFeature({
@@ -3088,10 +3139,10 @@ return {
 })();
 
 /* ---- src/features/dark-mode.js ---- */
-const __m25 = (function () {
+const __m26 = (function () {
 const { defineFeature: defineFeature } = __m6;
 const { get: storeGet } = __m5;
-const { isDarkTheme: isDarkTheme } = __m21;
+const { isDarkTheme: isDarkTheme } = __m22;
 
 defineFeature({
   id: 'darkMode',
@@ -3210,7 +3261,7 @@ return {
 })();
 
 /* ---- src/features/hide-blocks.js ---- */
-const __m26 = (function () {
+const __m27 = (function () {
 const { defineFeature: defineFeature } = __m6;
 
 defineFeature({
@@ -3276,7 +3327,7 @@ return {
 })();
 
 /* ---- src/features/hide-chat-extras.js ---- */
-const __m27 = (function () {
+const __m28 = (function () {
 const { defineFeature: defineFeature } = __m6;
 
 defineFeature({
@@ -3299,7 +3350,7 @@ return {
 })();
 
 /* ---- src/features/hide-extensions.js ---- */
-const __m28 = (function () {
+const __m29 = (function () {
 const { qsAll: qsAll } = __m11;
 const { log: log } = __m2;
 const { defineFeature: defineFeature } = __m6;
@@ -3528,7 +3579,7 @@ return {
 })();
 
 /* ---- src/features/hide-offline-channels.js ---- */
-const __m29 = (function () {
+const __m30 = (function () {
 const { qs: qs } = __m11;
 const { defineFeature: defineFeature } = __m6;
 const { selectAll: selectAll } = __m3;
@@ -3596,9 +3647,9 @@ return {
 })();
 
 /* ---- src/features/mention-highlight.js ---- */
-const __m30 = (function () {
+const __m31 = (function () {
 const { defineFeature: defineFeature } = __m6;
-const { chatContainer: chatContainer, chatLines: chatLines, currentUsername: currentUsername, messageText: messageText } = __m21;
+const { chatContainer: chatContainer, chatLines: chatLines, currentUsername: currentUsername, messageText: messageText } = __m22;
 
 /** Resalta los mensajes que te mencionan. */
 
@@ -3672,7 +3723,7 @@ return {
 })();
 
 /* ---- src/features/sidebar-compact.js ---- */
-const __m31 = (function () {
+const __m32 = (function () {
 const { defineFeature: defineFeature } = __m6;
 const { get: storeGet, onChange: onChange } = __m5;
 
@@ -3734,11 +3785,11 @@ return {
 })();
 
 /* ---- src/features/sidebar-thumbnails.js ---- */
-const __m32 = (function () {
+const __m33 = (function () {
 const { log: log } = __m2;
 const { defineFeature: defineFeature } = __m6;
 const { get: storeGet } = __m5;
-const { channelFromCard: channelFromCard, thumbnailUrl: thumbnailUrl, visibleChannels: visibleChannels, waitForHoverDialog: waitForHoverDialog } = __m21;
+const { channelFromCard: channelFromCard, thumbnailUrl: thumbnailUrl, visibleChannels: visibleChannels, waitForHoverDialog: waitForHoverDialog } = __m22;
 
 /** Miniaturas de canal al pasar el ratón por una card de la sidebar. */
 
@@ -4069,7 +4120,7 @@ return {
 })();
 
 /* ---- src/features/theater-clean.js ---- */
-const __m33 = (function () {
+const __m34 = (function () {
 const { defineFeature: defineFeature } = __m6;
 
 defineFeature({
@@ -4103,10 +4154,10 @@ return {
 })();
 
 /* ---- src/features/viewer-analytics.js ---- */
-const __m34 = (function () {
+const __m35 = (function () {
 const { defineFeature: defineFeature } = __m6;
 const { get: storeGet } = __m5;
-const { chatContainer: chatContainer, chatLines: chatLines, usernameOf: usernameOf, viewerCount: viewerCount } = __m21;
+const { chatContainer: chatContainer, chatLines: chatLines, usernameOf: usernameOf, viewerCount: viewerCount } = __m22;
 
 /** Contador real de viewers + chatters activos por ventana deslizante. */
 
@@ -4249,7 +4300,7 @@ return {
 })();
 
 /* ---- src/features/index.js ---- */
-const __m35 = (function () {
+const __m36 = (function () {
 /**
  * Índice de features.
  *
@@ -4262,7 +4313,7 @@ return {
 })();
 
 /* ---- src/ui/panel-css.js ---- */
-const __m36 = (function () {
+const __m37 = (function () {
 const PANEL_CSS = `
   :host { all: initial; }
   * { box-sizing: border-box; font-family: "Inter","Roobert",-apple-system,"Segoe UI",Roboto,sans-serif; }
@@ -4389,7 +4440,7 @@ return {
 })();
 
 /* ---- src/ui/presets.js ---- */
-const __m37 = (function () {
+const __m38 = (function () {
 /** Presets: un clic y la config queda como quieres. */
 const PRESETS = {
   minimal: ['darkMode', 'cleanMode', 'autoClaim'],
@@ -4443,7 +4494,7 @@ return {
 })();
 
 /* ---- src/ui/panel.js ---- */
-const __m38 = (function () {
+const __m39 = (function () {
 const { on: onBus } = __m0;
 const { setDebug: setDebug, trackedErrors: trackedErrors } = __m2;
 const { all: allFeatures, apply: apply, applyAll: applyAll, SECTIONS: SECTIONS, statuses: statuses } = __m6;
@@ -4456,8 +4507,8 @@ const { clearCache: clearCache, refresh: refreshCatalog, status: catalogStatus }
 const { check: checkUpdate, install: installUpdate, shouldCheck: shouldCheck } = __m18;
 const { ChatPause: ChatPause } = __m19;
 const { VERSION: VERSION } = __m8;
-const { PANEL_CSS: PANEL_CSS } = __m36;
-const { PRESETS: PRESETS, PRESET_LABELS: PRESET_LABELS, idsOf: idsOf } = __m37;
+const { PANEL_CSS: PANEL_CSS } = __m37;
+const { PRESETS: PRESETS, PRESET_LABELS: PRESET_LABELS, idsOf: idsOf } = __m38;
 
 /** Panel de control en shadow DOM (sin colisiones con el CSS de Twitch). */
 
@@ -5104,7 +5155,7 @@ return {
 })();
 
 /* ---- src/app.js ---- */
-const __m39 = (function () {
+const __m40 = (function () {
 const { on: onBus } = __m0;
 const { refresh: refreshCatalog, status: catalogStatus, warm: warmCatalog } = __m9;
 const { onIdle: onIdle, ready: ready } = __m11;
@@ -5124,7 +5175,7 @@ const { show: toast } = __m17;
 const { check: checkUpdate, shouldCheck: shouldCheck } = __m18;
 const { VERSION: VERSION } = __m8;
 const { ChatPause: ChatPause } = __m19;
-const { UI: UI } = __m38;
+const { UI: UI } = __m39;
 
 /**
  * Arranque y API de diagnóstico.
@@ -5338,8 +5389,8 @@ return {
 })();
 
 /* ---- src/index.js ---- */
-const __m40 = (function () {
-const { diagnostics: diagnostics, setFeature: setFeature, start: start } = __m39;
+const __m41 = (function () {
+const { diagnostics: diagnostics, setFeature: setFeature, start: start } = __m40;
 const { VERSION: VERSION } = __m8;
 
 /**
@@ -5361,6 +5412,6 @@ return {
 };
 })();
 
-__m40;
+__m41;
 
 })();
