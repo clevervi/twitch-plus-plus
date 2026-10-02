@@ -3451,7 +3451,24 @@ function extensionLike(element) {
   return EXTENSION_HINT.test(hay);
 }
 
+const OVERLAY_SELECTOR = [
+  '.extension-container',
+  '.extension-view',
+  '[class*="extension-overlay"]',
+  '[class*="extensions-overlay"]',
+  '[class*="video-extension"]',
+  '[data-test-selector="extension-overlay"]',
+  '[data-a-target="extension-overlay"]',
+  '[data-test-selector="video-extension-overlay"]',
+  '[data-a-target="video-extension-overlay"]',
+].join(',');
+
 function playerOverlaySweep() {
+  // Purgar nodos que ya no están en el DOM para evitar fugas de memoria tras navegación
+  for (const [elemento] of ocultos) {
+    if (!elemento?.isConnected) ocultos.delete(elemento);
+  }
+
   for (const player of selectAll('player')) {
     // 1) iframes de extensión dentro del player
     for (const frame of qsAll('iframe', player)) {
@@ -3461,18 +3478,7 @@ function playerOverlaySweep() {
     // 2) Overlays de extensión SOLO con clases específicas.
     //    Ya NO usamos div[class*="overlay"] porque matchea los overlays
     //    legítimos del player (controles de pausa, settings, etc.).
-    const overlaySelectors = [
-      '.extension-container',
-      '.extension-view',
-      '[class*="extension-overlay"]',
-      '[class*="extensions-overlay"]',
-      '[class*="video-extension"]',
-      '[data-test-selector="extension-overlay"]',
-      '[data-a-target="extension-overlay"]',
-      '[data-test-selector="video-extension-overlay"]',
-      '[data-a-target="video-extension-overlay"]',
-    ];
-    for (const box of qsAll(overlaySelectors.join(','), player)) {
+    for (const box of qsAll(OVERLAY_SELECTOR, player)) {
       if (!box.querySelector('iframe')) continue;
       kill(box);
     }
@@ -3578,6 +3584,11 @@ defineFeature({
     if (storeGet('extensionHeuristic')) unknownButtonSweep();
   },
   onDisable: restore,
+  onRoute() {
+    for (const [elemento] of ocultos) {
+      if (!elemento?.isConnected) ocultos.delete(elemento);
+    }
+  },
 });
 return {
 
@@ -3619,11 +3630,9 @@ function isOffline(card) {
 // canal o reconectar el canal se refleja sin recargar.
 function sweep() {
   for (const card of selectAll('sideNav.card')) {
-    const offline = isOffline(card);
-    if (offline) {
-      card.setAttribute(ATTR, '1');
-    } else {
-      card.setAttribute(ATTR, '0');
+    const val = isOffline(card) ? '1' : '0';
+    if (card.getAttribute(ATTR) !== val) {
+      card.setAttribute(ATTR, val);
     }
   }
 }
@@ -3823,11 +3832,26 @@ function width() {
   return Number.isFinite(value) && value >= 160 ? value : 320;
 }
 
+const MAX_CACHE_SIZE = 100;
+
+function pruneCache(now) {
+  const maxAge = ttl();
+  for (const [key, stamp] of cache) {
+    // `>=` y no `>`: con el tope exacto alcanzado no se borraba nada, la caché
+    // crecía a 101 y solo purgaba en la siguiente llamada. El límite se
+    // sobrepasaba siempre en uno.
+    if (now - stamp > maxAge || cache.size >= MAX_CACHE_SIZE) {
+      cache.delete(key);
+    }
+  }
+}
+
 function preload(channel) {
   if (!channel) return;
   const now = Date.now();
   const stamp = cache.get(channel);
   if (stamp && now - stamp < ttl()) return;
+  if (cache.size >= MAX_CACHE_SIZE) pruneCache(now);
   cache.set(channel, now);
   const image = new Image();
   image.decoding = 'async';
@@ -4555,6 +4579,9 @@ let noteBox = null;
 let idleTimer = null;
 let prevFocus = null;
 let built = false;
+let cachedFabX = 0;
+let cachedFabY = 0;
+let fabState = 'idle';
 
 const NODE = {
   panel: 'panel',
@@ -4672,6 +4699,9 @@ function applyPlacement(right, bottom) {
 
   const isTop = bottom > winH / 2;
   const isLeft = right > winW / 2;
+
+  cachedFabX = isLeft ? (right + 13) : (winW - right - 13);
+  cachedFabY = isTop ? (bottom + 13) : (winH - bottom - 13);
 
   const wrap = shadow?.querySelector('.wrap');
   if (wrap) {
@@ -4845,27 +4875,74 @@ function bind() {
     );
   }
 
-  const wakeFab = (event) => {
+  let lastMoveTime = 0;
+  let pendingMove = null;
+  let pendingTimer = null;
+
+  /** El cálculo en sí, sin ninguna limitación de frecuencia. */
+  const evaluarWake = (event) => {
     if (!fab) return;
-    const right = get('fabRight') ?? 14;
-    const bottom = get('fabBottom') ?? 56;
-    const winW = (typeof window !== 'undefined' ? window.innerWidth : 1200) || 1200;
-    const winH = (typeof window !== 'undefined' ? window.innerHeight : 800) || 800;
-    const isTop = bottom > winH / 2;
-    const isLeft = right > winW / 2;
-    const fabX = isLeft ? (right + 13) : (winW - right - 13);
-    const fabY = isTop ? (bottom + 13) : (winH - bottom - 13);
-    const dist = Math.hypot(event.clientX - fabX, event.clientY - fabY);
+
+    const dx = Math.abs(event.clientX - cachedFabX);
+    const dy = Math.abs(event.clientY - cachedFabY);
+
+    // Salida rápida: si el ratón está lejos (> 140px en cualquier eje),
+    // no se calculan raíces cuadradas ni se tocan clases ni timers.
+    if (dx > 140 || dy > 140) {
+      if (fabState !== 'idle') {
+        fabState = 'idle';
+        fab.classList.remove('awake', 'near');
+      }
+      return;
+    }
+
+    const dist = Math.hypot(dx, dy);
 
     if (dist < 30) {
-      fab.classList.add('awake', 'near');
+      if (fabState !== 'near') {
+        fabState = 'near';
+        fab.classList.add('awake', 'near');
+      }
+      scheduleIdle();
     } else if (dist < 140) {
-      fab.classList.add('awake');
-      fab.classList.remove('near');
-    } else {
+      if (fabState !== 'awake') {
+        fabState = 'awake';
+        fab.classList.add('awake');
+        fab.classList.remove('near');
+      }
+      scheduleIdle();
+    } else if (fabState !== 'idle') {
+      fabState = 'idle';
       fab.classList.remove('awake', 'near');
     }
-    scheduleIdle();
+  };
+
+  const wakeFab = (event) => {
+    if (!fab) return;
+    const now = Date.now();
+    const espera = 50 - (now - lastMoveTime);
+
+    if (espera > 0) {
+      // NO se descarta el evento. Se guarda el último y se evalúa al abrirse
+      // la ventana, porque la posición que importa es donde se para el ratón:
+      // descartarla era justo lo que dejaba el botón apagado para siempre tras
+      // el primer ciclo de entrar y salir.
+      pendingMove = event;
+      if (!pendingTimer) {
+        pendingTimer = setTimeout(() => {
+          pendingTimer = null;
+          const ultimo = pendingMove;
+          pendingMove = null;
+          if (!ultimo) return;
+          lastMoveTime = Date.now();
+          evaluarWake(ultimo);
+        }, espera);
+      }
+      return;
+    }
+
+    lastMoveTime = now;
+    evaluarWake(event);
   };
   document.addEventListener('mousemove', wakeFab, { passive: true });
 
@@ -4983,6 +5060,7 @@ function scheduleIdle() {
   clearTimeout(idleTimer);
   idleTimer = setTimeout(() => {
     if (panel && !panel.hidden) return;
+    fabState = 'idle';
     fab?.classList.remove('awake', 'near');
   }, 4000);
 }
