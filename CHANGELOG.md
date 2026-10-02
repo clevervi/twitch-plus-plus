@@ -147,3 +147,17 @@
 - Ahora el tema se lee de un sitio que el script no toca, y se comprueba que el fondo tenga color de verdad: un fondo transparente contaba como negro.
 - También se ha añadido el caso simétrico al que ya existía: si la página dice que el tema es claro, se respeta. Si tu versión de Twitch no usa ese nombre, no cambia nada: el ajuste sigue funcionando gracias a la otra parte del arreglo.
 - No verás ninguna diferencia si ya usabas el tema oscuro, que es lo que a la mayoría le importa. Si tenías que pelearte con el script para ver la página clara, esto es lo que te faltaba.
+
+## 2.2.17 — 2026-10-02
+
+- ## Corrección urgente: el tema OLED y el contraste alto estaban apagados
+- Si tienes la versión de ayer, dos de las features no funcionan: **Tema OLED** y **Contraste alto**. El resto del script va bien.
+- Por un error mío al escribir un ajuste: al comprobar el tema de Twitch, el código fallaba en lugar de responder, y ese fallo se traducía en «no activado». Nada de tu configuración estaba mal, y no había forma de verlo desde el panel.
+- Lo que sí funcionaba era la mejora que venía con esa versión: ahora el tema claro de Twitch se respeta de verdad, porque la detección ya no se pregunta a sí misma qué color tiene la página.
+- Si tenías las dos features apagadas y te parecían un problema, ya está resuelto. Sorry por el susto.
+- ## Corrección: los overlays de extensión volvían a quedarse ocultos
+- Con **Sin extensiones** activada, los recuadros de las extensiones desaparecían bien, pero al desactivar el ajuste alguno se quedaba escondido sin poder volver.
+- Consecuencia real: si la activabas por error y la quitabas, tenías que recargar la página.
+- Era una palabra mal escrita al devolver los estilos que el propio script había puesto antes de esconderlos. El error se escondía porque el script no lo lanzaba como fallo visible, sino que lo anotaba en silencio. Por eso no se notaba y por eso parecía imposible.
+- ## Área afectada
+- `package.json`, `CHANGELOG.md`, `dist/`
