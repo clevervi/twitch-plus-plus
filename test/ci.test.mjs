@@ -18,14 +18,32 @@ describe('la CI no se desincroniza de npm run verify', () => {
     assert.match(CI, /run:\s*npm run verify/, 'ci.yml debe delegar en npm run verify');
   });
 
-  it('verify cubre las cuatro comprobaciones', () => {
+  it('verify cubre las cinco comprobaciones', () => {
     const pasos = PKG.scripts.verify.split('&&').map((paso) => paso.trim());
     assert.deepEqual(pasos, [
       'node scripts/lint.mjs',
       'node tools/check-language.mjs',
+      'node scripts/build.mjs --check',
       'node scripts/build.mjs',
       'node --test test/*.test.mjs',
     ], 'si añades un paso a verify, la CI lo hereda solo; no hace falta tocar ci.yml');
+  });
+
+  it('la comprobacion de deriva va ANTES de reconstruir', () => {
+    // El orden es lo único que hace que `build.mjs --check` sirva de algo: si
+    // va después, `dist/` ya está reconstruido en el árbol de trabajo y la
+    // comparación da siempre limpio. Sin este test, reordenar los pasos
+    // desactivaría la comprobación sin que nada fallara.
+    const pasos = PKG.scripts.verify.split('&&').map((paso) => paso.trim());
+    const check = pasos.indexOf('node scripts/build.mjs --check');
+    const build = pasos.indexOf('node scripts/build.mjs');
+    assert.ok(check !== -1, 'verify debe comprobar la deriva de dist/');
+    assert.ok(build !== -1, 'verify debe reconstruir');
+    assert.ok(check < build, 'el check tiene que ir antes del build, si no comprueba nada');
+    assert.ok(
+      pasos.indexOf('node --test test/*.test.mjs') > build,
+      'los tests se ejecutan contra el bundle recién construido',
+    );
   });
 
   it('verify NO se come la suite de navegador', () => {
