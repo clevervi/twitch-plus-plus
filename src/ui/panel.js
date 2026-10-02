@@ -26,6 +26,9 @@ let noteBox = null;
 let idleTimer = null;
 let prevFocus = null;
 let built = false;
+let cachedFabX = 0;
+let cachedFabY = 0;
+let fabState = 'idle';
 
 const NODE = {
   panel: 'panel',
@@ -143,6 +146,9 @@ function applyPlacement(right, bottom) {
 
   const isTop = bottom > winH / 2;
   const isLeft = right > winW / 2;
+
+  cachedFabX = isLeft ? (right + 13) : (winW - right - 13);
+  cachedFabY = isTop ? (bottom + 13) : (winH - bottom - 13);
 
   const wrap = shadow?.querySelector('.wrap');
   if (wrap) {
@@ -316,27 +322,74 @@ function bind() {
     );
   }
 
-  const wakeFab = (event) => {
+  let lastMoveTime = 0;
+  let pendingMove = null;
+  let pendingTimer = null;
+
+  /** El cálculo en sí, sin ninguna limitación de frecuencia. */
+  const evaluarWake = (event) => {
     if (!fab) return;
-    const right = get('fabRight') ?? 14;
-    const bottom = get('fabBottom') ?? 56;
-    const winW = (typeof window !== 'undefined' ? window.innerWidth : 1200) || 1200;
-    const winH = (typeof window !== 'undefined' ? window.innerHeight : 800) || 800;
-    const isTop = bottom > winH / 2;
-    const isLeft = right > winW / 2;
-    const fabX = isLeft ? (right + 13) : (winW - right - 13);
-    const fabY = isTop ? (bottom + 13) : (winH - bottom - 13);
-    const dist = Math.hypot(event.clientX - fabX, event.clientY - fabY);
+
+    const dx = Math.abs(event.clientX - cachedFabX);
+    const dy = Math.abs(event.clientY - cachedFabY);
+
+    // Salida rápida: si el ratón está lejos (> 140px en cualquier eje),
+    // no se calculan raíces cuadradas ni se tocan clases ni timers.
+    if (dx > 140 || dy > 140) {
+      if (fabState !== 'idle') {
+        fabState = 'idle';
+        fab.classList.remove('awake', 'near');
+      }
+      return;
+    }
+
+    const dist = Math.hypot(dx, dy);
 
     if (dist < 30) {
-      fab.classList.add('awake', 'near');
+      if (fabState !== 'near') {
+        fabState = 'near';
+        fab.classList.add('awake', 'near');
+      }
+      scheduleIdle();
     } else if (dist < 140) {
-      fab.classList.add('awake');
-      fab.classList.remove('near');
-    } else {
+      if (fabState !== 'awake') {
+        fabState = 'awake';
+        fab.classList.add('awake');
+        fab.classList.remove('near');
+      }
+      scheduleIdle();
+    } else if (fabState !== 'idle') {
+      fabState = 'idle';
       fab.classList.remove('awake', 'near');
     }
-    scheduleIdle();
+  };
+
+  const wakeFab = (event) => {
+    if (!fab) return;
+    const now = Date.now();
+    const espera = 50 - (now - lastMoveTime);
+
+    if (espera > 0) {
+      // NO se descarta el evento. Se guarda el último y se evalúa al abrirse
+      // la ventana, porque la posición que importa es donde se para el ratón:
+      // descartarla era justo lo que dejaba el botón apagado para siempre tras
+      // el primer ciclo de entrar y salir.
+      pendingMove = event;
+      if (!pendingTimer) {
+        pendingTimer = setTimeout(() => {
+          pendingTimer = null;
+          const ultimo = pendingMove;
+          pendingMove = null;
+          if (!ultimo) return;
+          lastMoveTime = Date.now();
+          evaluarWake(ultimo);
+        }, espera);
+      }
+      return;
+    }
+
+    lastMoveTime = now;
+    evaluarWake(event);
   };
   document.addEventListener('mousemove', wakeFab, { passive: true });
 
@@ -454,6 +507,7 @@ function scheduleIdle() {
   clearTimeout(idleTimer);
   idleTimer = setTimeout(() => {
     if (panel && !panel.hidden) return;
+    fabState = 'idle';
     fab?.classList.remove('awake', 'near');
   }, 4000);
 }

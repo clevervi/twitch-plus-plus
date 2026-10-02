@@ -27,11 +27,9 @@ function isOffline(card) {
 // canal o reconectar el canal se refleja sin recargar.
 function sweep() {
   for (const card of selectAll('sideNav.card')) {
-    const offline = isOffline(card);
-    if (offline) {
-      card.setAttribute(ATTR, '1');
-    } else {
-      card.setAttribute(ATTR, '0');
+    const val = isOffline(card) ? '1' : '0';
+    if (card.getAttribute(ATTR) !== val) {
+      card.setAttribute(ATTR, val);
     }
   }
 }
