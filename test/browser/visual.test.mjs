@@ -46,8 +46,11 @@ const ancho = (selector) =>
  * acabar en `1e-7` y no en `0`, y comparar números en coma flotante con
  * igualdad da falsos rojos.
  */
-async function esperarOpacidad(selector, objetivo, margen = 0.02) {
-  for (let intento = 0; intento < 30; intento += 1) {
+async function esperarOpacidad(selector, objetivo, margen = 0.03) {
+  // 40 intentos × 60 ms = 2,4 s. La transición dura 0,25 s, pero en CI la
+  // máquina va más lenta y el primer repint puede tardar: con 1,8 s se quedaba
+  // corta y el test fallaba solo allí.
+  for (let intento = 0; intento < 40; intento += 1) {
     const valor = await opacidad(selector);
     if (valor !== null && Math.abs(valor - objetivo) <= margen) return true;
     await pagina.waitForTimeout(60);
@@ -60,7 +63,13 @@ beforeEach(async () => {
     window.TwitchPP.disable('theaterClean');
     window.TwitchPP.disable('sidebarCompact');
   });
-  await pagina.waitForTimeout(200);
+  // El ratón de Playwright arranca en (0,0), que **dentro de este nav**: el
+  // `[data-a-target="top-nav-container"]` es un bloque a todo el ancho de la
+  // página. Con el ratón encima `:hover` compensa el efecto y el nav se ve
+  // siempre. En local pasaba por el orden de ejecución y falló en CI, que es la
+  // forma más mala de fallar: verde aquí, rojo allí, sin cambio de código.
+  await pagina.mouse.move(700, 850);
+  await pagina.waitForTimeout(250);
 });
 
 describe('teatro limpio', () => {
