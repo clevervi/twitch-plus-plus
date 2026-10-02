@@ -73,7 +73,7 @@ export function isDarkTheme() {
   const raw = String(getComputedStyle(document.documentElement)?.backgroundColor || '');
   const partes = raw.match(/[\d.]+/g) || [];
   if (partes.length >= 3) {
-    const alfa = partes.length > 3 ? Number(partas[3]) : 1;
+    const alfa = partes.length > 3 ? Number(partes[3]) : 1;
     const [r, g, b] = partes.map(Number);
     if (alfa !== 0 && ![r, g, b].some(Number.isNaN)) {
       return (r * 299 + g * 587 + b * 114) / 1000 < 128;

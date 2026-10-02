@@ -59,8 +59,8 @@ function restaurar(elemento, previo) {
   for (const propiedad of PROPIEDADES) {
     // Se restaura el valor que había, no se borra la propiedad: si Twitch
     // tenía `display: flex` en línea, borrarla rompería el elemento al apagar.
-    if (previo[propiedad]) element.style.setProperty(propiedad, previo[propiedad]);
-    else element.style.removeProperty(propiedad);
+if (previo[propiedad]) elemento.style.setProperty(propiedad, previo[propiedad]);
+      else elemento.style.removeProperty(propiedad);
   }
 }
 
