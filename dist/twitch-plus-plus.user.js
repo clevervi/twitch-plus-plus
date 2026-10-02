@@ -912,6 +912,22 @@ function onChange(fn) {
   return () => listeners.delete(fn);
 }
 
+/**
+ * Cuántas suscripciones hay ahora mismo.
+ *
+ * Existe para poder testear las fugas. Varias features se apuntan con
+ * `onChange()` y se dan de baja en `onDisable`; si una de ellas se olvidara,
+ * cada cambio de configuración quedaría con N escuchas y el síntoma sería
+ * «a veces va lento», que es imposible de atribuir.
+ *
+ * Sin esto había que deducirlo contando efectos en el DOM, y eso fue
+ * exactamente lo que se intentó: no distingue una fuga de una función
+ * idempotente.
+ */
+function subscriptions() {
+  return listeners.size;
+}
+
 function persist() {
   try {
     setValue(KEY, cache);
@@ -961,6 +977,7 @@ return {
   set: set,
   setMany: setMany,
   onChange: onChange,
+  subscriptions: subscriptions,
   exportJSON: exportJSON,
   importJSON: importJSON,
   reset: reset,
@@ -5264,7 +5281,7 @@ const { applyAll: applyAll, disableAll: disableAll, onRouteAll: onRouteAll, stat
 const { start: startRouter } = __m15;
 const { brokenSelectors: brokenSelectors, selectorReport: selectorReport } = __m3;
 const { kick: kickScheduler, scheduleRoute: scheduleRoute, start: startScheduler } = __m16;
-const { declare: declare, get: storeGet, set: storeSet } = __m5;
+const { declare: declare, get: storeGet, set: storeSet, subscriptions: subscriptions } = __m5;
 const { rebuild: rebuildStyles } = __m7;
 const { show: toast } = __m17;
 const { check: checkUpdate, shouldCheck: shouldCheck } = __m18;
@@ -5473,6 +5490,7 @@ const diagnostics = {
   apis: capabilities,
   perf: perfSnapshot,
   perfReset: resetPerf,
+  subscriptions,
   boot: () => ({ ...bootReport, stages: { ...bootReport.stages } }),
 };
 return {

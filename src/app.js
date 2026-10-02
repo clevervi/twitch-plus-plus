@@ -17,7 +17,7 @@ import { applyAll, disableAll, onRouteAll, statuses } from './core/registry.js';
 import { start as startRouter } from './core/router.js';
 import { brokenSelectors, selectorReport } from './core/selectors.js';
 import { kick as kickScheduler, scheduleRoute, start as startScheduler } from './core/scheduler.js';
-import { declare, get as storeGet, set as storeSet } from './core/store.js';
+import { declare, get as storeGet, set as storeSet, subscriptions } from './core/store.js';
 import { rebuild as rebuildStyles } from './core/styles.js';
 import { show as toast } from './core/toast.js';
 import { check as checkUpdate, shouldCheck } from './core/updater.js';
@@ -199,5 +199,6 @@ export const diagnostics = {
   apis: capabilities,
   perf: perfSnapshot,
   perfReset: resetPerf,
+  subscriptions,
   boot: () => ({ ...bootReport, stages: { ...bootReport.stages } }),
 };
