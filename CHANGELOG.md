@@ -123,3 +123,10 @@
 - **Buscador de chat**: ya lo usaba desde la versión anterior. Lo que cambia es el texto del aviso: dice cuántos caracteres acepta en vez de un «demasiado largo» sin número.
 - **Resaltado de palabras clave**: es el que se arregla aquí. Antes no comprobaba nada.
 - Un patrón con **sintaxis inválida** sigue cayendo a texto plano sin avisar, porque es un error de quien escribe y no un problema de rendimiento. Solo se avisa cuando el patrón cuelga el navegador de verdad.
+
+## 2.2.14 — 2026-10-02
+
+- ## Corrección: apagar y volver a encender «Resaltar menciones» dejaba de funcionar
+- La feature marca cada línea de chat con dos señales: una clase para pintar el resaltado, y un atributo para no volver a mirar esa misma línea.
+- El atributo se ponía en todas las líneas, pero al desactivar solo se limpiaban las que tenían la clase. Las demás se quedaban con el atributo puesto para siempre.
+- Y ahí está el problema: al volver a encender, la feature salta las líneas que ya tienen el atributo, precisamente las que debería volver a mirar. Un ciclo de apagar y encender dejaba esas líneas sin posibilidad de volver a resaltarse, aunque su texto hubiera cambiado y ahora fueran una mención.

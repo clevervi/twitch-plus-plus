@@ -1,7 +1,7 @@
 {
-  "version": "2.2.13",
+  "version": "2.2.14",
   "script": "https://raw.githubusercontent.com/clevervi/twitch-plus-plus/main/dist/twitch-plus-plus.user.js",
   "homepage": "https://github.com/clevervi/twitch-plus-plus",
-  "publishedAt": "2026-10-02T00:46:51.104Z",
-  "notes": "## Corrección: el resaltado de palabras clave cuelgaba la pestaña igual que el buscador\nCon *Tratar como regex* activado, las palabras del cuadro de texto se unían con `|` y se compilaban. Solo se escapaba la barra invertida y la propia barra, así que escribir `(a+)+$` construía un patrón catastrófico sin haber pedido una regex: solo esperar que se resalte una palabra.\nUna sola línea de chat de 41 caracteres tardaba **137 segundos** con ese patrón, y el resaltado revisa la pantalla cada segundo.\nAhora las dos features donde el usuario escribe expresiones pasan por el mismo comprobador, en `src/core/regex.js`:\n**Buscador de chat**: ya lo usaba desde la versión anterior. Lo que cambia es el texto del aviso: dice cuántos caracteres acepta en vez de un «demasiado largo» sin número.\n**Resaltado de palabras clave**: es el que se arregla aquí. Antes no comprobaba nada.\nUn patrón con **sintaxis inválida** sigue cayendo a texto plano sin avisar, porque es un error de quien escribe y no un problema de rendimiento. Solo se avisa cuando el patrón cuelga el navegador de verdad."
+  "publishedAt": "2026-10-02T02:15:48.441Z",
+  "notes": "## Corrección: apagar y volver a encender «Resaltar menciones» dejaba de funcionar\nLa feature marca cada línea de chat con dos señales: una clase para pintar el resaltado, y un atributo para no volver a mirar esa misma línea.\nEl atributo se ponía en todas las líneas, pero al desactivar solo se limpiaban las que tenían la clase. Las demás se quedaban con el atributo puesto para siempre.\nY ahí está el problema: al volver a encender, la feature salta las líneas que ya tienen el atributo, precisamente las que debería volver a mirar. Un ciclo de apagar y encender dejaba esas líneas sin posibilidad de volver a resaltarse, aunque su texto hubiera cambiado y ahora fueran una mención."
 }
