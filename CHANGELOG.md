@@ -138,3 +138,12 @@
 - El resultado era que el bloqueo se ponía sobre un elemento que no se puede desplazar. El script escuchaba a los scrolls, los interceptaba, y escribía la posición allí donde no se nota. El chat seguía bajando igual.
 - Afectaba a quien no ve el botón de pausa propio de Twitch, porque si lo tiene, el script pulsa ese y sí funciona. El botón desaparece cuando el chat está plegado, o cuando Twitch cambia sus etiquetas internas. Ahí «Pausar chat» no hacía nada, sin avisar.
 - Ahora sí. Y si vas hacia arriba con la rueda mientras está pausado, tienes un momento para leer, y el chat vuelve a pararse donde lo dejes.
+
+## 2.2.16 — 2026-10-02
+
+- ## Corrección: «Solo en tema oscuro de Twitch» ya no se ignoraba
+- Si tenías activado el ajuste que dice no pisar el tema de Twitch, el script te ponía la página negra igualmente.
+- La causa era bastante tonta: el tema se detectaba mirando el color del fondo de la página, y ese color lo ponía el propio script en negro. O sea, se preguntaba a sí mismo qué tema había, y se contestaba siempre «oscuro». Da igual cuántas veces cambiaras el tema en Twitch: la detección nunca podía ver una página clara.
+- Ahora el tema se lee de un sitio que el script no toca, y se comprueba que el fondo tenga color de verdad: un fondo transparente contaba como negro.
+- También se ha añadido el caso simétrico al que ya existía: si la página dice que el tema es claro, se respeta. Si tu versión de Twitch no usa ese nombre, no cambia nada: el ajuste sigue funcionando gracias a la otra parte del arreglo.
+- No verás ninguna diferencia si ya usabas el tema oscuro, que es lo que a la mayoría le importa. Si tenías que pelearte con el script para ver la página clara, esto es lo que te faltaba.
