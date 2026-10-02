@@ -1,7 +1,7 @@
 {
-  "version": "2.2.14",
+  "version": "2.2.15",
   "script": "https://raw.githubusercontent.com/clevervi/twitch-plus-plus/main/dist/twitch-plus-plus.user.js",
   "homepage": "https://github.com/clevervi/twitch-plus-plus",
-  "publishedAt": "2026-10-02T02:15:48.441Z",
-  "notes": "## Corrección: apagar y volver a encender «Resaltar menciones» dejaba de funcionar\nLa feature marca cada línea de chat con dos señales: una clase para pintar el resaltado, y un atributo para no volver a mirar esa misma línea.\nEl atributo se ponía en todas las líneas, pero al desactivar solo se limpiaban las que tenían la clase. Las demás se quedaban con el atributo puesto para siempre.\nY ahí está el problema: al volver a encender, la feature salta las líneas que ya tienen el atributo, precisamente las que debería volver a mirar. Un ciclo de apagar y encender dejaba esas líneas sin posibilidad de volver a resaltarse, aunque su texto hubiera cambiado y ahora fueran una mención."
+  "publishedAt": "2026-10-02T04:41:53.385Z",
+  "notes": "## Corrección: pausar el chat no pausaba el chat\nLa función que congela la lista de mensajes cuando pulsas «Pausar chat» iba a mirar por dónde podía deslizarse, pero empezaba a mirar **un nivel por encima de donde está el chat**. Así que nunca llegaba a mirar el chat.\nEl resultado era que el bloqueo se ponía sobre un elemento que no se puede desplazar. El script escuchaba a los scrolls, los interceptaba, y escribía la posición allí donde no se nota. El chat seguía bajando igual.\nAfectaba a quien no ve el botón de pausa propio de Twitch, porque si lo tiene, el script pulsa ese y sí funciona. El botón desaparece cuando el chat está plegado, o cuando Twitch cambia sus etiquetas internas. Ahí «Pausar chat» no hacía nada, sin avisar.\nAhora sí. Y si vas hacia arriba con la rueda mientras está pausado, tienes un momento para leer, y el chat vuelve a pararse donde lo dejes."
 }
