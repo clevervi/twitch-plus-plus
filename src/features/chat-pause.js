@@ -45,7 +45,13 @@ function nativeSaysPaused(button) {
 function findScrollable() {
   const container = select('chat.container');
   if (!container) return null;
-  let node = container.parentElement;
+  // El recorrido empieza en el contenedor y NO en su padre. El contenedor es
+  // justamente el elemento con scroll (`chat-scrollable-area__message-container`),
+  // así que empezarlo en el padre lo saltaba entero: el bucle no encontraba
+  // nada deslizable y caía al fallback, que devolvía un nodo que no tiene
+  // scroll. Forzar `scrollTop` sobre un nodo que no desliza no hace nada, así
+  // que pausar el chat no pausaba nada.
+  let node = container;
   while (node && node !== document.body) {
     const overflow = getComputedStyle(node).overflowY;
     if ((overflow === 'auto' || overflow === 'scroll' || overflow === 'overlay') && node.scrollHeight > node.clientHeight) {
@@ -53,7 +59,7 @@ function findScrollable() {
     }
     node = node.parentElement;
   }
-  return container.parentElement || container;
+  return container;
 }
 
 function detach() {
