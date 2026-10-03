@@ -42,6 +42,7 @@ const PUENTE_PAGINA = `(() => {
   window.TwitchPP = {
     via: 'puente',
     diagnostics: () => pedir('diagnostics'),
+    navegacion: () => pedir('navegacion'),
     motivoDe: (id) => pedir('motivo:' + id),
   };
 })();`;
@@ -68,9 +69,11 @@ function responder(evento) {
     const datos =
       op === 'diagnostics'
         ? globalThis.TwitchPP?.diagnostics?.report?.() ?? { error: 'diagnostics no disponible' }
-        : op === 'motivo'
-          ? { id: arg, motivo: arg || '' }
-          : { error: 'operacion desconocida: ' + op };
+        : op === 'navegacion'
+          ? globalThis.TwitchPP?.diagnostics?.navegacion?.() ?? { error: 'navegacion no disponible' }
+          : op === 'motivo'
+            ? { id: arg, motivo: arg || '' }
+            : { error: 'operacion desconocida: ' + op };
     json = JSON.stringify(datos);
   } catch (error) {
     json = JSON.stringify({ error: String(error?.message || error) });

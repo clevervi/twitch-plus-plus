@@ -1936,14 +1936,44 @@ return {
 const __m15 = (function () {
 const { emit: emit } = __m0;
 const { log: log } = __m2;
+const { getValue: getValue, setValue: setValue } = __m1;
 
 /** Detección de navegación SPA (Twitch no recarga la página al cambiar de canal). */
 
 
 
+
+const CLAVE = 'nav.log';
+const MAX = 30;
+
 let routeSeq = 0;
 let bound = false;
 let lastRoute = null;
+
+/**
+ * Historial de navegacion, para averiguar que hace Twitch cuando nos saca de
+ * donde estamos. Vive en memoria y solo se escribe al almacenamiento cuando la
+ * pagina se va, que es justo cuando hay que conservarlo: si no, un salto con
+ * recarga se llevaria por delante la evidencia.
+ */
+let entradas = [];
+let salida = null;
+
+function cargar() {
+  const guardado = getValue(CLAVE, null);
+  if (!guardado) return;
+  if (Array.isArray(guardado.entradas)) entradas = guardado.entradas.slice(-MAX);
+  if (guardado.salida) salida = guardado.salida;
+}
+
+/** Ultimo estado conocido: las rutas y, si hubo recarga, de donde salimos. */
+function navegacion() {
+  return {
+    entradas: [...entradas],
+    salida,
+    actual: lastRoute ? { path: lastRoute.path, canal: lastRoute.channel } : null,
+  };
+}
 
 function currentRoute(razon = 'navigation') {
   const path = typeof location !== 'undefined' ? location.pathname : '/';
@@ -1965,6 +1995,8 @@ function currentRoute(razon = 'navigation') {
 
 function notify(razon = 'navigation') {
   const route = currentRoute(razon);
+  entradas.push({ seq: route.seq, path: route.path, razon, at: route.at });
+  if (entradas.length > MAX) entradas = entradas.slice(-MAX);
   log('ruta:', route.path);
   emit('route', route);
   if (typeof window !== 'undefined' && window.dispatchEvent) {
@@ -1983,18 +2015,35 @@ function patch(type) {
   };
 }
 
+/**
+ * Al irse la pagina se guarda de donde salimos. Si luego el script arranca
+ * otra vez en otro canal, la comparacion de las dos rutas dice si Twitch
+ * recarga la pagina o solo cambia la ruta.
+ */
+function alSalir() {
+  salida = {
+    path: lastRoute ? lastRoute.path : null,
+    canal: lastRoute ? lastRoute.channel : null,
+    at: Date.now(),
+  };
+  setValue(CLAVE, { entradas, salida });
+}
+
 function start() {
   if (bound) return;
   bound = true;
+  cargar();
   patch('pushState');
   patch('replaceState');
   if (typeof window !== 'undefined' && window.addEventListener) {
     window.addEventListener('popstate', () => notify('popstate'));
     window.addEventListener('hashchange', () => notify('hashchange'));
+    window.addEventListener('pagehide', alSalir);
   }
   notify('initial');
 }
 return {
+  navegacion: navegacion,
   currentRoute: currentRoute,
   start: start,
 };
@@ -5395,7 +5444,7 @@ const { probe: probe } = __m13;
 const { registrarArranque: registrarArranque, reset: resetPerf, snapshot: perfSnapshot } = __m10;
 const { report: report } = __m14;
 const { applyAll: applyAll, disableAll: disableAll, onRouteAll: onRouteAll, statuses: statuses, motivos: motivosDeInactividad } = __m6;
-const { start: startRouter } = __m15;
+const { start: startRouter, navegacion: navegacion } = __m15;
 const { brokenSelectors: brokenSelectors, selectorReport: selectorReport } = __m3;
 const { kick: kickScheduler, scheduleRoute: scheduleRoute, start: startScheduler } = __m16;
 const { declare: declare, get: storeGet, set: storeSet, subscriptions: subscriptions } = __m5;
@@ -5609,6 +5658,7 @@ const diagnostics = {
   perfReset: resetPerf,
   subscriptions,
   motivos: motivosDeInactividad,
+  navegacion,
   boot: () => ({ ...bootReport, stages: { ...bootReport.stages } }),
 };
 return {
@@ -5667,6 +5717,7 @@ const PUENTE_PAGINA = `(() => {
   window.TwitchPP = {
     via: 'puente',
     diagnostics: () => pedir('diagnostics'),
+    navegacion: () => pedir('navegacion'),
     motivoDe: (id) => pedir('motivo:' + id),
   };
 })();`;
@@ -5693,9 +5744,11 @@ function responder(evento) {
     const datos =
       op === 'diagnostics'
         ? globalThis.TwitchPP?.diagnostics?.report?.() ?? { error: 'diagnostics no disponible' }
-        : op === 'motivo'
-          ? { id: arg, motivo: arg || '' }
-          : { error: 'operacion desconocida: ' + op };
+        : op === 'navegacion'
+          ? globalThis.TwitchPP?.diagnostics?.navegacion?.() ?? { error: 'navegacion no disponible' }
+          : op === 'motivo'
+            ? { id: arg, motivo: arg || '' }
+            : { error: 'operacion desconocida: ' + op };
     json = JSON.stringify(datos);
   } catch (error) {
     json = JSON.stringify({ error: String(error?.message || error) });
