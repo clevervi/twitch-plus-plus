@@ -61,6 +61,15 @@
 
   <div class="layout">
     <nav data-a-target="side-nav-bar" aria-label="Primary navigation">
+      <!--
+        Botón de reclamo de Channel Points. `auto-claim` viene activada por
+        defecto, así que sin este nodo la ruta que lo busca y decide si pulsa
+        nunca se ejecuta en los tests. Con `Solo detectar` activo no pulsa, que
+        es como lo usa el test.
+      -->
+      <button data-a-target="claim-bonus-button" class="claimable-bonus__icon" aria-label="Reclamar bonificación">
+        Reclamar
+      </button>
       <div class="tw-transition-group">
         <a class="side-nav-card" data-a-target="side-nav-card" href="/ibai">
           <span>ibai</span>
