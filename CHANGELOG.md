@@ -168,3 +168,13 @@
 - **Miniatura en sidebar** vuelve a aparecer. `channelFromCard()` buscaba el canal solo entre los descendientes de la card, pero Twitch hace que la card **sea** el enlace. Sin canal no se inyectaba nada y la feature se apagaba en silencio, sin error ni aviso. Issue #102.
 - ## Tests
 - Dos tests de regresión para `channelFromCard`: card que es el `<a>` y card con el enlace dentro. Comprobado que fallan contra el código anterior.
+
+## 2.2.19 — 2026-10-03
+
+- ## Correcciones
+- **Miniatura en sidebar** (#109): al volver a un canal que ya habías visitado, la miniatura no aparecía o tardaba mucho. Twitch no destruye el tooltip anterior, lo deja conectado durante la transición de salida marcado como `aria-hidden`, y el script se quedaba enganchado a ese en vez de al nuevo. Ahora solo se usan los tooltips vivos y se reintenta mientras Twitch abre el correcto.
+- **Miniatura en sidebar** (#109): las miniaturas se apilaban al pasar rápido de un canal a otro, porque la limpieza dependía de un temporizador que siempre se cancelaba. Ahora se quita la anterior al cambiar de canal.
+- **Miniatura en sidebar** (#102): la miniatura no aparecía en absoluto, porque el canal no se leía de la card cuando la card es el propio enlace.
+- ## Tests
+- 1 test nuevo para el filtro de tooltips, verificado que falla contra el código anterior.
+- Total: 192 unitarios + 69 de navegador.
