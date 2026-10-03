@@ -25,6 +25,23 @@ export function channelFromCard(card) {
   return channelFromHref(link ? link.getAttribute('href') : null);
 }
 
+export function sidebarTooltips() {
+  return qsAll('.online-side-nav-channel-tooltip__body, [class*="online-side-nav-channel-tooltip"]')
+    .filter((node) => {
+      if (!node || !node.isConnected) return false;
+      // Twitch reutiliza el tooltip anterior durante la transicion de salida y
+      // lo deja aria-hidden. Sin este filtro nos enganchamos al viejo, el canal
+      // no coincide y la miniatura no reaparece al volver al mismo canal.
+      if (node.closest?.('[aria-hidden="true"]')) return false;
+      try {
+        const r = node.getBoundingClientRect();
+        return r.width > 0 && r.height > 0;
+      } catch {
+        return false;
+      }
+    });
+}
+
 export function visibleChannels(limit = 8) {
   const out = [];
   const seen = new Set();
@@ -88,6 +105,12 @@ export function isDarkTheme() {
 
 export function hoverDialog() {
   // 1. Selector directo para el tooltip moderno de la sidebar de Twitch
+  // 1. Tooltip vivo: el primero que no este siendo retirado por la transicion
+  const live = sidebarTooltips()[0];
+  if (live) {
+    return live.closest('[tabindex="0"], .tw-dialog-layer, [role="dialog"], [role="tooltip"]') || live.parentElement || live;
+  }
+
   const tooltipBody = qs('.online-side-nav-channel-tooltip__body, [class*="online-side-nav-channel-tooltip"]');
   if (tooltipBody && tooltipBody.isConnected) {
     return tooltipBody.closest('[tabindex="0"], .tw-dialog-layer, [role="dialog"], [role="tooltip"]') || tooltipBody.parentElement || tooltipBody;

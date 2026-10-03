@@ -2,7 +2,7 @@
 import { log } from '../core/log.js';
 import { defineFeature } from '../core/registry.js';
 import { get as storeGet } from '../core/store.js';
-import { channelFromCard, thumbnailUrl, visibleChannels, waitForHoverDialog } from '../core/twitch.js';
+import { channelFromCard, thumbnailUrl, visibleChannels, sidebarTooltips } from '../core/twitch.js';
 
 const cache = new Map();
 let generation = 0;
@@ -189,13 +189,28 @@ function tooltipMatchesChannel(card, target, channel) {
 
 function inject(card, channel) {
   const local = generation;
-  waitForHoverDialog().then((dialog) => {
-    if (!dialog || !dialog.isConnected || local !== generation) return;
 
-    const target = findSidebarTooltip(card, dialog);
-    if (!target || !target.insertionPoint) return;
+  // Antes secomprometia con el primer tooltip que apareciera y, si no encajaba,
+  // no reintentaba nunca. Al volver a un canal, Twitch aun tenian vivo el
+  // tooltip del anterior, asi que la inyeccion se perdia sin mas.
+  const intentar = (intento = 0) => {
+    if (local !== generation) return;
 
-    if (!tooltipMatchesChannel(card, target, channel)) return;
+    let target = null;
+    for (const body of sidebarTooltips()) {
+      const found = findSidebarTooltip(card, body);
+      if (found && found.insertionPoint && tooltipMatchesChannel(card, found, channel)) {
+        target = found;
+        break;
+      }
+    }
+
+    // Twitch tarda unos cientos de ms en abrir el tooltip. Reintentamos un poco.
+    if (!target && intento < 8) {
+      setTimeout(() => intentar(intento + 1), 50);
+      return;
+    }
+    if (!target) return;
 
     // Limpieza global antes de inyectar
     cleanup();
@@ -238,7 +253,9 @@ function inject(card, channel) {
     }, { once: true });
 
     target.insertionPoint.append(image);
-  });
+  };
+
+  intentar();
 }
 
 function onPointerOver(e) {
@@ -251,6 +268,10 @@ function onPointerOver(e) {
   currentCard = card;
   clearTimeout(leaveTimer);
   generation += 1;
+  // Al cambiar de card hay que quitar la miniatura anterior. Si se deja para el
+  // temporizador de salida, pasar rapido de un canal a otro lo cancela y las
+  // miniaturas se apilan.
+  cleanup();
 
   const channel = channelFromCard(card);
   if (!channel) return;
