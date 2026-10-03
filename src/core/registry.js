@@ -168,6 +168,7 @@ export function statuses() {
     blocked: typeof feature.when === 'function' && !allowed(feature),
     remote: !!feature.remote,
     failures: failures.get(feature.id) || 0,
+    motivo: reasons.get(feature.id) || '',
   }));
 }
 
@@ -177,4 +178,33 @@ export function sectionOf(id) {
 
 export function failureCount(id) {
   return failures.get(id) || 0;
+}
+
+/* ------------------------------------------------------------------ *
+ * Motivo de inactividad.
+ *
+ * `failures` cuenta excepciones: la feature se rompió. Esto es otra cosa, la
+ * feature esta activa, no ha petado y aun asi no ha hecho su trabajo. Sin esto
+ * los dos casos se ven igual desde fuera, que es como se colaron #102 y #109.
+ * ------------------------------------------------------------------ */
+
+const reasons = new Map();
+
+/** Anota por que una feature activa no esta haciendo nada ahora mismo. */
+export function anotarMotivo(id, motivo) {
+  reasons.set(id, String(motivo).slice(0, 120));
+}
+
+/** Lo llama la feature cuando por fin hace su trabajo. */
+export function limpiarMotivo(id) {
+  reasons.delete(id);
+}
+
+export function motivoDe(id) {
+  return reasons.get(id) || '';
+}
+
+/** `{ id, motivo }` de las features activas que no estan haciendo nada. */
+export function motivos() {
+  return [...reasons].map(([id, motivo]) => ({ id, motivo }));
 }

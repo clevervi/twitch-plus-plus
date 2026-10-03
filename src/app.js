@@ -13,7 +13,7 @@ import { setDebug, track, trackedErrors, warn } from './core/log.js';
 import { probe } from './core/probe.js';
 import { registrarArranque, reset as resetPerf, snapshot as perfSnapshot } from './core/perf.js';
 import { report } from './core/report.js';
-import { applyAll, disableAll, onRouteAll, statuses } from './core/registry.js';
+import { applyAll, disableAll, onRouteAll, statuses, motivos as motivosDeInactividad } from './core/registry.js';
 import { start as startRouter } from './core/router.js';
 import { brokenSelectors, selectorReport } from './core/selectors.js';
 import { kick as kickScheduler, scheduleRoute, start as startScheduler } from './core/scheduler.js';
@@ -200,5 +200,6 @@ export const diagnostics = {
   perf: perfSnapshot,
   perfReset: resetPerf,
   subscriptions,
+  motivos: motivosDeInactividad,
   boot: () => ({ ...bootReport, stages: { ...bootReport.stages } }),
 };

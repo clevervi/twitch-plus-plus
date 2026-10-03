@@ -1161,6 +1161,7 @@ function statuses() {
     blocked: typeof feature.when === 'function' && !allowed(feature),
     remote: !!feature.remote,
     failures: failures.get(feature.id) || 0,
+    motivo: reasons.get(feature.id) || '',
   }));
 }
 
@@ -1170,6 +1171,35 @@ function sectionOf(id) {
 
 function failureCount(id) {
   return failures.get(id) || 0;
+}
+
+/* ------------------------------------------------------------------ *
+ * Motivo de inactividad.
+ *
+ * `failures` cuenta excepciones: la feature se rompió. Esto es otra cosa, la
+ * feature esta activa, no ha petado y aun asi no ha hecho su trabajo. Sin esto
+ * los dos casos se ven igual desde fuera, que es como se colaron #102 y #109.
+ * ------------------------------------------------------------------ */
+
+const reasons = new Map();
+
+/** Anota por que una feature activa no esta haciendo nada ahora mismo. */
+function anotarMotivo(id, motivo) {
+  reasons.set(id, String(motivo).slice(0, 120));
+}
+
+/** Lo llama la feature cuando por fin hace su trabajo. */
+function limpiarMotivo(id) {
+  reasons.delete(id);
+}
+
+function motivoDe(id) {
+  return reasons.get(id) || '';
+}
+
+/** `{ id, motivo }` de las features activas que no estan haciendo nada. */
+function motivos() {
+  return [...reasons].map(([id, motivo]) => ({ id, motivo }));
 }
 return {
   SECTIONS: SECTIONS,
@@ -1186,6 +1216,10 @@ return {
   statuses: statuses,
   sectionOf: sectionOf,
   failureCount: failureCount,
+  anotarMotivo: anotarMotivo,
+  limpiarMotivo: limpiarMotivo,
+  motivoDe: motivoDe,
+  motivos: motivos,
 };
 })();
 
@@ -3871,7 +3905,7 @@ return {
 /* ---- src/features/sidebar-thumbnails.js ---- */
 const __m33 = (function () {
 const { log: log } = __m2;
-const { defineFeature: defineFeature } = __m6;
+const { defineFeature: defineFeature, anotarMotivo: anotarMotivo, limpiarMotivo: limpiarMotivo } = __m6;
 const { get: storeGet } = __m5;
 const { channelFromCard: channelFromCard, thumbnailUrl: thumbnailUrl, visibleChannels: visibleChannels, sidebarTooltips: sidebarTooltips } = __m22;
 
@@ -3882,6 +3916,7 @@ const { channelFromCard: channelFromCard, thumbnailUrl: thumbnailUrl, visibleCha
 
 
 const cache = new Map();
+const ID = 'sidebarThumbnailPreview';
 let generation = 0;
 let leaveTimer = null;
 let preloadTimer = null;
@@ -4087,7 +4122,12 @@ function inject(card, channel) {
       setTimeout(() => intentar(intento + 1), 50);
       return;
     }
-    if (!target) return;
+    if (!target) {
+      anotarMotivo(ID, 'ningun tooltip vivo corresponde a este canal (Twitch retira el anterior con aria-hidden)');
+      return;
+    }
+
+    limpiarMotivo(ID);
 
     // Limpieza global antes de inyectar
     cleanup();
@@ -4139,7 +4179,10 @@ function onPointerOver(e) {
   const card = e.target.closest('[data-a-target="side-nav-card"], .side-nav-card, a[data-test-selector="followed-channel"]');
   if (!card) return;
   // Scoping adicional: la card DEBE estar dentro de la sidebar real
-  if (!card.closest('[data-a-target="side-nav-bar"], nav[aria-label="Primary navigation"], [data-test-selector="side-nav"], .side-nav')) return;
+  if (!card.closest('[data-a-target="side-nav-bar"], nav[aria-label="Primary navigation"], [data-test-selector="side-nav"], .side-nav')) {
+    anotarMotivo(ID, 'la card detectada no esta dentro de la sidebar');
+    return;
+  }
   if (card === currentCard) return;
 
   currentCard = card;
@@ -4151,7 +4194,12 @@ function onPointerOver(e) {
   cleanup();
 
   const channel = channelFromCard(card);
-  if (!channel) return;
+  if (!channel) {
+    // Ojo: no es un error de la card, es que no es un <a> con href de canal.
+    // Era el fallo de #102, y desde fuera era indistinguible de "no pasa nada".
+    anotarMotivo(ID, 'no se lee el canal de la card: la card es el <a> y no tiene href de canal');
+    return;
+  }
 
   preload(channel);
   inject(card, channel);
@@ -4190,7 +4238,7 @@ function teardown() {
 }
 
 defineFeature({
-  id: 'sidebarThumbnailPreview',
+  id: ID,
   label: 'Miniatura en sidebar',
   section: 'sidebar',
   default: false,
@@ -5346,7 +5394,7 @@ const { setDebug: setDebug, track: track, trackedErrors: trackedErrors, warn: wa
 const { probe: probe } = __m13;
 const { registrarArranque: registrarArranque, reset: resetPerf, snapshot: perfSnapshot } = __m10;
 const { report: report } = __m14;
-const { applyAll: applyAll, disableAll: disableAll, onRouteAll: onRouteAll, statuses: statuses } = __m6;
+const { applyAll: applyAll, disableAll: disableAll, onRouteAll: onRouteAll, statuses: statuses, motivos: motivosDeInactividad } = __m6;
 const { start: startRouter } = __m15;
 const { brokenSelectors: brokenSelectors, selectorReport: selectorReport } = __m3;
 const { kick: kickScheduler, scheduleRoute: scheduleRoute, start: startScheduler } = __m16;
@@ -5560,6 +5608,7 @@ const diagnostics = {
   perf: perfSnapshot,
   perfReset: resetPerf,
   subscriptions,
+  motivos: motivosDeInactividad,
   boot: () => ({ ...bootReport, stages: { ...bootReport.stages } }),
 };
 return {
