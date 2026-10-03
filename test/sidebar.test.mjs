@@ -1,7 +1,7 @@
 import assert from 'node:assert/strict';
 import test from 'node:test';
 
-import { channelFromHref, channelFromCard, thumbnailUrl, parseViewerText, hoverDialog } from '../src/core/twitch.js';
+import { channelFromHref, channelFromCard, thumbnailUrl, parseViewerText, hoverDialog, sidebarTooltips } from '../src/core/twitch.js';
 import { candidates } from '../src/core/selectors.js';
 
 test('channelFromHref extrae correctamente canales válidos y descarta rutas reservadas', () => {
@@ -150,4 +150,35 @@ test('channelFromCard sigue funcionando si el enlace va dentro de la card', () =
     querySelector: () => null,
   };
   assert.equal(channelFromCard(sinNada), null);
+});
+
+// Regresión del bug real: Twitch reutiliza el tooltip del canal anterior durante
+// la transición de salida y lo deja dentro de un aria-hidden. Si nos enganchamos
+// a ese, la miniatura no reaparece al volver al mismo canal.
+test('sidebarTooltips descarta el tooltip retiring y devuelve solo los vivos', () => {
+  const tooltip = (name, { hidden = false, w = 260, h = 90 } = {}) => ({
+    isConnected: true,
+    getBoundingClientRect: () => ({ width: w, height: h }),
+    closest: (sel) => (hidden && sel.includes('aria-hidden') ? { tagName: 'DIV' } : null),
+    label: name,
+  });
+
+  const viejo = tooltip('viejo', { hidden: true });
+  const nuevo = tooltip('nuevo');
+  const sinCaja = tooltip('sin-caja', { w: 0, h: 0 });
+  const desconectado = { ...tooltip('desconectado'), isConnected: false };
+
+  const prevDoc = globalThis.document;
+  globalThis.document = {
+    querySelectorAll: () => [viejo, nuevo, sinCaja, desconectado],
+    querySelector: () => null,
+  };
+
+  try {
+    const vivos = sidebarTooltips();
+    assert.deepEqual(vivos.map((n) => n.label), ['nuevo']);
+  } finally {
+    if (prevDoc) globalThis.document = prevDoc;
+    else delete globalThis.document;
+  }
 });
