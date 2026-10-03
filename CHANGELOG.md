@@ -211,3 +211,19 @@
 - ## Tests
 - 6 casos nuevos para el historial de navegación.
 - Total: 212 unitarios + 74 de navegador.
+
+## 2.2.22 — 2026-10-03
+
+- ## Mejora
+- **Reconectar si se corta el directo** (#127): si el vídeo lleva 8 segundos congelado en un directo mientras tú no lo has pausado a propósito, el script intenta despertarlo. Espera progresiva entre intentos y, tras 4, se detiene y deja constancia en lugar de seguir insistiendo.
+- ## Detalles
+- **No evita que un directo termine.** El vídeo viene del servidor del streamer; cuando deja de emitir no hay nada que reproducir, y ningún código en tu navegador cambia eso. Solo se recupera de cortes mientras el canal sigue emitiendo.
+- Apagada por defecto. Actívala en el panel, en **Automatización**.
+- La recarga de página está **apagada** también: primero intenta solo `play()`, que resuelve casi todos los cortes. Recargar en bucle puede acabar con la IP bloqueada por Twitch, así que no se hace sin permiso.
+- Espera inicial y espera máxima configurables.
+- Solo afecta a directos: en un VOD la recarga te perdería la posición.
+- ## Corregido
+- La reconexión no daba más de 4 intentos. Al agotarlos se reiniciaba el contador y volvía a empezar: un bucle infinito disfrazado de espera progresiva.
+- ## Tests
+- 6 casos sobre los valores por defecto y el ciclo de vida, 5 en Chromium con el reloj falseado.
+- Total: 218 unitarios + 79 de navegador.
