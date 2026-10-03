@@ -161,3 +161,10 @@
 - Era una palabra mal escrita al devolver los estilos que el propio script había puesto antes de esconderlos. El error se escondía porque el script no lo lanzaba como fallo visible, sino que lo anotaba en silencio. Por eso no se notaba y por eso parecía imposible.
 - ## Área afectada
 - `package.json`, `CHANGELOG.md`, `dist/`
+
+## 2.2.18 — 2026-10-03
+
+- ## Corrección
+- **Miniatura en sidebar** vuelve a aparecer. `channelFromCard()` buscaba el canal solo entre los descendientes de la card, pero Twitch hace que la card **sea** el enlace. Sin canal no se inyectaba nada y la feature se apagaba en silencio, sin error ni aviso. Issue #102.
+- ## Tests
+- Dos tests de regresión para `channelFromCard`: card que es el `<a>` y card con el enlace dentro. Comprobado que fallan contra el código anterior.
