@@ -193,3 +193,21 @@
 - El test del puente cazó un bug antes de publicar: el handler leía el evento en vez de su `detail`, así que en un navegador real no habría respondido nunca.
 - El puente cruza **cadenas**, no objetos: entre mundos un objeto puede llegar vacío y el fallo sería silencioso.
 - Si la CSP de Twitch bloquea el script inyectado, el puente simplemente no existe y todo lo demás sigue funcionando.
+
+## 2.2.21 — 2026-10-03
+
+- ## Diagnóstico
+- **Historial de navegación** (#122): `TwitchPP.navegacion()` devuelve las últimas rutas con el motivo de cada salto (`pushState`, `replaceState`, `popstate`, `initial`) y, si hubo recarga, de qué canal se salió. Antes el router recibía ese dato y lo tiraba.
+- ## Por qué
+- Para poder evitar el salto al terminar una raid (#113) hace falta una medición que no se puede sacar leyendo el código: ¿Twitch cambia la ruta sin recargar, o recarga la página? Según cuál sea, el arreglo es distinto.
+- Esto lo convierte en una línea:
+- ```js
+- await TwitchPP.navegacion()
+- ```
+- y hace que no haya que pegar sondas en la consola.
+- ## Details de implementación
+- Solo se escribe en almacenamiento cuando la página se va (`pagehide`). Durante el uso normal no hay ninguna escritura, y ese es justo el momento en que hay que guardar: un salto con recarga se llevaría por delante la evidencia.
+- Tope de 30 entradas: el diagnóstico interesa de los últimos segundos, no del historial completo.
+- ## Tests
+- 6 casos nuevos para el historial de navegación.
+- Total: 212 unitarios + 74 de navegador.
