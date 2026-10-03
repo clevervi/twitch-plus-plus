@@ -1,4 +1,4 @@
-/**
+﻿/**
  * Ninguna feature puede lanzar.
  *
  * Este es el test que faltaba cuando v2.2.16 salió con dos `ReferenceError` de
@@ -58,6 +58,19 @@ beforeEach(async () => {
     box.className = 'extension-view';
     box.innerHTML = '<iframe src="about:blank"></iframe>';
     player.appendChild(box);
+
+    // Botón de pausa nativo de Twitch. Va aquí y no en la fixture porque
+    // `chat-pause` tiene dos modos excluyentes: con este nodo usa el nativo y
+    // pulsa el botón; sin él congela el scroll. `pausa.test.mjs` prueba el modo
+    // scroll, así que meterlo en la fixture compartida rompía sus seis tests.
+    if (!document.getElementById('pausa-nativa')) {
+      const btn = document.createElement('button');
+      btn.id = 'pausa-nativa';
+      btn.setAttribute('data-a-target', 'chat-pause-button');
+      btn.setAttribute('aria-label', 'Pausar chat');
+      btn.textContent = 'Pausar';
+      document.querySelector('.chat-input').appendChild(btn);
+    }
   });
 });
 
