@@ -17,7 +17,11 @@ export function channelFromHref(href) {
 }
 
 export function channelFromCard(card) {
-  const link = card && (qs('a[href^="/"]', card) || qs('[data-a-target="side-nav-link"]', card));
+  const link =
+    (card?.matches?.('a[href]') && card) ||
+    (card &&
+      (qs('a[href^="/"]', card) ||
+        qs('[data-a-target="side-nav-link"], [data-a-target="side-nav-card-link"]', card)));
   return channelFromHref(link ? link.getAttribute('href') : null);
 }
 

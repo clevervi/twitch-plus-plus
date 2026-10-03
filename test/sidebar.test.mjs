@@ -1,7 +1,7 @@
 import assert from 'node:assert/strict';
 import test from 'node:test';
 
-import { channelFromHref, thumbnailUrl, parseViewerText, hoverDialog } from '../src/core/twitch.js';
+import { channelFromHref, channelFromCard, thumbnailUrl, parseViewerText, hoverDialog } from '../src/core/twitch.js';
 import { candidates } from '../src/core/selectors.js';
 
 test('channelFromHref extrae correctamente canales válidos y descarta rutas reservadas', () => {
@@ -102,4 +102,52 @@ test('hoverDialog detecta correctamente el tooltip moderno de canal en la sideba
     if (prevDoc) globalThis.document = prevDoc;
     else delete globalThis.document;
   }
+});
+
+// Regresión: la sidebar de Twitch hace que la card SEA el <a href>, no que lo
+// contenga. Con solo querySelector no se sacaba ningún canal y la miniatura
+// no se inyectaba nunca.
+test('channelFromCard lee el canal cuando la card ES el enlace', () => {
+  const cardAncla = (href) => ({
+    tagName: 'A',
+    getAttribute: (attr) => (attr === 'href' ? href : null),
+    matches: (sel) => sel.includes('a[href'),
+    querySelector: () => null,
+  });
+
+  assert.equal(channelFromCard(cardAncla('/ibai')), 'ibai');
+  assert.equal(channelFromCard(cardAncla('/auronplay/about')), 'auronplay');
+  assert.equal(channelFromCard(cardAncla('/rubius?referrer=raid')), 'rubius');
+
+  assert.equal(channelFromCard(cardAncla('/directory')), null);
+  assert.equal(channelFromCard(cardAncla('https://twitch.tv/ibai')), null);
+  assert.equal(channelFromCard(null), null);
+  assert.equal(channelFromCard(undefined), null);
+});
+
+test('channelFromCard sigue funcionando si el enlace va dentro de la card', () => {
+  const dentro = {
+    tagName: 'DIV',
+    getAttribute: () => null,
+    matches: () => false,
+    querySelector: (sel) => (sel.includes('side-nav-card-link') ? null : { getAttribute: () => '/rubius' }),
+  };
+  assert.equal(channelFromCard(dentro), 'rubius');
+
+  const conTarget = {
+    tagName: 'DIV',
+    getAttribute: () => null,
+    matches: () => false,
+    querySelector: (sel) =>
+      sel.includes('side-nav-card-link') ? { getAttribute: () => '/midudl' } : null,
+  };
+  assert.equal(channelFromCard(conTarget), 'midudl');
+
+  const sinNada = {
+    tagName: 'DIV',
+    getAttribute: () => null,
+    matches: () => false,
+    querySelector: () => null,
+  };
+  assert.equal(channelFromCard(sinNada), null);
 });
