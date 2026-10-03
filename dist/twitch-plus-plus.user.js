@@ -2604,8 +2604,213 @@ return {
 };
 })();
 
-/* ---- src/core/regex.js ---- */
+/* ---- src/features/auto-reconnect.js ---- */
 const __m21 = (function () {
+const { log: log } = __m2;
+const { defineFeature: defineFeature, anotarMotivo: anotarMotivo, limpiarMotivo: limpiarMotivo } = __m6;
+const { get: storeGet } = __m5;
+
+/**
+ * Reconexion cuando el directo se corta a mitad.
+ *
+ * Detecta que el player se ha congelado y lo despierta. NO evita que un directo
+ * termine: eso no puede hacerse desde un navegador, porque el video viene del
+ * servidor del streamer y cuando deja de emitir no hay datos que reproducir.
+ * Aqui solo se recupera de un corte mientras el canal sigue emitiendo.
+ */
+
+
+
+
+const ID = 'autoReconnect';
+
+const SONDEO = 1000;
+const GRACIA = 8000;
+const MAX_INTENTOS = 4;
+
+/**
+ * `document.hidden` para el heartbeat del scheduler (`scheduler.js`), asi que un
+ * tick no serviria de nada justo cuando mas hace falta: el directo se corta
+ * mientras se esta haciendo otra cosa. Por eso esta feature lleva su propio
+ * temporizador en vez de usar `tick`.
+ */
+let temporizador = null;
+let ultimoTiempo = -1;
+let ultimoAvance = 0;
+let reintentando = false;
+let proximoIntento = 0;
+let intentos = 0;
+let agotado = false;
+
+function opcion(clave, defecto) {
+  const valor = Number(storeGet(clave));
+  return Number.isFinite(valor) && valor > 0 ? valor : defecto;
+}
+
+function esperaBase() {
+  return opcion('reconnectBase', 5) * 1000;
+}
+
+function esperaTope() {
+  return opcion('reconnectMax', 60) * 1000;
+}
+
+/** Espera del siguiente intento: 5s, 10s, 20s, 40s... hasta el tope. */
+function espera(intento) {
+  return Math.min(esperaBase() * 2 ** (intento - 1), esperaTope());
+}
+
+function sinIntento() {
+  reintentando = false;
+  proximoIntento = 0;
+  intentos = 0;
+  agotado = false;
+}
+
+/** El player esta bien: se olvida cualquier intento en curso. */
+function funcionando() {
+  sinIntento();
+  limpiarMotivo(ID);
+}
+
+function recargarPagina() {
+  log('reconexion: se recarga la pagina como ultimo recurso');
+  location.reload();
+  return true;
+}
+
+/**
+ * Intenta despertar el player. Primero `play()`, que resuelve casi todos los
+ * cortes. La recarga es el ultimo recurso y va apagada por defecto: recargar en
+ * bucle puede provocar que Twitch bloquee la IP, y eso no debe pasar sin que
+ * quien lo usa lo haya pedido.
+ */
+function intentar(video, ahora) {
+  // Sin esto, al agotar los intentos se reiniciaba el contador y vuelta a
+  // empezar: un bucle infinito con pausas entre lotes.
+  if (agotado) return;
+
+  if (intentos >= MAX_INTENTOS) {
+    if (!storeGet('reconnectReload')) {
+      agotado = true;
+      anotarMotivo(
+        ID,
+        `el directo lleva congelado y se han agotado los ${MAX_INTENTOS} intentos`,
+      );
+      return;
+    }
+    recargarPagina();
+    return;
+  }
+
+  intentos += 1;
+  reintentando = true;
+  proximoIntento = ahora + espera(intentos);
+
+  const prometido = video.play();
+  if (prometido && typeof prometido.catch === 'function') {
+    prometido.catch(() => {
+      // play() rechaza cuando el player todavia no puede. El siguiente
+      // reintento lo recoge.
+    });
+  }
+  log('reconexion: intento', intentos, 'en', espera(intentos) / 1000, 's');
+}
+
+function comprobar() {
+  const video = document.querySelector('video');
+  if (!video) return;
+
+  // El usuario ha pausado a proposito, o no hay nada que reproducir: no es cosa
+  // nuestra y recargarle en esa situacion seria molesto.
+  if (video.paused || video.ended || video.readyState < 2) {
+    sinIntento();
+    return;
+  }
+
+  // Solo directos. En un VOD la duracion es finita y el "corte" suele ser otra
+  // cosa; ademas recargar a mitad de un VOD perderia la posicion.
+  if (video.duration !== Infinity) {
+    funcionando();
+    return;
+  }
+
+  const ahora = Date.now();
+
+  if (video.currentTime !== ultimoTiempo) {
+    ultimoTiempo = video.currentTime;
+    ultimoAvance = ahora;
+    funcionando();
+    return;
+  }
+
+  if (!reintentando) {
+    if (ahora - ultimoAvance < GRACIA) return;
+    intentar(video, ahora);
+  } else if (ahora >= proximoIntento) {
+    intentar(video, ahora);
+  }
+}
+
+function arrancar() {
+  if (temporizador !== null) return;
+  ultimoAvance = Date.now();
+  temporizador = setInterval(comprobar, SONDEO);
+}
+
+function parar() {
+  if (temporizador !== null) clearInterval(temporizador);
+  temporizador = null;
+  sinIntento();
+  limpiarMotivo(ID);
+}
+
+/** Sin timer: solo olvida el estado. Cambiar de canal no es un corte. */
+function reiniciar() {
+  sinIntento();
+  ultimoTiempo = -1;
+  ultimoAvance = Date.now();
+  limpiarMotivo(ID);
+}
+
+defineFeature({
+  id: ID,
+  label: 'Reconectar si se corta el directo',
+  section: 'auto',
+  default: false,
+  onEnable: arrancar,
+  onDisable: parar,
+  onRoute: reiniciar,
+  settings: [
+    {
+      key: 'reconnectBase',
+      label: 'Espera inicial',
+      type: 'select',
+      options: [['5', '5 s'], ['10', '10 s'], ['30', '30 s']],
+      default: '5',
+    },
+    {
+      key: 'reconnectMax',
+      label: 'Espera maxima',
+      type: 'select',
+      options: [['60', '1 min'], ['120', '2 min'], ['300', '5 min']],
+      default: '60',
+    },
+    {
+      key: 'reconnectReload',
+      label: 'Recargar la pagina si no basta con play()',
+      type: 'bool',
+      default: false,
+    },
+  ],
+});
+return {
+
+};
+})();
+
+/* ---- src/core/regex.js ---- */
+const __m22 = (function () {
 /**
  * Compilación de expresiones regulares que el usuario puede escribir.
  *
@@ -2685,7 +2890,7 @@ return {
 })();
 
 /* ---- src/core/twitch.js ---- */
-const __m22 = (function () {
+const __m23 = (function () {
 const { qs: qs, qsAll: qsAll, isVisible: isVisible } = __m11;
 const { select: select, selectAll: selectAll } = __m3;
 
@@ -2930,12 +3135,12 @@ return {
 })();
 
 /* ---- src/features/chat-keywords.js ---- */
-const __m23 = (function () {
+const __m24 = (function () {
 const { defineFeature: defineFeature } = __m6;
 const { warn: warn } = __m2;
-const { compilarSeguro: compilarSeguro } = __m21;
+const { compilarSeguro: compilarSeguro } = __m22;
 const { get: storeGet, onChange: onChange } = __m5;
-const { chatContainer: chatContainer, chatLines: chatLines, messageText: messageText } = __m22;
+const { chatContainer: chatContainer, chatLines: chatLines, messageText: messageText } = __m23;
 
 /** Resalta mensajes que contienen palabras clave (por defecto o regex). */
 
@@ -3055,12 +3260,12 @@ return {
 })();
 
 /* ---- src/features/chat-search.js ---- */
-const __m24 = (function () {
+const __m25 = (function () {
 const { qs: qs } = __m11;
 const { defineFeature: defineFeature } = __m6;
-const { compilarSeguro: compilarSeguro } = __m21;
+const { compilarSeguro: compilarSeguro } = __m22;
 const { get: storeGet } = __m5;
-const { chatContainer: chatContainer, chatLines: chatLines, messageText: messageText } = __m22;
+const { chatContainer: chatContainer, chatLines: chatLines, messageText: messageText } = __m23;
 
 /** Buscador dentro del chat: filtra, cuenta y permite saltar entre coincidencias. */
 
@@ -3260,7 +3465,7 @@ return {
 })();
 
 /* ---- src/features/clean-mode.js ---- */
-const __m25 = (function () {
+const __m26 = (function () {
 const { defineFeature: defineFeature } = __m6;
 
 defineFeature({
@@ -3294,10 +3499,10 @@ return {
 })();
 
 /* ---- src/features/dark-mode.js ---- */
-const __m26 = (function () {
+const __m27 = (function () {
 const { defineFeature: defineFeature } = __m6;
 const { get: storeGet } = __m5;
-const { isDarkTheme: isDarkTheme } = __m22;
+const { isDarkTheme: isDarkTheme } = __m23;
 
 defineFeature({
   id: 'darkMode',
@@ -3416,7 +3621,7 @@ return {
 })();
 
 /* ---- src/features/hide-blocks.js ---- */
-const __m27 = (function () {
+const __m28 = (function () {
 const { defineFeature: defineFeature } = __m6;
 
 defineFeature({
@@ -3482,7 +3687,7 @@ return {
 })();
 
 /* ---- src/features/hide-chat-extras.js ---- */
-const __m28 = (function () {
+const __m29 = (function () {
 const { defineFeature: defineFeature } = __m6;
 
 defineFeature({
@@ -3505,7 +3710,7 @@ return {
 })();
 
 /* ---- src/features/hide-extensions.js ---- */
-const __m29 = (function () {
+const __m30 = (function () {
 const { qsAll: qsAll } = __m11;
 const { log: log } = __m2;
 const { defineFeature: defineFeature } = __m6;
@@ -3745,7 +3950,7 @@ return {
 })();
 
 /* ---- src/features/hide-offline-channels.js ---- */
-const __m30 = (function () {
+const __m31 = (function () {
 const { qs: qs } = __m11;
 const { defineFeature: defineFeature } = __m6;
 const { selectAll: selectAll } = __m3;
@@ -3811,9 +4016,9 @@ return {
 })();
 
 /* ---- src/features/mention-highlight.js ---- */
-const __m31 = (function () {
+const __m32 = (function () {
 const { defineFeature: defineFeature } = __m6;
-const { chatContainer: chatContainer, chatLines: chatLines, currentUsername: currentUsername, messageText: messageText } = __m22;
+const { chatContainer: chatContainer, chatLines: chatLines, currentUsername: currentUsername, messageText: messageText } = __m23;
 
 /** Resalta los mensajes que te mencionan. */
 
@@ -3890,7 +4095,7 @@ return {
 })();
 
 /* ---- src/features/sidebar-compact.js ---- */
-const __m32 = (function () {
+const __m33 = (function () {
 const { defineFeature: defineFeature } = __m6;
 const { get: storeGet, onChange: onChange } = __m5;
 
@@ -3952,11 +4157,11 @@ return {
 })();
 
 /* ---- src/features/sidebar-thumbnails.js ---- */
-const __m33 = (function () {
+const __m34 = (function () {
 const { log: log } = __m2;
 const { defineFeature: defineFeature, anotarMotivo: anotarMotivo, limpiarMotivo: limpiarMotivo } = __m6;
 const { get: storeGet } = __m5;
-const { channelFromCard: channelFromCard, thumbnailUrl: thumbnailUrl, visibleChannels: visibleChannels, sidebarTooltips: sidebarTooltips } = __m22;
+const { channelFromCard: channelFromCard, thumbnailUrl: thumbnailUrl, visibleChannels: visibleChannels, sidebarTooltips: sidebarTooltips } = __m23;
 
 /** Miniaturas de canal al pasar el ratón por una card de la sidebar. */
 
@@ -4336,7 +4541,7 @@ return {
 })();
 
 /* ---- src/features/theater-clean.js ---- */
-const __m34 = (function () {
+const __m35 = (function () {
 const { defineFeature: defineFeature } = __m6;
 
 defineFeature({
@@ -4370,10 +4575,10 @@ return {
 })();
 
 /* ---- src/features/viewer-analytics.js ---- */
-const __m35 = (function () {
+const __m36 = (function () {
 const { defineFeature: defineFeature } = __m6;
 const { get: storeGet } = __m5;
-const { chatContainer: chatContainer, chatLines: chatLines, usernameOf: usernameOf, viewerCount: viewerCount } = __m22;
+const { chatContainer: chatContainer, chatLines: chatLines, usernameOf: usernameOf, viewerCount: viewerCount } = __m23;
 
 /** Contador real de viewers + chatters activos por ventana deslizante. */
 
@@ -4524,7 +4729,7 @@ return {
 })();
 
 /* ---- src/features/index.js ---- */
-const __m36 = (function () {
+const __m37 = (function () {
 /**
  * Índice de features.
  *
@@ -4537,7 +4742,7 @@ return {
 })();
 
 /* ---- src/ui/panel-css.js ---- */
-const __m37 = (function () {
+const __m38 = (function () {
 const PANEL_CSS = `
   :host { all: initial; }
   * { box-sizing: border-box; font-family: "Inter","Roobert",-apple-system,"Segoe UI",Roboto,sans-serif; }
@@ -4664,7 +4869,7 @@ return {
 })();
 
 /* ---- src/ui/presets.js ---- */
-const __m38 = (function () {
+const __m39 = (function () {
 /** Presets: un clic y la config queda como quieres. */
 const PRESETS = {
   minimal: ['darkMode', 'cleanMode', 'autoClaim'],
@@ -4718,7 +4923,7 @@ return {
 })();
 
 /* ---- src/ui/panel.js ---- */
-const __m39 = (function () {
+const __m40 = (function () {
 const { on: onBus } = __m0;
 const { setDebug: setDebug, trackedErrors: trackedErrors } = __m2;
 const { all: allFeatures, apply: apply, applyAll: applyAll, SECTIONS: SECTIONS, statuses: statuses } = __m6;
@@ -4731,8 +4936,8 @@ const { clearCache: clearCache, refresh: refreshCatalog, status: catalogStatus }
 const { check: checkUpdate, install: installUpdate, shouldCheck: shouldCheck } = __m18;
 const { ChatPause: ChatPause } = __m19;
 const { VERSION: VERSION } = __m8;
-const { PANEL_CSS: PANEL_CSS } = __m37;
-const { PRESETS: PRESETS, PRESET_LABELS: PRESET_LABELS, idsOf: idsOf } = __m38;
+const { PANEL_CSS: PANEL_CSS } = __m38;
+const { PRESETS: PRESETS, PRESET_LABELS: PRESET_LABELS, idsOf: idsOf } = __m39;
 
 /** Panel de control en shadow DOM (sin colisiones con el CSS de Twitch). */
 
@@ -5433,7 +5638,7 @@ return {
 })();
 
 /* ---- src/app.js ---- */
-const __m40 = (function () {
+const __m41 = (function () {
 const { on: onBus } = __m0;
 const { refresh: refreshCatalog, status: catalogStatus, warm: warmCatalog } = __m9;
 const { onIdle: onIdle, ready: ready } = __m11;
@@ -5453,7 +5658,7 @@ const { show: toast } = __m17;
 const { check: checkUpdate, shouldCheck: shouldCheck } = __m18;
 const { VERSION: VERSION } = __m8;
 const { ChatPause: ChatPause } = __m19;
-const { UI: UI } = __m39;
+const { UI: UI } = __m40;
 
 /**
  * Arranque y API de diagnóstico.
@@ -5670,7 +5875,7 @@ return {
 })();
 
 /* ---- src/core/bridge.js ---- */
-const __m41 = (function () {
+const __m42 = (function () {
 const { log: log } = __m2;
 
 /**
@@ -5780,9 +5985,9 @@ return {
 })();
 
 /* ---- src/index.js ---- */
-const __m42 = (function () {
-const { diagnostics: diagnostics, setFeature: setFeature, start: start } = __m40;
-const { start: startBridge } = __m41;
+const __m43 = (function () {
+const { diagnostics: diagnostics, setFeature: setFeature, start: start } = __m41;
+const { start: startBridge } = __m42;
 const { VERSION: VERSION } = __m8;
 
 /**
@@ -5808,6 +6013,6 @@ return {
 };
 })();
 
-__m42;
+__m43;
 
 })();

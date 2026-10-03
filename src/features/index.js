@@ -5,6 +5,7 @@
  * nueva = un archivo nuevo + una línea aquí.
  */
 import '../features/auto-claim.js';
+import '../features/auto-reconnect.js';
 import '../features/chat-keywords.js';
 import '../features/chat-search.js';
 import '../features/clean-mode.js';
