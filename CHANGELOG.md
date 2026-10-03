@@ -178,3 +178,18 @@
 - ## Tests
 - 1 test nuevo para el filtro de tooltips, verificado que falla contra el código anterior.
 - Total: 192 unitarios + 69 de navegador.
+
+## 2.2.20 — 2026-10-03
+
+- ## Diagnóstico
+- **Motivo de inactividad** (#116): ahora se puede saber por qué una feature está activa y no hace su trabajo. Antes, un fallo silencioso y un fallo de red se veían exactamente igual desde fuera: fue lo que escondió los bugs #102 y #109. Se expone en `statuses()` y en `diagnostics.motivos()`.
+- **Puente de diagnóstico** (#117): `TwitchPP.diagnostics()` y `TwitchPP.motivoDe(id)` ya se pueden llamar desde la consola de la página. Antes, con el aislamiento de `@grant`, no había forma de consultar el estado real del script.
+- ## Por qué
+- Depurar ocurre en el navegador de quien lo usa, no en CI. Hoy hicieron falta dos sondas escritas durante la sesión para encontrar dos bugs. Con esto, la información que buscaban esas sondas la da el propio script.
+- ## Tests
+- 8 casos para el motivo de inactividad, 6 para el puente, y uno en navegador real que comprueba que el motivo aparece en `diagnostics.features()`.
+- Total: 206 unitarios + 74 de navegador.
+- ## Notas
+- El test del puente cazó un bug antes de publicar: el handler leía el evento en vez de su `detail`, así que en un navegador real no habría respondido nunca.
+- El puente cruza **cadenas**, no objetos: entre mundos un objeto puede llegar vacío y el fallo sería silencioso.
+- Si la CSP de Twitch bloquea el script inyectado, el puente simplemente no existe y todo lo demás sigue funcionando.
