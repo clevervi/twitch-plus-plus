@@ -137,8 +137,7 @@ function cleanup() {
     const parent = node.closest('.online-side-nav-channel-tooltip__body, [class*="online-side-nav-channel-tooltip"], .tw-balloon') || node.parentElement;
     node.remove();
     if (parent) {
-      const container = parent.closest('[data-a-target="side-nav-bar"]') ? parent : parent;
-      restoreTarget({ container, insertionPoint: parent });
+      restoreTarget({ container: parent, insertionPoint: parent });
     }
   }
 }
