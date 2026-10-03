@@ -14,7 +14,7 @@ import { probe } from './core/probe.js';
 import { registrarArranque, reset as resetPerf, snapshot as perfSnapshot } from './core/perf.js';
 import { report } from './core/report.js';
 import { applyAll, disableAll, onRouteAll, statuses, motivos as motivosDeInactividad } from './core/registry.js';
-import { start as startRouter } from './core/router.js';
+import { start as startRouter, navegacion } from './core/router.js';
 import { brokenSelectors, selectorReport } from './core/selectors.js';
 import { kick as kickScheduler, scheduleRoute, start as startScheduler } from './core/scheduler.js';
 import { declare, get as storeGet, set as storeSet, subscriptions } from './core/store.js';
@@ -201,5 +201,6 @@ export const diagnostics = {
   perfReset: resetPerf,
   subscriptions,
   motivos: motivosDeInactividad,
+  navegacion,
   boot: () => ({ ...bootReport, stages: { ...bootReport.stages } }),
 };
