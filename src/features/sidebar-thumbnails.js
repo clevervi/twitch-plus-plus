@@ -1,10 +1,11 @@
 /** Miniaturas de canal al pasar el ratón por una card de la sidebar. */
 import { log } from '../core/log.js';
-import { defineFeature } from '../core/registry.js';
+import { defineFeature, anotarMotivo, limpiarMotivo } from '../core/registry.js';
 import { get as storeGet } from '../core/store.js';
 import { channelFromCard, thumbnailUrl, visibleChannels, sidebarTooltips } from '../core/twitch.js';
 
 const cache = new Map();
+const ID = 'sidebarThumbnailPreview';
 let generation = 0;
 let leaveTimer = null;
 let preloadTimer = null;
@@ -210,7 +211,12 @@ function inject(card, channel) {
       setTimeout(() => intentar(intento + 1), 50);
       return;
     }
-    if (!target) return;
+    if (!target) {
+      anotarMotivo(ID, 'ningun tooltip vivo corresponde a este canal (Twitch retira el anterior con aria-hidden)');
+      return;
+    }
+
+    limpiarMotivo(ID);
 
     // Limpieza global antes de inyectar
     cleanup();
@@ -262,7 +268,10 @@ function onPointerOver(e) {
   const card = e.target.closest('[data-a-target="side-nav-card"], .side-nav-card, a[data-test-selector="followed-channel"]');
   if (!card) return;
   // Scoping adicional: la card DEBE estar dentro de la sidebar real
-  if (!card.closest('[data-a-target="side-nav-bar"], nav[aria-label="Primary navigation"], [data-test-selector="side-nav"], .side-nav')) return;
+  if (!card.closest('[data-a-target="side-nav-bar"], nav[aria-label="Primary navigation"], [data-test-selector="side-nav"], .side-nav')) {
+    anotarMotivo(ID, 'la card detectada no esta dentro de la sidebar');
+    return;
+  }
   if (card === currentCard) return;
 
   currentCard = card;
@@ -274,7 +283,12 @@ function onPointerOver(e) {
   cleanup();
 
   const channel = channelFromCard(card);
-  if (!channel) return;
+  if (!channel) {
+    // Ojo: no es un error de la card, es que no es un <a> con href de canal.
+    // Era el fallo de #102, y desde fuera era indistinguible de "no pasa nada".
+    anotarMotivo(ID, 'no se lee el canal de la card: la card es el <a> y no tiene href de canal');
+    return;
+  }
 
   preload(channel);
   inject(card, channel);
@@ -313,7 +327,7 @@ function teardown() {
 }
 
 defineFeature({
-  id: 'sidebarThumbnailPreview',
+  id: ID,
   label: 'Miniatura en sidebar',
   section: 'sidebar',
   default: false,

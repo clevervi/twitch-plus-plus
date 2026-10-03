@@ -165,4 +165,27 @@ describe('miniatura en sidebar', () => {
 
     await pagina.evaluate((f) => window.TwitchPP.enable(f), ID);
   });
+
+  it('deja escrito por que no inyecto, para no fallar en silencio', async () => {
+    // Card fuera de la sidebar: la feature la ve pero no puede actuar. Antes esto
+    // no dejaba ni rastro, igual que un fallo de red o un error real.
+    await pagina.evaluate(() => {
+      const card = document.querySelector('.side-nav-card[href="/ibai"]');
+      const fuera = document.createElement('div');
+      fuera.append(card);
+      document.body.append(fuera);
+    });
+
+    await pagina.evaluate(
+      () => document.querySelector('.side-nav-card[href="/ibai"]')
+        .dispatchEvent(new MouseEvent('mouseover', { bubbles: true })),
+    );
+    await pagina.waitForTimeout(200);
+
+    const motivo = await pagina.evaluate(
+      (f) => window.TwitchPP.diagnostics.features().find((x) => x.id === f)?.motivo || '',
+      ID,
+    );
+    assert.match(motivo, /no esta dentro de la sidebar/);
+  });
 });
