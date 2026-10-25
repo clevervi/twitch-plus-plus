@@ -10,7 +10,7 @@ import { emit } from './bus.js';
 import { getJson, getValue, setValue } from './gm.js';
 import { log, warn } from './log.js';
 import { applyRemote as applyRemoteSelectors, clearRemote as clearRemoteSelectors } from './selectors.js';
-import { SECTIONS, all, apply, defineFeature } from './registry.js';
+import { SECTIONS, all, apply, defineFeature, removeRemote, replaceRemote } from './registry.js';
 import { rebuild as rebuildStyles } from './styles.js';
 import { get as storeGet } from './store.js';
 import { CATALOG_URL } from './version.js';
@@ -49,9 +49,22 @@ function validFeature(spec) {
   return true;
 }
 
+/** Copia solo los campos que el catálogo puede definir; nada de hooks ni settings. */
+function remoteFeature(spec) {
+  return {
+    id: spec.id,
+    label: spec.label,
+    section: spec.section,
+    css: spec.css,
+    interval: spec.interval || 0,
+    remote: true,
+    default: false,
+  };
+}
+
 /** Aplica un catálogo ya validado. Devuelve un resumen de lo aplicado. */
 export function applyCatalog(data) {
-  const summary = { revision: data.revision, selectors: 0, features: 0, rejected: 0 };
+  const summary = { revision: data.revision, selectors: 0, features: 0, removed: 0, rejected: 0 };
 
   // Aunque el catálogo no traiga selectores, se aplica el mapa vacío: es lo que
   // retira los overrides de una revisión anterior.
@@ -60,29 +73,42 @@ export function applyCatalog(data) {
   summary.selectors = result.applied.length;
   summary.rejected += result.rejected.length;
 
-  if (Array.isArray(data.features)) {
-    for (const spec of data.features) {
-      if (!validFeature(spec)) {
-        summary.rejected += 1;
-        continue;
-      }
-      if (all().some((f) => f.id === spec.id)) continue;
-      defineFeature({ ...spec, remote: true, interval: spec.interval || 0, default: false });
+  const listed = new Set();
+  const specs = Array.isArray(data.features) ? data.features : [];
+  for (const spec of specs) {
+    if (spec && typeof spec.id === 'string') listed.add(spec.id);
+    if (!validFeature(spec)) {
+      summary.rejected += 1;
+      continue;
+    }
+    const existing = all().find((feature) => feature.id === spec.id);
+    if (!existing) {
+      defineFeature(remoteFeature(spec));
       apply(spec.id);
       summary.features += 1;
+      continue;
     }
+    if (!existing.remote) continue;
+    replaceRemote(remoteFeature(spec));
+    summary.features += 1;
   }
 
+  for (const feature of all().filter((item) => item.remote)) {
+    if (listed.has(feature.id)) continue;
+    if (removeRemote(feature.id)) summary.removed += 1;
+  }
+
+  const totalFeatures = all().filter((feature) => feature.remote).length;
   last = {
     revision: Number(data.revision) || 0,
     updatedAt: Date.now(),
     selectors: summary.selectors,
-    features: summary.features,
+    features: totalFeatures,
     note: String(data.note || data.notes || '').slice(0, 400),
     error: '',
   };
   writeCache(data);
-  if (summary.selectors || summary.features) rebuildStyles();
+  if (summary.selectors || summary.features || summary.removed) rebuildStyles();
   emit('catalog:updated', summary);
   log('catálogo aplicado:', summary);
   return summary;
@@ -138,7 +164,12 @@ export function warm() {
 }
 
 export function clearCache() {
+  let removed = false;
+  for (const feature of all().filter((item) => item.remote)) {
+    removed = removeRemote(feature.id) || removed;
+  }
   clearRemoteSelectors();
   setValue(CACHE_KEY, null);
   last = { revision: 0, updatedAt: 0, selectors: 0, features: 0, note: '', error: '' };
+  if (removed) rebuildStyles();
 }
