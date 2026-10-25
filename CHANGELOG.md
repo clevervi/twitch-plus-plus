@@ -1,5 +1,19 @@
 # Changelog
 
+## 2.2.24 — 2026-10-25
+
+### Mejora
+- **Modo concentración** (#133): deja visibles las menciones, las palabras clave y tus propios mensajes, y oculta o atenúa el resto del chat. Reutiliza las palabras clave y el modo regex que ya tienes configurados, así que no hay una segunda lista que mantener.
+### Detalles
+- Apagado por defecto. Se enciende desde el panel, en **Chat**, o con `Alt+Shift+F`.
+- Dos modos: ocultar las líneas que no interesan o atenuarlas.
+- Sin nombre de usuario ni palabras clave no oculta nada; el diagnóstico explica el motivo.
+- Al apagarlo o cambiar de canal no deja clases ni atributos en el DOM.
+- No cambia la configuración existente de resaltado de menciones ni de palabras clave.
+### Tests
+- 250 unitarios + 88 de navegador.
+- 4 tests unitarios y 5 de navegador cubren el modo concentración, incluido el atajo y la limpieza al apagar.
+
 ## 2.2.23 — 2026-10-23
 
 ### Corregido
