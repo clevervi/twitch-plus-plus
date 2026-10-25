@@ -62,10 +62,6 @@ export function thumbnailUrl(channel, width = 320) {
   return `${CDN}/live_user_${user}-${w}x${h}.jpg`;
 }
 
-export function currentChannel() {
-  return (location.pathname.match(/^\/([^\/]+)/) || [])[1] || '';
-}
-
 /**
  * ¿Twitch está en tema oscuro? Primero la clase que Twitch usa y, si no está,
  * se deduce del color de fondo real (sirve para cuando cambian el marcado).
@@ -90,7 +86,7 @@ export function isDarkTheme() {
   // El <html> si lo deja intacto. Pero suele ser transparente, y un fondo
   // transparente no dice nada del tema, asi que se comprueba que sea opaco.
   // Si no se sabe, se devuelve true, que es lo que se hacia antes y lo mas
-  // conservador: sin pruebas, no se toip.
+  // conservador: sin pruebas, no se toca.
   const raw = String(getComputedStyle(document.documentElement)?.backgroundColor || '');
   const partes = raw.match(/[\d.]+/g) || [];
   if (partes.length >= 3) {
@@ -121,16 +117,6 @@ export function hoverDialog() {
   for (const layer of layers) {
     if (layer.offsetParent === null && layer !== document.body) continue;
     if (isVisible(layer)) return layer;
-  }
-  return null;
-}
-
-export async function waitForHoverDialog(timeout = 800) {
-  const deadline = Date.now() + timeout;
-  while (Date.now() < deadline) {
-    const dialog = hoverDialog();
-    if (dialog) return dialog;
-    await new Promise((resolve) => setTimeout(resolve, 30));
   }
   return null;
 }

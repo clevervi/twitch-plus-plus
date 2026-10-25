@@ -1,7 +1,7 @@
 import assert from 'node:assert/strict';
 import test from 'node:test';
 
-import { capabilities, deleteValue, getValue, managerName, setValue } from '../src/core/gm.js';
+import { capabilities, deleteValue, getJson, getValue, managerName, setValue } from '../src/core/gm.js';
 
 const APIS = ['GM_getValue', 'GM_setValue', 'GM_deleteValue', 'GM_addValueChangeListener', 'GM_xmlhttpRequest', 'GM_info'];
 
@@ -80,4 +80,25 @@ test('getValue devuelve el fallback cuando el valor guardado es basura', () => {
   env.local.set('twpp:roto', '{no es json');
   assert.equal(getValue('roto', 'por defecto'), 'por defecto');
   env.limpiar();
+});
+
+test('getJson aborta el fetch de respaldo al agotar el timeout', async () => {
+  const env = instalar();
+  delete globalThis.GM_xmlhttpRequest;
+  const originalFetch = globalThis.fetch;
+  globalThis.fetch = (_url, options = {}) =>
+    new Promise((_resolve, reject) => {
+      options.signal?.addEventListener('abort', () => reject(new Error('abortado')));
+    });
+
+  try {
+    const resultado = await Promise.race([
+      getJson('https://example.test/datos.json', { timeout: 50 }),
+      new Promise((resolve) => setTimeout(() => resolve('sin-timeout'), 1000)),
+    ]);
+    assert.equal(resultado, null, 'debe resolver null en vez de quedarse colgado');
+  } finally {
+    globalThis.fetch = originalFetch;
+    env.limpiar();
+  }
 });

@@ -264,6 +264,38 @@ describe('el boton flotante se ve y se puede pulsar', () => {
     assert.notEqual(e.pointerEvents, 'none', 'con pointer-events: none no se puede pulsar');
   });
 
+  it('el brillo sigue al boton cuando se arrastra a la mitad izquierda', async () => {
+    // Cierra el panel que abrio el test anterior.
+    await enElPanel(`(shadow) => {
+      const panel = shadow.querySelector('.panel');
+      if (panel && !panel.hidden) shadow.querySelector('.fab').click();
+    }`);
+
+    const centro = () =>
+      enElPanel(`(shadow) => {
+        const r = shadow.querySelector('.fab').getBoundingClientRect();
+        return { x: r.x + r.width / 2, y: r.y + r.height / 2 };
+      }`);
+
+    const antes = await centro();
+    await page.mouse.move(antes.x, antes.y);
+    await page.mouse.down();
+    await page.mouse.move(120, antes.y, { steps: 12 });
+    await page.mouse.up();
+
+    // El punto de referencia del brillo se calculaba reflejado (right + 13) en
+    // vez de en coordenadas de ventana, asi que con el boton en la mitad
+    // izquierda se esperaba el raton al otro lado de la pantalla.
+    const despues = await centro();
+    assert.ok(despues.x < 700, `el boton deberia haber quedado a la izquierda (x=${despues.x})`);
+
+    await page.mouse.move(despues.x, despues.y);
+    await page.waitForTimeout(80);
+
+    const clases = await enElPanel(`(shadow) => shadow.querySelector('.fab').className`);
+    assert.match(clases, /\b(awake|near)\b/, `el boton no se desperto al acercarse: "${clases}"`);
+  });
+
   it('un clic real en el boton abre el panel', async () => {
     const abierto = await enElPanel(`(shadow) => {
       const boton = shadow.querySelector('.fab');

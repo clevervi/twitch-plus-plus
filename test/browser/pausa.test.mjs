@@ -3,7 +3,7 @@
  * que hace clic en un botón de Twitch. Un fallo aquí deja el chat congelado,
  * que es de las pocas cosas que el usuario no puede salir.
  *
- * El caso que motivations este fichero: `findScrollable()` empezaba el recorrido
+ * El caso que motivó este fichero: `findScrollable()` empezaba el recorrido
  * en `container.parentElement`, así que nunca miraba el contenedor, que es
  * justamente el elemento con scroll. Caía al fallback, que devolvía un nodo que
  * no desliza, y forzar `scrollTop` sobre él no hace nada.
@@ -88,8 +88,22 @@ async function dejarPausa(querido) {
 }
 
 beforeEach(async () => {
+  await pagina.evaluate(() => document.querySelector('#prueba-pausa-nativa')?.remove());
   await dejarPausa(false);
 });
+
+async function esperarPanelPausado(querido, ms = 6000) {
+  const limite = Date.now() + ms;
+  let visto = false;
+  while (Date.now() < limite) {
+    visto = await pagina.evaluate(
+      () => !!window.__twpp.shadow.querySelector('[data-action="pause"]').classList.contains('on'),
+    );
+    if (visto === Boolean(querido)) return true;
+    await pagina.waitForTimeout(100);
+  }
+  return false;
+}
 
 describe('el contenedor de chat tiene por donde hacer scroll', () => {
   it('la fixture se puede desplazar de verdad', async () => {
@@ -163,5 +177,27 @@ describe('el usuario puede salir de la pausa con la rueda', () => {
     await pagina.waitForTimeout(400);
     await IR_A(600);
     assert.equal(await esperarTop(120), 120, 'la pausa se reancla donde el usuario soltó');
+  });
+});
+
+describe('la pausa nativa de Twitch se refleja en el panel', () => {
+  it('adopta el estado del botón nativo sin esperar a un cambio de ruta', async () => {
+    await pagina.evaluate(() => {
+      const boton = document.createElement('button');
+      boton.id = 'prueba-pausa-nativa';
+      boton.dataset.aTarget = 'chat-pause-button';
+      boton.setAttribute('aria-label', 'Reanudar chat');
+      boton.textContent = 'Reanudar chat';
+      document.querySelector('[data-a-target="chat-room-component-layout"]').prepend(boton);
+    });
+
+    assert.equal(
+      await esperarPanelPausado(true),
+      true,
+      'el panel debe marcar la pausa aunque Twitch la haya iniciado por su cuenta',
+    );
+
+    await pagina.evaluate(() => document.querySelector('#prueba-pausa-nativa')?.remove());
+    await dejarPausa(false);
   });
 });

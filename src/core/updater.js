@@ -41,8 +41,10 @@ export async function check({ force = false, timeout = 6000 } = {}) {
   }
 
   const data = await getJson(LATEST_URL, { timeout });
-  setValue(LAST_CHECK_KEY, Date.now());
+  // Solo se marca la comprobación cuando el repo contestó. Si se marca antes,
+  // un fallo de red deja al usuario sin reintentar hasta el día siguiente.
   if (!data) return { error: 'sin respuesta del repo' };
+  setValue(LAST_CHECK_KEY, Date.now());
 
   const latest = String(data.version || '');
   const result = {

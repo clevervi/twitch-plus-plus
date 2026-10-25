@@ -108,10 +108,22 @@ export function getJson(url, { timeout = 10000, headers } = {}) {
     };
 
     if (!has('GM_xmlhttpRequest')) {
-      fetch(url, { headers })
-        .then((res) => (res.ok ? res.json() : null))
-        .then(done)
-        .catch(() => done(null));
+      // El fallback tambien necesita timeout. Sin el, un fetch que no responde
+      // dejaba la promesa colgada para siempre y con ella el arranque.
+      const controller = typeof AbortController === 'function' ? new AbortController() : null;
+      const timer = controller && timeout > 0 ? setTimeout(() => controller.abort(), timeout) : null;
+      try {
+        fetch(url, { headers, signal: controller?.signal })
+          .then((res) => (res.ok ? res.json() : null))
+          .then(done)
+          .catch(() => done(null))
+          .finally(() => {
+            if (timer !== null) clearTimeout(timer);
+          });
+      } catch {
+        if (timer !== null) clearTimeout(timer);
+        done(null);
+      }
       return;
     }
 

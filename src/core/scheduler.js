@@ -4,7 +4,7 @@
  * feature decide su frecuencia con `interval`. Se detiene con la pestaña oculta.
  */
 import { debounce, onIdle, throttle } from './dom.js';
-import { log } from './log.js';
+import { log, track } from './log.js';
 import { contar, registrarTick } from './perf.js';
 import { tickAll } from './registry.js';
 import { emit } from './bus.js';
@@ -18,6 +18,32 @@ let queued = false;
 let running = false;
 let lastRunTime = 0;
 
+const tareas = new Set();
+
+/**
+ * Tarea periódica que no pertenece a ninguna feature (por ejemplo, reconciliar
+ * la UI con un botón nativo de Twitch). Se ejecuta con el mismo latido y se
+ * detiene con la pestaña oculta, sin sumar otro `setInterval`. Devuelve la
+ * funcion para darla de baja.
+ */
+export function every(intervalo, fn) {
+  const tarea = { intervalo: Math.max(100, Number(intervalo) || 1000), fn, ultima: 0 };
+  tareas.add(tarea);
+  return () => tareas.delete(tarea);
+}
+
+function runTasks(now) {
+  for (const tarea of tareas) {
+    if (now - tarea.ultima < tarea.intervalo) continue;
+    tarea.ultima = now;
+    try {
+      tarea.fn(now);
+    } catch (error) {
+      track('scheduler:task', error);
+    }
+  }
+}
+
 function run() {
   if (running || document.hidden) return;
   const now = Date.now();
@@ -27,6 +53,7 @@ function run() {
   try {
     registrarTick();
     tickAll(now);
+    runTasks(now);
   } finally {
     running = false;
   }
@@ -41,7 +68,11 @@ export function request() {
   });
 }
 
-const observedTargets = new WeakSet();
+// Los nodos observados se recuerdan para no registrar el mismo target dos
+// veces. Tiene que ser un Set y no un WeakSet: al parar (pestaña oculta) el
+// observer se destruye, y un WeakSet no se puede vaciar, así que al volver los
+// nodos seguían "vistos" y el nuevo observer no observaba ninguno.
+let observedTargets = new Set();
 
 function attachTargets() {
   if (!observer || typeof document === 'undefined') return;
@@ -87,6 +118,7 @@ export function stop() {
   timer = null;
   observer?.disconnect();
   observer = null;
+  observedTargets.clear();
 }
 
 function onVisibility() {

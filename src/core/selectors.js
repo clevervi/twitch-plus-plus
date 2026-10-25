@@ -249,6 +249,11 @@ export function applyRemote(map) {
   const rejectedBroad = [];
   if (!map || typeof map !== 'object') return { applied, rejected, rejectedBroad };
 
+  // El catálogo es la lista completa de overrides remotos, no un parche que se
+  // acumula. Si una clave deja de venir, su override anterior también deja de
+  // valer: si no, un selector retirado seguiría mandando hasta recargar.
+  for (const entry of state.values()) entry.remote = [];
+
   for (const [key, raw] of Object.entries(map)) {
     const entry = state.get(key);
     if (!entry) {

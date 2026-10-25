@@ -16,7 +16,7 @@ import { report } from './core/report.js';
 import { applyAll, disableAll, onRouteAll, statuses, motivos as motivosDeInactividad } from './core/registry.js';
 import { start as startRouter, navegacion } from './core/router.js';
 import { brokenSelectors, selectorReport } from './core/selectors.js';
-import { kick as kickScheduler, scheduleRoute, start as startScheduler } from './core/scheduler.js';
+import { every, kick as kickScheduler, scheduleRoute, start as startScheduler } from './core/scheduler.js';
 import { declare, get as storeGet, set as storeSet, subscriptions } from './core/store.js';
 import { rebuild as rebuildStyles } from './core/styles.js';
 import { show as toast } from './core/toast.js';
@@ -114,6 +114,10 @@ export function start() {
   ready(() => {
     try {
       startScheduler();
+      // Twitch rehace el botón de pausa y puede pausar el chat por su cuenta.
+      // `ensure()` reconcilia ese estado; sin esto solo se enteraba al cambiar
+      // de ruta, así que el panel podía decir "Pausar" con el chat ya pausado.
+      every(600, () => ChatPause.ensure());
       UI.build();
       UI.renderCatalogNote();
       bootReport.stages.ui.ok = true;

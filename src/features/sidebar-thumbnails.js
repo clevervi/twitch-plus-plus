@@ -316,6 +316,10 @@ function onWindowBlur() {
 
 function teardown() {
   currentCard = null;
+  // Invalida los reintentos de `inject()` que esten en vuelo. Sin esto, apagar
+  // la feature mientras se espera el tooltip dejaba viva la cadena de 8
+  // reintentos, que inyectaba la miniatura con la feature ya apagada.
+  generation += 1;
   clearTimeout(leaveTimer);
   // El precargado diferido se cancela aquí: sin esto, apagar la feature antes
   // de los 2 s deja el temporador vivo y pide miniaturas al CDN con la feature

@@ -9,6 +9,7 @@ import { get as storeGet } from '../core/store.js';
 const CLAIM_HINT = /bonificaci[oó]n|b[oóô]nus|bonus|бонус|claim|reclamar|resgatar|abholen|réclamer/i;
 const FORBIDDEN_HINT = /saldo|balance|potenciador|reward|recompensa|suscripci[oó]n|subscription/i;
 const FORBIDDEN_CONTEXT = '[data-a-target="top-nav-container"], [data-a-target="user-menu-toggle"], [data-a-target="user-menu-button"], nav[aria-label*="Primary" i]';
+const CLAIM_CONTEXT = '[data-a-target="community-points-summary"], [data-test-selector="community-points-summary"], .community-points-summary';
 
 let lastClick = 0;
 
@@ -28,9 +29,14 @@ export function isClaimButton(btn) {
   const label = (target.getAttribute?.('aria-label') || target.textContent || '').trim();
   if (FORBIDDEN_HINT.test(label)) return false;
 
-  // Es el cofre si tiene el icono o el texto específico de bonificación
+  // El icono del cofre es prueba suficiente, esté donde esté.
   if (target.querySelector?.('.claimable-bonus__icon, [data-test-selector="claimable-bonus-icon"]')) return true;
   if (target.classList?.contains?.('claimable-bonus__icon') || target.className?.includes?.('claimable-bonus__icon')) return true;
+
+  // Una coincidencia solo por texto no basta: un botón de recompensa puede
+  // decir "Reclamar" y no ser el cofre. Sin icono, exigimos el contexto de
+  // puntos de canal, que es donde Twitch pinta la bonificación.
+  if (!target.closest?.(CLAIM_CONTEXT)) return false;
   if (CLAIM_HINT.test(label)) return true;
 
   return false;

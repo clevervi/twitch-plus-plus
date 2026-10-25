@@ -72,7 +72,13 @@ function responder(evento) {
         : op === 'navegacion'
           ? globalThis.TwitchPP?.diagnostics?.navegacion?.() ?? { error: 'navegacion no disponible' }
           : op === 'motivo'
-            ? { id: arg, motivo: arg || '' }
+            ? (() => {
+                const id = String(arg || '');
+                const fila = (globalThis.TwitchPP?.diagnostics?.motivos?.() || []).find(
+                  (fila) => fila.id === id,
+                );
+                return { id, motivo: fila?.motivo || '' };
+              })()
             : { error: 'operacion desconocida: ' + op };
     json = JSON.stringify(datos);
   } catch (error) {

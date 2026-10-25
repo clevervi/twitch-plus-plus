@@ -3,7 +3,15 @@ import test from 'node:test';
 
 import { isClaimButton } from '../src/features/auto-claim.js';
 
-function makeElement({ tag = 'BUTTON', ariaLabel = '', textContent = '', className = '', hasIcon = false, parent = null } = {}) {
+function makeElement({
+  tag = 'BUTTON',
+  ariaLabel = '',
+  textContent = '',
+  className = '',
+  hasIcon = false,
+  parent = null,
+  inContext = false,
+} = {}) {
   const el = {
     tagName: tag.toUpperCase(),
     className,
@@ -13,9 +21,10 @@ function makeElement({ tag = 'BUTTON', ariaLabel = '', textContent = '', classNa
     getAttribute: (attr) => (attr === 'aria-label' ? (ariaLabel || null) : null),
     textContent,
     querySelector: (sel) => (hasIcon ? { selector: sel } : null),
-    closest: (targetTag) => {
-      if (el.tagName.toLowerCase() === targetTag.toLowerCase()) return el;
-      return parent ? parent.closest(targetTag) : null;
+    closest: (selector) => {
+      if (inContext && selector.includes('community-points-summary')) return { tagName: 'DIV' };
+      if (el.tagName.toLowerCase() === selector.toLowerCase()) return el;
+      return parent ? parent.closest(selector) : null;
     },
   };
   return el;
@@ -38,14 +47,14 @@ test('isClaimButton rechaza botones de saldo, balance o menú de recompensas', (
 
 test('isClaimButton acepta botones de reclamo en múltiples idiomas', () => {
   const validButtons = [
-    makeElement({ ariaLabel: 'Claim Bonus' }),
-    makeElement({ ariaLabel: 'Reclamar bonificación' }),
-    makeElement({ ariaLabel: 'Reclamar bonificacion' }),
-    makeElement({ ariaLabel: 'Resgatar bônus' }),
-    makeElement({ ariaLabel: 'Bonus abholen' }),
-    makeElement({ ariaLabel: 'Réclamer un bonus' }),
-    makeElement({ ariaLabel: 'Забрать бонус' }),
-    makeElement({ textContent: 'Reclamar bonificación' }),
+    makeElement({ ariaLabel: 'Claim Bonus', inContext: true }),
+    makeElement({ ariaLabel: 'Reclamar bonificación', inContext: true }),
+    makeElement({ ariaLabel: 'Reclamar bonificacion', inContext: true }),
+    makeElement({ ariaLabel: 'Resgatar bônus', inContext: true }),
+    makeElement({ ariaLabel: 'Bonus abholen', inContext: true }),
+    makeElement({ ariaLabel: 'Réclamer un bonus', inContext: true }),
+    makeElement({ ariaLabel: 'Забрать бонус', inContext: true }),
+    makeElement({ textContent: 'Reclamar bonificación', inContext: true }),
   ];
 
   for (const btn of validButtons) {
@@ -62,10 +71,18 @@ test('isClaimButton detecta el botón por icono o clase de bonificación', () =>
 });
 
 test('isClaimButton funciona cuando se le pasa un elemento hijo dentro del botón', () => {
-  const parentBtn = makeElement({ tag: 'BUTTON', ariaLabel: 'Reclamar bonificación' });
+  const parentBtn = makeElement({ tag: 'BUTTON', ariaLabel: 'Reclamar bonificación', inContext: true });
   const childSpan = makeElement({ tag: 'SPAN', parent: parentBtn });
 
   assert.equal(isClaimButton(childSpan), true);
+});
+
+test('isClaimButton rechaza un botón "Reclamar" fuera del resumen de puntos', () => {
+  // Una recompensa del canal también se reclama con un botón "Reclamar", pero
+  // no es el cofre: sin icono y fuera del resumen, no se toca.
+  assert.equal(isClaimButton(makeElement({ ariaLabel: 'Reclamar' })), false);
+  assert.equal(isClaimButton(makeElement({ textContent: 'Reclamar' })), false);
+  assert.equal(isClaimButton(makeElement({ ariaLabel: 'Reclamar', inContext: true })), true);
 });
 
 test('isClaimButton rechaza elementos vacíos, nulos o no relacionados', () => {

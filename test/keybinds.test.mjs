@@ -80,6 +80,28 @@ test('bindGlobal exige la combinación exacta y no roba teclas al escribir', asy
   assert.deepEqual(calls, ['panel', 'suelto'], 'pero no mientras escribes');
 });
 
+test('la barra espaciadora coincide aunque event.key sea un espacio', async () => {
+  // `parseKeybind('Alt+Space')` guarda `space`, pero el navegador manda
+  // `event.key === ' '`. Sin equivalencia el atajo se aceptaba al escribirlo y
+  // luego no disparaba nunca.
+  const { bindGlobal, register, setCombo, stub } = await keybinds();
+  register('espacio', 'Espacio', 'Alt+Space');
+  assert.equal(setCombo('espacio', 'Alt+Space'), true);
+
+  const calls = [];
+  bindGlobal((id) => calls.push(id));
+  stub.window.fire('keydown', {
+    key: ' ',
+    altKey: true,
+    ctrlKey: false,
+    shiftKey: false,
+    metaKey: false,
+    preventDefault() {},
+    stopPropagation() {},
+  });
+  assert.deepEqual(calls, ['espacio']);
+});
+
 test('isTypingTarget detecta role="textbox" y MODIFIERS reconoce mayus', async () => {
   const { comboOf, setCombo, stub, register, bindGlobal } = await keybinds();
   register('spanishKey', 'Español', 'Alt+Mayus+A');

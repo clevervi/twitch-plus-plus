@@ -1,7 +1,7 @@
 // ==UserScript==
 // @name         Twitch++
 // @namespace    https://github.com/clevervi
-// @version      2.2.22
+// @version      2.2.23
 // @description  Twitch limpio, modular y autoactualizable: OLED, sidebar, chat, analítica de viewers, auto Channel Points y pausa de chat.
 // @author       clevervi
 // @license      MIT
@@ -172,10 +172,22 @@ function getJson(url, { timeout = 10000, headers } = {}) {
     };
 
     if (!has('GM_xmlhttpRequest')) {
-      fetch(url, { headers })
-        .then((res) => (res.ok ? res.json() : null))
-        .then(done)
-        .catch(() => done(null));
+      // El fallback tambien necesita timeout. Sin el, un fetch que no responde
+      // dejaba la promesa colgada para siempre y con ella el arranque.
+      const controller = typeof AbortController === 'function' ? new AbortController() : null;
+      const timer = controller && timeout > 0 ? setTimeout(() => controller.abort(), timeout) : null;
+      try {
+        fetch(url, { headers, signal: controller?.signal })
+          .then((res) => (res.ok ? res.json() : null))
+          .then(done)
+          .catch(() => done(null))
+          .finally(() => {
+            if (timer !== null) clearTimeout(timer);
+          });
+      } catch {
+        if (timer !== null) clearTimeout(timer);
+        done(null);
+      }
       return;
     }
 
@@ -563,6 +575,11 @@ function applyRemote(map) {
   const rejectedBroad = [];
   if (!map || typeof map !== 'object') return { applied, rejected, rejectedBroad };
 
+  // El catálogo es la lista completa de overrides remotos, no un parche que se
+  // acumula. Si una clave deja de venir, su override anterior también deja de
+  // valer: si no, un selector retirado seguiría mandando hasta recargar.
+  for (const entry of state.values()) entry.remote = [];
+
   for (const [key, raw] of Object.entries(map)) {
     const entry = state.get(key);
     if (!entry) {
@@ -806,6 +823,10 @@ function applyValidate(key, value) {
 }
 
 function declare(key, type, fallback, validate) {
+  // La primera declaracion manda. Si una feature tardia (o una remota, si
+  // alguna vez aceptase settings) repite la clave, no puede cambiar su tipo ni
+  // su default: `catalog` dejaria de ser un bool y la config se volveria otra.
+  if (schema.has(key)) return;
   schema.set(key, { type, fallback, validate });
   if (cache) {
     const raw = coerce(cache[key], type);
@@ -895,15 +916,22 @@ function set(key, value) {
 
 function setMany(entries) {
   const current = all();
-  const keys = Object.keys(entries).filter((key) => current[key] !== entries[key]);
-  if (!keys.length) return current;
+  const cambios = new Map();
+
+  // Se coacciona antes de comparar. Comparando el valor crudo, `setMany({
+  // autoClaim: 'false' })` notificaba el cambio aunque el valor final fuera el
+  // mismo que ya habia, y eso despertaba a las features sin motivo.
   for (const [key, value] of Object.entries(entries)) {
     const def = schema.get(key);
     const coerced = def ? applyValidate(key, coerce(value, def.type)) : value;
-    current[key] = coerced === undefined ? (def ? (typeof def.fallback === 'object' && def.fallback !== null ? clone(def.fallback) : def.fallback) : value) : coerced;
+    const final = coerced === undefined ? (def ? (typeof def.fallback === 'object' && def.fallback !== null ? clone(def.fallback) : def.fallback) : value) : coerced;
+    if (current[key] !== final) cambios.set(key, final);
   }
+  if (!cambios.size) return current;
+
+  for (const [key, final] of cambios) current[key] = final;
   persist();
-  for (const key of keys) changed(key);
+  for (const key of cambios.keys()) changed(key);
   return current;
 }
 
@@ -1271,7 +1299,7 @@ return {
 /* ---- src/core/version.js ---- */
 const __m8 = (function () {
 /** Sustituido en build. Fuente única de verdad: package.json + header del userscript. */
-const VERSION = '2.2.22';
+const VERSION = '2.2.23';
 const REPO_URL = 'https://github.com/clevervi/twitch-plus-plus';
 const RAW_URL = 'https://raw.githubusercontent.com/clevervi/twitch-plus-plus/main';
 const BRANCH = 'main';
@@ -1341,6 +1369,10 @@ function validFeature(spec) {
   if (!ID_RE.test(String(spec.id || ''))) return false;
   if (typeof spec.label !== 'string' || !spec.label || spec.label.length > 60) return false;
   if (!SECTIONS.some((s) => s.id === spec.section)) return false;
+  // Las features del repo son solo CSS. `settings` podría redeclarar el tipo de
+  // una clave existente (por ejemplo `catalog`) y convertir la config en otra
+  // cosa, así que no se acepta desde la red.
+  if (spec.settings !== undefined) return false;
   if (typeof spec.css !== 'string' || !spec.css.trim() || spec.css.length > MAX_CSS) return false;
   if (CSS_FORBIDDEN.test(spec.css)) return false;
   if (spec.interval !== undefined && (!Number.isFinite(spec.interval) || spec.interval < 0)) return false;
@@ -1351,11 +1383,12 @@ function validFeature(spec) {
 function applyCatalog(data) {
   const summary = { revision: data.revision, selectors: 0, features: 0, rejected: 0 };
 
-  if (data.selectors && typeof data.selectors === 'object') {
-    const result = applyRemoteSelectors(data.selectors);
-    summary.selectors = result.applied.length;
-    summary.rejected += result.rejected.length;
-  }
+  // Aunque el catálogo no traiga selectores, se aplica el mapa vacío: es lo que
+  // retira los overrides de una revisión anterior.
+  const remoteSelectors = data.selectors && typeof data.selectors === 'object' ? data.selectors : {};
+  const result = applyRemoteSelectors(remoteSelectors);
+  summary.selectors = result.applied.length;
+  summary.rejected += result.rejected.length;
 
   if (Array.isArray(data.features)) {
     for (const spec of data.features) {
@@ -1386,7 +1419,12 @@ function applyCatalog(data) {
 }
 
 function status() {
-  return { ...last, enabled: !!storeGet('catalog'), local: all().filter((f) => f.remote).map((f) => f.id) };
+  return {
+    ...last,
+    remote: !!(last.revision || last.selectors || last.features),
+    enabled: !!storeGet('catalog'),
+    local: all().filter((f) => f.remote).map((f) => f.id),
+  };
 }
 
 function needsFetch(force) {
@@ -1703,12 +1741,16 @@ function parseKeybind(str) {
 
 function matchKeybind(combo, event) {
   if (!combo) return false;
+  // `event.key` para la barra espaciadora es `' '`, no `'space'`: sin esta
+  // equivalencia el atajo se guardaba como valido y no disparaba nunca.
+  const tecla = String(event.key || '').toLowerCase();
+  const normalizada = tecla === ' ' || tecla === 'spacebar' ? 'space' : tecla;
   return (
     combo.alt === event.altKey &&
     combo.ctrl === event.ctrlKey &&
     combo.shift === event.shiftKey &&
     combo.meta === event.metaKey &&
-    combo.key === String(event.key || '').toLowerCase()
+    combo.key === normalizada
   );
 }
 
@@ -1932,13 +1974,244 @@ return {
 };
 })();
 
-/* ---- src/core/router.js ---- */
+/* ---- src/core/twitch.js ---- */
 const __m15 = (function () {
+const { qs: qs, qsAll: qsAll, isVisible: isVisible } = __m11;
+const { select: select, selectAll: selectAll } = __m3;
+
+/** Utilidades específicas de Twitch: nombres de canal, miniaturas, tooltips, contadores. */
+
+
+
+const CDN = 'https://static-cdn.jtvnw.net/previews-ttv';
+const RESERVED = new Set([
+  'directory', 'settings', 'subscriptions', 'inventory', 'wallet', 'drops', 'u', 'downloads',
+  'friends', 'search', 'turbo', 'p', 'store', 'prime', 'signup', 'login', 'videos',
+  'messages', 'popout', 'moderator', 'dashboard',
+]);
+
+function channelFromHref(href) {
+  if (!href || !href.startsWith('/') || href.startsWith('//')) return null;
+  const first = href.split(/[\/?#]/).filter(Boolean)[0];
+  if (!first || RESERVED.has(first.toLowerCase())) return null;
+  return decodeURIComponent(first).toLowerCase();
+}
+
+function channelFromCard(card) {
+  const link =
+    (card?.matches?.('a[href]') && card) ||
+    (card &&
+      (qs('a[href^="/"]', card) ||
+        qs('[data-a-target="side-nav-link"], [data-a-target="side-nav-card-link"]', card)));
+  return channelFromHref(link ? link.getAttribute('href') : null);
+}
+
+function sidebarTooltips() {
+  return qsAll('.online-side-nav-channel-tooltip__body, [class*="online-side-nav-channel-tooltip"]')
+    .filter((node) => {
+      if (!node || !node.isConnected) return false;
+      // Twitch reutiliza el tooltip anterior durante la transicion de salida y
+      // lo deja aria-hidden. Sin este filtro nos enganchamos al viejo, el canal
+      // no coincide y la miniatura no reaparece al volver al mismo canal.
+      if (node.closest?.('[aria-hidden="true"]')) return false;
+      try {
+        const r = node.getBoundingClientRect();
+        return r.width > 0 && r.height > 0;
+      } catch {
+        return false;
+      }
+    });
+}
+
+function visibleChannels(limit = 8) {
+  const out = [];
+  const seen = new Set();
+  for (const link of qsAll('nav a[href^="/"]')) {
+    const channel = channelFromHref(link.getAttribute('href'));
+    if (!channel || seen.has(channel)) continue;
+    seen.add(channel);
+    out.push(channel);
+    if (out.length >= limit) break;
+  }
+  return out;
+}
+
+function thumbnailUrl(channel, width = 320) {
+  const user = String(channel || '').trim().toLowerCase();
+  const w = Math.max(160, Math.min(1280, Math.round(Number(width) || 320)));
+  const h = Math.round((w * 9) / 16);
+  return `${CDN}/live_user_${user}-${w}x${h}.jpg`;
+}
+
+/**
+ * ¿Twitch está en tema oscuro? Primero la clase que Twitch usa y, si no está,
+ * se deduce del color de fondo real (sirve para cuando cambian el marcado).
+ */
+function isDarkTheme() {
+  if (document.documentElement.classList.contains('tw-root--theme-dark')) return true;
+  if (document.body?.classList.contains('tw-root--theme-dark')) return true;
+  if (qs('.tw-root--theme-dark')) return true;
+  // Camino simetrico del anterior. Si Twitch no usara nunca esta clase, esta
+  // comprobacion no llega a dispararse y el comportamiento no cambia: por eso
+  // se puede anadir sin haber verificado el nombre en la pagina real.
+  if (document.documentElement.classList.contains('tw-root--theme-light')) return false;
+
+  // La luminancia se lee del <html> y NO del <body>, a proposito.
+  //
+  // `dark-mode` pone `%SCOPE% body { background-color: #000000 !important }`
+  // cuando esta activa, asi que leer el cuerpo era leerse a si mismo: el script
+  // pintaba la pagina de negro y la deteccion contestaba "es oscuro", con lo
+  // cual la feature no podia apagarse nunca y el ajuste "solo en tema oscuro de
+  // Twitch" no podia cumplirse.
+  //
+  // El <html> si lo deja intacto. Pero suele ser transparente, y un fondo
+  // transparente no dice nada del tema, asi que se comprueba que sea opaco.
+  // Si no se sabe, se devuelve true, que es lo que se hacia antes y lo mas
+  // conservador: sin pruebas, no se toca.
+  const raw = String(getComputedStyle(document.documentElement)?.backgroundColor || '');
+  const partes = raw.match(/[\d.]+/g) || [];
+  if (partes.length >= 3) {
+    const alfa = partes.length > 3 ? Number(partes[3]) : 1;
+    const [r, g, b] = partes.map(Number);
+    if (alfa !== 0 && ![r, g, b].some(Number.isNaN)) {
+      return (r * 299 + g * 587 + b * 114) / 1000 < 128;
+    }
+  }
+  return true;
+}
+
+function hoverDialog() {
+  // 1. Selector directo para el tooltip moderno de la sidebar de Twitch
+  // 1. Tooltip vivo: el primero que no este siendo retirado por la transicion
+  const live = sidebarTooltips()[0];
+  if (live) {
+    return live.closest('[tabindex="0"], .tw-dialog-layer, [role="dialog"], [role="tooltip"]') || live.parentElement || live;
+  }
+
+  const tooltipBody = qs('.online-side-nav-channel-tooltip__body, [class*="online-side-nav-channel-tooltip"]');
+  if (tooltipBody && tooltipBody.isConnected) {
+    return tooltipBody.closest('[tabindex="0"], .tw-dialog-layer, [role="dialog"], [role="tooltip"]') || tooltipBody.parentElement || tooltipBody;
+  }
+
+  // 2. Globos y capas de diálogo estándar
+  const layers = qsAll('.tw-balloon, [data-a-target="tw-balloon"], [role="tooltip"], .tw-dialog-layer, [role="dialog"]');
+  for (const layer of layers) {
+    if (layer.offsetParent === null && layer !== document.body) continue;
+    if (isVisible(layer)) return layer;
+  }
+  return null;
+}
+
+/** Nombre de usuario del usuario conectado (para menciones). */
+function currentUsername() {
+  const toggle = select('userMenu');
+  if (!toggle) return null;
+  const img = qs('img', toggle);
+  if (img && img.alt) return img.alt.trim();
+  const label = toggle.getAttribute('aria-label') || '';
+  const match = label.match(/^(.+?)[''\u2019]s\s+user\s+menu/i) || label.match(/^User menu\s*[-–]\s*(.+)/i);
+  return match ? match[1].trim() : null;
+}
+
+function usernameOf(message) {
+  const node = qs('.chat-line__username, [data-a-target="chat-message-username"]', message);
+  const text = node ? (node.textContent || '').trim() : '';
+  return text ? text.toLowerCase() : null;
+}
+
+function chatLines(root = document) {
+  return selectAll('chat.line', root);
+}
+
+function chatContainer() {
+  return select('chat.container');
+}
+
+function messageText(message) {
+  const body = qs('.chat-line__message, [data-a-target="chat-line-message-body"]', message);
+  return (body ? body.textContent : message.textContent) || '';
+}
+
+/**
+ * Contador de viewers parseado a número.
+ * Soporta: "1.2K", "12.3K", "1.2M", "1,2 mil", "1.234", etc.
+ */
+function viewerCount() {
+  const node = select('viewerCount');
+  if (!node) return null;
+  const text = (node.textContent || '').trim();
+  return parseViewerText(text);
+}
+
+/**
+ * Parsea texto de viewers con multiplicadores (K, M, mil).
+ * Maneja separadores decimales y de miles correctamente.
+ */
+function parseViewerText(txt) {
+  if (!txt) return null;
+
+  const t = txt.toLowerCase().replace(/\s+/g, '');
+  const m = t.match(/^([\d.,]+)\s*(mil|k|m|b)?$/);
+  if (!m) return null;
+
+  let num = m[1];
+  const suf = m[2] || '';
+
+  // Decidir si coma/punto es decimal o miles
+  const lastComma = num.lastIndexOf(',');
+  const lastDot = num.lastIndexOf('.');
+
+  if (lastComma > -1 && lastDot > -1) {
+    // Ambos presentes: la última ocurrencia es el decimal
+    if (lastComma > lastDot) {
+      num = num.replace(/\./g, '').replace(',', '.');
+    } else {
+      num = num.replace(/,/g, '');
+    }
+  } else if (lastComma > -1) {
+    // Solo coma: si son 3 dígitos después, es miles; si no, es decimal
+    const after = num.length - lastComma - 1;
+    if (after === 3) num = num.replace(/,/g, '');
+    else num = num.replace(',', '.');
+  } else if (lastDot > -1) {
+    // Solo punto: si son 3 dígitos después y hay más números, es miles
+    const after = num.length - lastDot - 1;
+    if (after === 3 && num.length > 4) num = num.replace(/\./g, '');
+  }
+
+  const base = parseFloat(num);
+  if (!isFinite(base)) return null;
+
+  const mult = { mil: 1e3, k: 1e3, m: 1e6, b: 1e9 }[suf] || 1;
+  return Math.round(base * mult);
+}
+return {
+  channelFromHref: channelFromHref,
+  channelFromCard: channelFromCard,
+  sidebarTooltips: sidebarTooltips,
+  visibleChannels: visibleChannels,
+  thumbnailUrl: thumbnailUrl,
+  isDarkTheme: isDarkTheme,
+  hoverDialog: hoverDialog,
+  currentUsername: currentUsername,
+  usernameOf: usernameOf,
+  chatLines: chatLines,
+  chatContainer: chatContainer,
+  messageText: messageText,
+  viewerCount: viewerCount,
+  parseViewerText: parseViewerText,
+};
+})();
+
+/* ---- src/core/router.js ---- */
+const __m16 = (function () {
 const { emit: emit } = __m0;
 const { log: log } = __m2;
 const { getValue: getValue, setValue: setValue } = __m1;
+const { channelFromHref: channelFromHref } = __m15;
 
 /** Detección de navegación SPA (Twitch no recarga la página al cambiar de canal). */
+
 
 
 
@@ -1977,7 +2250,10 @@ function navegacion() {
 
 function currentRoute(razon = 'navigation') {
   const path = typeof location !== 'undefined' ? location.pathname : '/';
-  const channel = (path.match(/^\/([^/]+)/) || [])[1] || '';
+  // `/directory` o `/settings` no son canales. Antes se tomaba el primer
+  // segmento tal cual, así que features como el resaltado de menciones creían
+  // estar en el canal "directory".
+  const channel = channelFromHref(path) || '';
   const now = Date.now();
   const route = {
     seq: ++routeSeq,
@@ -2050,9 +2326,9 @@ return {
 })();
 
 /* ---- src/core/scheduler.js ---- */
-const __m16 = (function () {
+const __m17 = (function () {
 const { debounce: debounce, onIdle: onIdle, throttle: throttle } = __m11;
-const { log: log } = __m2;
+const { log: log, track: track } = __m2;
 const { contar: contar, registrarTick: registrarTick } = __m10;
 const { tickAll: tickAll } = __m6;
 const { emit: emit } = __m0;
@@ -2077,6 +2353,32 @@ let queued = false;
 let running = false;
 let lastRunTime = 0;
 
+const tareas = new Set();
+
+/**
+ * Tarea periódica que no pertenece a ninguna feature (por ejemplo, reconciliar
+ * la UI con un botón nativo de Twitch). Se ejecuta con el mismo latido y se
+ * detiene con la pestaña oculta, sin sumar otro `setInterval`. Devuelve la
+ * funcion para darla de baja.
+ */
+function every(intervalo, fn) {
+  const tarea = { intervalo: Math.max(100, Number(intervalo) || 1000), fn, ultima: 0 };
+  tareas.add(tarea);
+  return () => tareas.delete(tarea);
+}
+
+function runTasks(now) {
+  for (const tarea of tareas) {
+    if (now - tarea.ultima < tarea.intervalo) continue;
+    tarea.ultima = now;
+    try {
+      tarea.fn(now);
+    } catch (error) {
+      track('scheduler:task', error);
+    }
+  }
+}
+
 function run() {
   if (running || document.hidden) return;
   const now = Date.now();
@@ -2086,6 +2388,7 @@ function run() {
   try {
     registrarTick();
     tickAll(now);
+    runTasks(now);
   } finally {
     running = false;
   }
@@ -2100,7 +2403,11 @@ function request() {
   });
 }
 
-const observedTargets = new WeakSet();
+// Los nodos observados se recuerdan para no registrar el mismo target dos
+// veces. Tiene que ser un Set y no un WeakSet: al parar (pestaña oculta) el
+// observer se destruye, y un WeakSet no se puede vaciar, así que al volver los
+// nodos seguían "vistos" y el nuevo observer no observaba ninguno.
+let observedTargets = new Set();
 
 function attachTargets() {
   if (!observer || typeof document === 'undefined') return;
@@ -2146,6 +2453,7 @@ function stop() {
   timer = null;
   observer?.disconnect();
   observer = null;
+  observedTargets.clear();
 }
 
 function onVisibility() {
@@ -2171,6 +2479,7 @@ function isRunning() {
   return !!timer;
 }
 return {
+  every: every,
   request: request,
   start: start,
   stop: stop,
@@ -2181,7 +2490,7 @@ return {
 })();
 
 /* ---- src/core/toast.js ---- */
-const __m17 = (function () {
+const __m18 = (function () {
 const { log: log } = __m2;
 
 let host = null;
@@ -2220,7 +2529,7 @@ return {
 })();
 
 /* ---- src/core/updater.js ---- */
-const __m18 = (function () {
+const __m19 = (function () {
 const { getJson: getJson, getValue: getValue, openInTab: openInTab, setValue: setValue } = __m1;
 const { log: log } = __m2;
 const { get: storeGet } = __m5;
@@ -2269,8 +2578,10 @@ async function check({ force = false, timeout = 6000 } = {}) {
   }
 
   const data = await getJson(LATEST_URL, { timeout });
-  setValue(LAST_CHECK_KEY, Date.now());
+  // Solo se marca la comprobación cuando el repo contestó. Si se marca antes,
+  // un fallo de red deja al usuario sin reintentar hasta el día siguiente.
   if (!data) return { error: 'sin respuesta del repo' };
+  setValue(LAST_CHECK_KEY, Date.now());
 
   const latest = String(data.version || '');
   const result = {
@@ -2303,11 +2614,11 @@ return {
 })();
 
 /* ---- src/features/chat-pause.js ---- */
-const __m19 = (function () {
+const __m20 = (function () {
 const { emit: emitBus } = __m0;
 const { isVisible: isVisible } = __m11;
 const { select: select } = __m3;
-const { show: toast } = __m17;
+const { show: toast } = __m18;
 
 /**
  * Pausa de chat.
@@ -2504,12 +2815,12 @@ return {
 })();
 
 /* ---- src/features/auto-claim.js ---- */
-const __m20 = (function () {
+const __m21 = (function () {
 const { isVisible: isVisible, qs: qs } = __m11;
 const { log: log } = __m2;
 const { defineFeature: defineFeature } = __m6;
 const { select: select, selectAll: selectAll } = __m3;
-const { show: toast } = __m17;
+const { show: toast } = __m18;
 const { get: storeGet } = __m5;
 
 /** Reclamo automático de Channel Points. */
@@ -2523,6 +2834,7 @@ const { get: storeGet } = __m5;
 const CLAIM_HINT = /bonificaci[oó]n|b[oóô]nus|bonus|бонус|claim|reclamar|resgatar|abholen|réclamer/i;
 const FORBIDDEN_HINT = /saldo|balance|potenciador|reward|recompensa|suscripci[oó]n|subscription/i;
 const FORBIDDEN_CONTEXT = '[data-a-target="top-nav-container"], [data-a-target="user-menu-toggle"], [data-a-target="user-menu-button"], nav[aria-label*="Primary" i]';
+const CLAIM_CONTEXT = '[data-a-target="community-points-summary"], [data-test-selector="community-points-summary"], .community-points-summary';
 
 let lastClick = 0;
 
@@ -2542,9 +2854,14 @@ function isClaimButton(btn) {
   const label = (target.getAttribute?.('aria-label') || target.textContent || '').trim();
   if (FORBIDDEN_HINT.test(label)) return false;
 
-  // Es el cofre si tiene el icono o el texto específico de bonificación
+  // El icono del cofre es prueba suficiente, esté donde esté.
   if (target.querySelector?.('.claimable-bonus__icon, [data-test-selector="claimable-bonus-icon"]')) return true;
   if (target.classList?.contains?.('claimable-bonus__icon') || target.className?.includes?.('claimable-bonus__icon')) return true;
+
+  // Una coincidencia solo por texto no basta: un botón de recompensa puede
+  // decir "Reclamar" y no ser el cofre. Sin icono, exigimos el contexto de
+  // puntos de canal, que es donde Twitch pinta la bonificación.
+  if (!target.closest?.(CLAIM_CONTEXT)) return false;
   if (CLAIM_HINT.test(label)) return true;
 
   return false;
@@ -2605,9 +2922,10 @@ return {
 })();
 
 /* ---- src/features/auto-reconnect.js ---- */
-const __m21 = (function () {
+const __m22 = (function () {
 const { log: log } = __m2;
 const { defineFeature: defineFeature, anotarMotivo: anotarMotivo, limpiarMotivo: limpiarMotivo } = __m6;
+const { selectAll: selectAll } = __m3;
 const { get: storeGet } = __m5;
 
 /**
@@ -2618,6 +2936,7 @@ const { get: storeGet } = __m5;
  * servidor del streamer y cuando deja de emitir no hay datos que reproducir.
  * Aqui solo se recupera de un corte mientras el canal sigue emitiendo.
  */
+
 
 
 
@@ -2635,6 +2954,7 @@ const MAX_INTENTOS = 4;
  * temporizador en vez de usar `tick`.
  */
 let temporizador = null;
+let ultimoVideo = null;
 let ultimoTiempo = -1;
 let ultimoAvance = 0;
 let reintentando = false;
@@ -2717,9 +3037,52 @@ function intentar(video, ahora) {
   log('reconexion: intento', intentos, 'en', espera(intentos) / 1000, 's');
 }
 
+/**
+ * Elige el video del reproductor principal, no el primero del documento.
+ *
+ * En la pagina puede haber miniaturas o previews con `<video>` propio. Quedarse
+ * con el primero podía vigilar un preview que nunca avanza y dejar el directo
+ * real congelado sin tocar. Si hay varios dentro del player, gana el de mayor
+ * area visible; si el player no tiene ninguno, se usa el mayor de la pagina.
+ */
+function pickPlayerVideo(root = document) {
+  let videos = [];
+  for (const player of selectAll('player', root)) {
+    videos.push(...(player.querySelectorAll?.('video') || []));
+  }
+  if (!videos.length) {
+    videos = [...(root.querySelectorAll?.('video') || [])];
+  }
+  if (!videos.length) return null;
+
+  let mejor = videos[0];
+  let mejorArea = -1;
+  for (const video of videos) {
+    let area = 0;
+    try {
+      const rect = video.getBoundingClientRect?.();
+      area = rect ? Math.max(0, rect.width) * Math.max(0, rect.height) : 0;
+    } catch {
+      area = 0;
+    }
+    if (area > mejorArea) {
+      mejor = video;
+      mejorArea = area;
+    }
+  }
+  return mejor;
+}
+
 function comprobar() {
-  const video = document.querySelector('video');
+  const video = pickPlayerVideo();
   if (!video) return;
+
+  if (video !== ultimoVideo) {
+    ultimoVideo = video;
+    ultimoTiempo = -1;
+    ultimoAvance = Date.now();
+    sinIntento();
+  }
 
   // El usuario ha pausado a proposito, o no hay nada que reproducir: no es cosa
   // nuestra y recargarle en esa situacion seria molesto.
@@ -2761,6 +3124,7 @@ function arrancar() {
 function parar() {
   if (temporizador !== null) clearInterval(temporizador);
   temporizador = null;
+  ultimoVideo = null;
   sinIntento();
   limpiarMotivo(ID);
 }
@@ -2768,6 +3132,7 @@ function parar() {
 /** Sin timer: solo olvida el estado. Cambiar de canal no es un corte. */
 function reiniciar() {
   sinIntento();
+  ultimoVideo = null;
   ultimoTiempo = -1;
   ultimoAvance = Date.now();
   limpiarMotivo(ID);
@@ -2805,12 +3170,12 @@ defineFeature({
   ],
 });
 return {
-
+  pickPlayerVideo: pickPlayerVideo,
 };
 })();
 
 /* ---- src/core/regex.js ---- */
-const __m22 = (function () {
+const __m23 = (function () {
 /**
  * Compilación de expresiones regulares que el usuario puede escribir.
  *
@@ -2889,258 +3254,13 @@ return {
 };
 })();
 
-/* ---- src/core/twitch.js ---- */
-const __m23 = (function () {
-const { qs: qs, qsAll: qsAll, isVisible: isVisible } = __m11;
-const { select: select, selectAll: selectAll } = __m3;
-
-/** Utilidades específicas de Twitch: nombres de canal, miniaturas, tooltips, contadores. */
-
-
-
-const CDN = 'https://static-cdn.jtvnw.net/previews-ttv';
-const RESERVED = new Set([
-  'directory', 'settings', 'subscriptions', 'inventory', 'wallet', 'drops', 'u', 'downloads',
-  'friends', 'search', 'turbo', 'p', 'store', 'prime', 'signup', 'login', 'videos',
-  'messages', 'popout', 'moderator', 'dashboard',
-]);
-
-function channelFromHref(href) {
-  if (!href || !href.startsWith('/') || href.startsWith('//')) return null;
-  const first = href.split(/[\/?#]/).filter(Boolean)[0];
-  if (!first || RESERVED.has(first.toLowerCase())) return null;
-  return decodeURIComponent(first).toLowerCase();
-}
-
-function channelFromCard(card) {
-  const link =
-    (card?.matches?.('a[href]') && card) ||
-    (card &&
-      (qs('a[href^="/"]', card) ||
-        qs('[data-a-target="side-nav-link"], [data-a-target="side-nav-card-link"]', card)));
-  return channelFromHref(link ? link.getAttribute('href') : null);
-}
-
-function sidebarTooltips() {
-  return qsAll('.online-side-nav-channel-tooltip__body, [class*="online-side-nav-channel-tooltip"]')
-    .filter((node) => {
-      if (!node || !node.isConnected) return false;
-      // Twitch reutiliza el tooltip anterior durante la transicion de salida y
-      // lo deja aria-hidden. Sin este filtro nos enganchamos al viejo, el canal
-      // no coincide y la miniatura no reaparece al volver al mismo canal.
-      if (node.closest?.('[aria-hidden="true"]')) return false;
-      try {
-        const r = node.getBoundingClientRect();
-        return r.width > 0 && r.height > 0;
-      } catch {
-        return false;
-      }
-    });
-}
-
-function visibleChannels(limit = 8) {
-  const out = [];
-  const seen = new Set();
-  for (const link of qsAll('nav a[href^="/"]')) {
-    const channel = channelFromHref(link.getAttribute('href'));
-    if (!channel || seen.has(channel)) continue;
-    seen.add(channel);
-    out.push(channel);
-    if (out.length >= limit) break;
-  }
-  return out;
-}
-
-function thumbnailUrl(channel, width = 320) {
-  const user = String(channel || '').trim().toLowerCase();
-  const w = Math.max(160, Math.min(1280, Math.round(Number(width) || 320)));
-  const h = Math.round((w * 9) / 16);
-  return `${CDN}/live_user_${user}-${w}x${h}.jpg`;
-}
-
-function currentChannel() {
-  return (location.pathname.match(/^\/([^\/]+)/) || [])[1] || '';
-}
-
-/**
- * ¿Twitch está en tema oscuro? Primero la clase que Twitch usa y, si no está,
- * se deduce del color de fondo real (sirve para cuando cambian el marcado).
- */
-function isDarkTheme() {
-  if (document.documentElement.classList.contains('tw-root--theme-dark')) return true;
-  if (document.body?.classList.contains('tw-root--theme-dark')) return true;
-  if (qs('.tw-root--theme-dark')) return true;
-  // Camino simetrico del anterior. Si Twitch no usara nunca esta clase, esta
-  // comprobacion no llega a dispararse y el comportamiento no cambia: por eso
-  // se puede anadir sin haber verificado el nombre en la pagina real.
-  if (document.documentElement.classList.contains('tw-root--theme-light')) return false;
-
-  // La luminancia se lee del <html> y NO del <body>, a proposito.
-  //
-  // `dark-mode` pone `%SCOPE% body { background-color: #000000 !important }`
-  // cuando esta activa, asi que leer el cuerpo era leerse a si mismo: el script
-  // pintaba la pagina de negro y la deteccion contestaba "es oscuro", con lo
-  // cual la feature no podia apagarse nunca y el ajuste "solo en tema oscuro de
-  // Twitch" no podia cumplirse.
-  //
-  // El <html> si lo deja intacto. Pero suele ser transparente, y un fondo
-  // transparente no dice nada del tema, asi que se comprueba que sea opaco.
-  // Si no se sabe, se devuelve true, que es lo que se hacia antes y lo mas
-  // conservador: sin pruebas, no se toip.
-  const raw = String(getComputedStyle(document.documentElement)?.backgroundColor || '');
-  const partes = raw.match(/[\d.]+/g) || [];
-  if (partes.length >= 3) {
-    const alfa = partes.length > 3 ? Number(partes[3]) : 1;
-    const [r, g, b] = partes.map(Number);
-    if (alfa !== 0 && ![r, g, b].some(Number.isNaN)) {
-      return (r * 299 + g * 587 + b * 114) / 1000 < 128;
-    }
-  }
-  return true;
-}
-
-function hoverDialog() {
-  // 1. Selector directo para el tooltip moderno de la sidebar de Twitch
-  // 1. Tooltip vivo: el primero que no este siendo retirado por la transicion
-  const live = sidebarTooltips()[0];
-  if (live) {
-    return live.closest('[tabindex="0"], .tw-dialog-layer, [role="dialog"], [role="tooltip"]') || live.parentElement || live;
-  }
-
-  const tooltipBody = qs('.online-side-nav-channel-tooltip__body, [class*="online-side-nav-channel-tooltip"]');
-  if (tooltipBody && tooltipBody.isConnected) {
-    return tooltipBody.closest('[tabindex="0"], .tw-dialog-layer, [role="dialog"], [role="tooltip"]') || tooltipBody.parentElement || tooltipBody;
-  }
-
-  // 2. Globos y capas de diálogo estándar
-  const layers = qsAll('.tw-balloon, [data-a-target="tw-balloon"], [role="tooltip"], .tw-dialog-layer, [role="dialog"]');
-  for (const layer of layers) {
-    if (layer.offsetParent === null && layer !== document.body) continue;
-    if (isVisible(layer)) return layer;
-  }
-  return null;
-}
-
-async function waitForHoverDialog(timeout = 800) {
-  const deadline = Date.now() + timeout;
-  while (Date.now() < deadline) {
-    const dialog = hoverDialog();
-    if (dialog) return dialog;
-    await new Promise((resolve) => setTimeout(resolve, 30));
-  }
-  return null;
-}
-
-/** Nombre de usuario del usuario conectado (para menciones). */
-function currentUsername() {
-  const toggle = select('userMenu');
-  if (!toggle) return null;
-  const img = qs('img', toggle);
-  if (img && img.alt) return img.alt.trim();
-  const label = toggle.getAttribute('aria-label') || '';
-  const match = label.match(/^(.+?)[''\u2019]s\s+user\s+menu/i) || label.match(/^User menu\s*[-–]\s*(.+)/i);
-  return match ? match[1].trim() : null;
-}
-
-function usernameOf(message) {
-  const node = qs('.chat-line__username, [data-a-target="chat-message-username"]', message);
-  const text = node ? (node.textContent || '').trim() : '';
-  return text ? text.toLowerCase() : null;
-}
-
-function chatLines(root = document) {
-  return selectAll('chat.line', root);
-}
-
-function chatContainer() {
-  return select('chat.container');
-}
-
-function messageText(message) {
-  const body = qs('.chat-line__message, [data-a-target="chat-line-message-body"]', message);
-  return (body ? body.textContent : message.textContent) || '';
-}
-
-/**
- * Contador de viewers parseado a número.
- * Soporta: "1.2K", "12.3K", "1.2M", "1,2 mil", "1.234", etc.
- */
-function viewerCount() {
-  const node = select('viewerCount');
-  if (!node) return null;
-  const text = (node.textContent || '').trim();
-  return parseViewerText(text);
-}
-
-/**
- * Parsea texto de viewers con multiplicadores (K, M, mil).
- * Maneja separadores decimales y de miles correctamente.
- */
-function parseViewerText(txt) {
-  if (!txt) return null;
-
-  const t = txt.toLowerCase().replace(/\s+/g, '');
-  const m = t.match(/^([\d.,]+)\s*(mil|k|m|b)?$/);
-  if (!m) return null;
-
-  let num = m[1];
-  const suf = m[2] || '';
-
-  // Decidir si coma/punto es decimal o miles
-  const lastComma = num.lastIndexOf(',');
-  const lastDot = num.lastIndexOf('.');
-
-  if (lastComma > -1 && lastDot > -1) {
-    // Ambos presentes: la última ocurrencia es el decimal
-    if (lastComma > lastDot) {
-      num = num.replace(/\./g, '').replace(',', '.');
-    } else {
-      num = num.replace(/,/g, '');
-    }
-  } else if (lastComma > -1) {
-    // Solo coma: si son 3 dígitos después, es miles; si no, es decimal
-    const after = num.length - lastComma - 1;
-    if (after === 3) num = num.replace(/,/g, '');
-    else num = num.replace(',', '.');
-  } else if (lastDot > -1) {
-    // Solo punto: si son 3 dígitos después y hay más números, es miles
-    const after = num.length - lastDot - 1;
-    if (after === 3 && num.length > 4) num = num.replace(/\./g, '');
-  }
-
-  const base = parseFloat(num);
-  if (!isFinite(base)) return null;
-
-  const mult = { mil: 1e3, k: 1e3, m: 1e6, b: 1e9 }[suf] || 1;
-  return Math.round(base * mult);
-}
-return {
-  channelFromHref: channelFromHref,
-  channelFromCard: channelFromCard,
-  sidebarTooltips: sidebarTooltips,
-  visibleChannels: visibleChannels,
-  thumbnailUrl: thumbnailUrl,
-  currentChannel: currentChannel,
-  isDarkTheme: isDarkTheme,
-  hoverDialog: hoverDialog,
-  waitForHoverDialog: waitForHoverDialog,
-  currentUsername: currentUsername,
-  usernameOf: usernameOf,
-  chatLines: chatLines,
-  chatContainer: chatContainer,
-  messageText: messageText,
-  viewerCount: viewerCount,
-  parseViewerText: parseViewerText,
-};
-})();
-
 /* ---- src/features/chat-keywords.js ---- */
 const __m24 = (function () {
 const { defineFeature: defineFeature } = __m6;
 const { warn: warn } = __m2;
-const { compilarSeguro: compilarSeguro } = __m22;
+const { compilarSeguro: compilarSeguro } = __m23;
 const { get: storeGet, onChange: onChange } = __m5;
-const { chatContainer: chatContainer, chatLines: chatLines, messageText: messageText } = __m23;
+const { chatContainer: chatContainer, chatLines: chatLines, messageText: messageText } = __m15;
 
 /** Resalta mensajes que contienen palabras clave (por defecto o regex). */
 
@@ -3162,7 +3282,9 @@ function keywords() {
 
 function buildMatcher() {
   const list = keywords();
-  const key = `${list.join(' ')}|${storeGet('chatKeywordRegex') ? 're' : 'plain'}`;
+  // Separador escapado, no un NUL literal: un byte 0 en el fuente hace que
+  // herramientas como grep o los visores traten el archivo como binario.
+  const key = `${list.join('\u0000')}|${storeGet('chatKeywordRegex') ? 're' : 'plain'}`;
   if (key === cache.key) return cache.matcher;
   cache = { key, matcher: null };
   if (!list.length) return null;
@@ -3263,9 +3385,9 @@ return {
 const __m25 = (function () {
 const { qs: qs } = __m11;
 const { defineFeature: defineFeature } = __m6;
-const { compilarSeguro: compilarSeguro } = __m22;
+const { compilarSeguro: compilarSeguro } = __m23;
 const { get: storeGet } = __m5;
-const { chatContainer: chatContainer, chatLines: chatLines, messageText: messageText } = __m23;
+const { chatContainer: chatContainer, chatLines: chatLines, messageText: messageText } = __m15;
 
 /** Buscador dentro del chat: filtra, cuenta y permite saltar entre coincidencias. */
 
@@ -3502,7 +3624,7 @@ return {
 const __m27 = (function () {
 const { defineFeature: defineFeature } = __m6;
 const { get: storeGet } = __m5;
-const { isDarkTheme: isDarkTheme } = __m23;
+const { isDarkTheme: isDarkTheme } = __m15;
 
 defineFeature({
   id: 'darkMode',
@@ -3778,8 +3900,8 @@ function restaurar(elemento, previo) {
   for (const propiedad of PROPIEDADES) {
     // Se restaura el valor que había, no se borra la propiedad: si Twitch
     // tenía `display: flex` en línea, borrarla rompería el elemento al apagar.
-if (previo[propiedad]) elemento.style.setProperty(propiedad, previo[propiedad]);
-      else elemento.style.removeProperty(propiedad);
+    if (previo[propiedad]) elemento.style.setProperty(propiedad, previo[propiedad]);
+    else elemento.style.removeProperty(propiedad);
   }
 }
 
@@ -4018,7 +4140,7 @@ return {
 /* ---- src/features/mention-highlight.js ---- */
 const __m32 = (function () {
 const { defineFeature: defineFeature } = __m6;
-const { chatContainer: chatContainer, chatLines: chatLines, currentUsername: currentUsername, messageText: messageText } = __m23;
+const { chatContainer: chatContainer, chatLines: chatLines, currentUsername: currentUsername, messageText: messageText } = __m15;
 
 /** Resalta los mensajes que te mencionan. */
 
@@ -4161,7 +4283,7 @@ const __m34 = (function () {
 const { log: log } = __m2;
 const { defineFeature: defineFeature, anotarMotivo: anotarMotivo, limpiarMotivo: limpiarMotivo } = __m6;
 const { get: storeGet } = __m5;
-const { channelFromCard: channelFromCard, thumbnailUrl: thumbnailUrl, visibleChannels: visibleChannels, sidebarTooltips: sidebarTooltips } = __m23;
+const { channelFromCard: channelFromCard, thumbnailUrl: thumbnailUrl, visibleChannels: visibleChannels, sidebarTooltips: sidebarTooltips } = __m15;
 
 /** Miniaturas de canal al pasar el ratón por una card de la sidebar. */
 
@@ -4481,6 +4603,10 @@ function onWindowBlur() {
 
 function teardown() {
   currentCard = null;
+  // Invalida los reintentos de `inject()` que esten en vuelo. Sin esto, apagar
+  // la feature mientras se espera el tooltip dejaba viva la cadena de 8
+  // reintentos, que inyectaba la miniatura con la feature ya apagada.
+  generation += 1;
   clearTimeout(leaveTimer);
   // El precargado diferido se cancela aquí: sin esto, apagar la feature antes
   // de los 2 s deja el temporador vivo y pide miniaturas al CDN con la feature
@@ -4578,7 +4704,7 @@ return {
 const __m36 = (function () {
 const { defineFeature: defineFeature } = __m6;
 const { get: storeGet } = __m5;
-const { chatContainer: chatContainer, chatLines: chatLines, usernameOf: usernameOf, viewerCount: viewerCount } = __m23;
+const { chatContainer: chatContainer, chatLines: chatLines, usernameOf: usernameOf, viewerCount: viewerCount } = __m15;
 
 /** Contador real de viewers + chatters activos por ventana deslizante. */
 
@@ -4931,10 +5057,10 @@ const { report: report } = __m14;
 const { brokenSelectors: brokenSelectors, selectorReport: selectorReport } = __m3;
 const { declare: declare, exportJSON: exportJSON, get: get, importJSON: importJSON, reset: resetStore, set: set, setMany: setMany } = __m5;
 const { list: keybindList, setCombo: setCombo } = __m12;
-const { setHost: setToastHost, show: toast } = __m17;
+const { setHost: setToastHost, show: toast } = __m18;
 const { clearCache: clearCache, refresh: refreshCatalog, status: catalogStatus } = __m9;
-const { check: checkUpdate, install: installUpdate, shouldCheck: shouldCheck } = __m18;
-const { ChatPause: ChatPause } = __m19;
+const { check: checkUpdate, install: installUpdate, shouldCheck: shouldCheck } = __m19;
+const { ChatPause: ChatPause } = __m20;
 const { VERSION: VERSION } = __m8;
 const { PANEL_CSS: PANEL_CSS } = __m38;
 const { PRESETS: PRESETS, PRESET_LABELS: PRESET_LABELS, idsOf: idsOf } = __m39;
@@ -5080,16 +5206,38 @@ function sectionsHtml() {
   return html;
 }
 
+/**
+ * Recorta la posicion del FAB al area visible. Sin esto, una posicion guardada
+ * en una ventana grande dejaba el boton fuera de pantalla al reducirla, y ya no
+ * se podia arrastrar porque no habia donde agarrarlo.
+ */
+function clampPlacement(right, bottom, winW = 1200, winH = 800) {
+  const ancho = Number.isFinite(winW) && winW > 0 ? winW : 1200;
+  const alto = Number.isFinite(winH) && winH > 0 ? winH : 800;
+  const maxRight = Math.max(0, ancho - 32);
+  const maxBottom = Math.max(0, alto - 32);
+  const r = Math.min(maxRight, Math.max(0, Number.isFinite(right) ? right : 14));
+  const b = Math.min(maxBottom, Math.max(0, Number.isFinite(bottom) ? bottom : 56));
+  return { right: r, bottom: b, x: ancho - r - 13, y: alto - b - 13 };
+}
+
 function applyPlacement(right, bottom) {
   if (!host) return;
   const winW = (typeof window !== 'undefined' ? window.innerWidth : 1200) || 1200;
   const winH = (typeof window !== 'undefined' ? window.innerHeight : 800) || 800;
+  const pos = clampPlacement(right, bottom, winW, winH);
 
-  const isTop = bottom > winH / 2;
-  const isLeft = right > winW / 2;
+  const isTop = pos.bottom > winH / 2;
+  const isLeft = pos.right > winW / 2;
 
-  cachedFabX = isLeft ? (right + 13) : (winW - right - 13);
-  cachedFabY = isTop ? (bottom + 13) : (winH - bottom - 13);
+  // El centro del boton, en coordenadas de ventana. Da igual si se ancla por
+  // la izquierda o por la derecha: el host mide 26px y queda a `right` del
+  // borde derecho, asi que su centro es siempre `winW - right - 13`. Con la
+  // formula anterior (right + 13) el punto de referencia se reflejaba al otro
+  // lado, y con el boton en la mitad izquierda o superior el brillo al acercar
+  // el raton no se activaba nunca.
+  cachedFabX = pos.x;
+  cachedFabY = pos.y;
 
   const wrap = shadow?.querySelector('.wrap');
   if (wrap) {
@@ -5100,25 +5248,25 @@ function applyPlacement(right, bottom) {
   }
 
   if (isTop) {
-    const topPx = Math.max(0, winH - bottom - 26);
+    const topPx = Math.max(0, winH - pos.bottom - 26);
     host.style.top = `${topPx}px`;
     host.style.bottom = 'auto';
   } else {
-    host.style.bottom = `${Math.max(0, bottom)}px`;
+    host.style.bottom = `${pos.bottom}px`;
     host.style.top = 'auto';
   }
 
   if (isLeft) {
-    const leftPx = Math.max(0, winW - right - 26);
+    const leftPx = Math.max(0, winW - pos.right - 26);
     host.style.left = `${leftPx}px`;
     host.style.right = 'auto';
   } else {
-    host.style.right = `${Math.max(0, right)}px`;
+    host.style.right = `${pos.right}px`;
     host.style.left = 'auto';
   }
 
   if (panel) {
-    const availH = isTop ? (bottom - 20) : (winH - bottom - 36);
+    const availH = isTop ? (pos.bottom - 20) : (winH - pos.bottom - 36);
     panel.style.maxHeight = `${Math.max(220, Math.min(650, availH))}px`;
   }
 }
@@ -5630,6 +5778,7 @@ const UI = {
   checkOnStartup: shouldCheck,
 };
 return {
+  clampPlacement: clampPlacement,
   isOpen: isOpen,
   togglePanel: togglePanel,
   sync: sync,
@@ -5649,15 +5798,15 @@ const { probe: probe } = __m13;
 const { registrarArranque: registrarArranque, reset: resetPerf, snapshot: perfSnapshot } = __m10;
 const { report: report } = __m14;
 const { applyAll: applyAll, disableAll: disableAll, onRouteAll: onRouteAll, statuses: statuses, motivos: motivosDeInactividad } = __m6;
-const { start: startRouter, navegacion: navegacion } = __m15;
+const { start: startRouter, navegacion: navegacion } = __m16;
 const { brokenSelectors: brokenSelectors, selectorReport: selectorReport } = __m3;
-const { kick: kickScheduler, scheduleRoute: scheduleRoute, start: startScheduler } = __m16;
+const { every: every, kick: kickScheduler, scheduleRoute: scheduleRoute, start: startScheduler } = __m17;
 const { declare: declare, get: storeGet, set: storeSet, subscriptions: subscriptions } = __m5;
 const { rebuild: rebuildStyles } = __m7;
-const { show: toast } = __m17;
-const { check: checkUpdate, shouldCheck: shouldCheck } = __m18;
+const { show: toast } = __m18;
+const { check: checkUpdate, shouldCheck: shouldCheck } = __m19;
 const { VERSION: VERSION } = __m8;
-const { ChatPause: ChatPause } = __m19;
+const { ChatPause: ChatPause } = __m20;
 const { UI: UI } = __m40;
 
 /**
@@ -5776,6 +5925,10 @@ function start() {
   ready(() => {
     try {
       startScheduler();
+      // Twitch rehace el botón de pausa y puede pausar el chat por su cuenta.
+      // `ensure()` reconcilia ese estado; sin esto solo se enteraba al cambiar
+      // de ruta, así que el panel podía decir "Pausar" con el chat ya pausado.
+      every(600, () => ChatPause.ensure());
       UI.build();
       UI.renderCatalogNote();
       bootReport.stages.ui.ok = true;
@@ -5952,7 +6105,13 @@ function responder(evento) {
         : op === 'navegacion'
           ? globalThis.TwitchPP?.diagnostics?.navegacion?.() ?? { error: 'navegacion no disponible' }
           : op === 'motivo'
-            ? { id: arg, motivo: arg || '' }
+            ? (() => {
+                const id = String(arg || '');
+                const fila = (globalThis.TwitchPP?.diagnostics?.motivos?.() || []).find(
+                  (fila) => fila.id === id,
+                );
+                return { id, motivo: fila?.motivo || '' };
+              })()
             : { error: 'operacion desconocida: ' + op };
     json = JSON.stringify(datos);
   } catch (error) {

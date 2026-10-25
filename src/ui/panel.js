@@ -139,16 +139,38 @@ function sectionsHtml() {
   return html;
 }
 
+/**
+ * Recorta la posicion del FAB al area visible. Sin esto, una posicion guardada
+ * en una ventana grande dejaba el boton fuera de pantalla al reducirla, y ya no
+ * se podia arrastrar porque no habia donde agarrarlo.
+ */
+export function clampPlacement(right, bottom, winW = 1200, winH = 800) {
+  const ancho = Number.isFinite(winW) && winW > 0 ? winW : 1200;
+  const alto = Number.isFinite(winH) && winH > 0 ? winH : 800;
+  const maxRight = Math.max(0, ancho - 32);
+  const maxBottom = Math.max(0, alto - 32);
+  const r = Math.min(maxRight, Math.max(0, Number.isFinite(right) ? right : 14));
+  const b = Math.min(maxBottom, Math.max(0, Number.isFinite(bottom) ? bottom : 56));
+  return { right: r, bottom: b, x: ancho - r - 13, y: alto - b - 13 };
+}
+
 function applyPlacement(right, bottom) {
   if (!host) return;
   const winW = (typeof window !== 'undefined' ? window.innerWidth : 1200) || 1200;
   const winH = (typeof window !== 'undefined' ? window.innerHeight : 800) || 800;
+  const pos = clampPlacement(right, bottom, winW, winH);
 
-  const isTop = bottom > winH / 2;
-  const isLeft = right > winW / 2;
+  const isTop = pos.bottom > winH / 2;
+  const isLeft = pos.right > winW / 2;
 
-  cachedFabX = isLeft ? (right + 13) : (winW - right - 13);
-  cachedFabY = isTop ? (bottom + 13) : (winH - bottom - 13);
+  // El centro del boton, en coordenadas de ventana. Da igual si se ancla por
+  // la izquierda o por la derecha: el host mide 26px y queda a `right` del
+  // borde derecho, asi que su centro es siempre `winW - right - 13`. Con la
+  // formula anterior (right + 13) el punto de referencia se reflejaba al otro
+  // lado, y con el boton en la mitad izquierda o superior el brillo al acercar
+  // el raton no se activaba nunca.
+  cachedFabX = pos.x;
+  cachedFabY = pos.y;
 
   const wrap = shadow?.querySelector('.wrap');
   if (wrap) {
@@ -159,25 +181,25 @@ function applyPlacement(right, bottom) {
   }
 
   if (isTop) {
-    const topPx = Math.max(0, winH - bottom - 26);
+    const topPx = Math.max(0, winH - pos.bottom - 26);
     host.style.top = `${topPx}px`;
     host.style.bottom = 'auto';
   } else {
-    host.style.bottom = `${Math.max(0, bottom)}px`;
+    host.style.bottom = `${pos.bottom}px`;
     host.style.top = 'auto';
   }
 
   if (isLeft) {
-    const leftPx = Math.max(0, winW - right - 26);
+    const leftPx = Math.max(0, winW - pos.right - 26);
     host.style.left = `${leftPx}px`;
     host.style.right = 'auto';
   } else {
-    host.style.right = `${Math.max(0, right)}px`;
+    host.style.right = `${pos.right}px`;
     host.style.left = 'auto';
   }
 
   if (panel) {
-    const availH = isTop ? (bottom - 20) : (winH - bottom - 36);
+    const availH = isTop ? (pos.bottom - 20) : (winH - pos.bottom - 36);
     panel.style.maxHeight = `${Math.max(220, Math.min(650, availH))}px`;
   }
 }

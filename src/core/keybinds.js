@@ -49,12 +49,16 @@ function parseKeybind(str) {
 
 function matchKeybind(combo, event) {
   if (!combo) return false;
+  // `event.key` para la barra espaciadora es `' '`, no `'space'`: sin esta
+  // equivalencia el atajo se guardaba como valido y no disparaba nunca.
+  const tecla = String(event.key || '').toLowerCase();
+  const normalizada = tecla === ' ' || tecla === 'spacebar' ? 'space' : tecla;
   return (
     combo.alt === event.altKey &&
     combo.ctrl === event.ctrlKey &&
     combo.shift === event.shiftKey &&
     combo.meta === event.metaKey &&
-    combo.key === String(event.key || '').toLowerCase()
+    combo.key === normalizada
   );
 }
 
