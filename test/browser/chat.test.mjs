@@ -1,10 +1,10 @@
 ﻿/**
- * Las tres features que leen y escriben el chat.
+ * Las features que leen y escriben el chat.
  *
  * Hasta ahora solo se comprobaba que limpien al apagarlas. Aquí se comprueba que
- * **marksen y filtran**: que `chat-keywords` resalta lo que debe, que `chat-search`
- * filtra y cuenta, y que `hide-extensions` esconde un overlay de verdad y lo
- * devuelve al apagar.
+ * **marquen y filtren**: que `chat-keywords` resalta lo que debe, que `chat-search`
+ * filtra y cuenta, que `chat-focus` deja pasar solo lo relevante, y que
+ * `hide-extensions` esconde un overlay de verdad y lo devuelve al apagar.
  *
  * Las tres dependen de que la fixture tenga chat con texto, y ahora lo tiene
  * con acentos y con chino, que es donde más falla de verdad.
@@ -33,6 +33,9 @@ const lineas = () =>
       match: l.classList.contains('twpp-chat-match'),
       ocultas: l.classList.contains('twpp-chat-hidden'),
       atenuadas: l.classList.contains('twpp-chat-dim'),
+      focusOculta: l.classList.contains('twpp-focus-hidden'),
+      focusAtenuada: l.classList.contains('twpp-focus-dim'),
+      focusMarcada: l.hasAttribute('data-twpp-focus'),
     })),
   );
 
@@ -54,8 +57,13 @@ beforeEach(async () => {
   await pagina.evaluate(() => {
     window.TwitchPP.disable('chatKeywordHighlight');
     window.TwitchPP.disable('chatSearch');
+    window.TwitchPP.disable('chatFocus');
     window.TwitchPP.disable('hideExtensions');
   });
+  await ponerAjustes([
+    ['chatFocusMode', 'hide'],
+    ['chatKeywords', ''],
+  ]);
   await pagina.waitForTimeout(200);
 });
 
@@ -195,6 +203,99 @@ describe('buscar en el chat', () => {
       ocultas: document.querySelectorAll('.twpp-chat-hidden').length,
     }));
     assert.deepEqual(queda, { barra: false, match: 0, ocultas: 0 });
+  });
+});
+
+describe('modo concentración', () => {
+  const activar = () => pagina.evaluate(() => window.TwitchPP.enable('chatFocus'));
+
+  it('deja las menciones y las palabras clave, y oculta el resto', async () => {
+    await ponerAjustes([['chatKeywords', 'Buenas']]);
+    await activar();
+    await pagina.waitForTimeout(1200);
+
+    const estado = await lineas();
+    // 0: mensaje corriente; 1: palabra clave; 2: mención; 3: mensaje propio.
+    assert.deepEqual(
+      estado.map((l) => l.focusOculta),
+      [true, false, false, false],
+      `ocultas: ${estado.map((l) => `${l.texto}=${l.focusOculta}`).join(' | ')}`,
+    );
+  });
+
+  it('sin palabras clave sigue dejando pasar las menciones', async () => {
+    await ponerAjustes([['chatKeywords', '']]);
+    await activar();
+    await pagina.waitForTimeout(1200);
+
+    const estado = await lineas();
+    assert.deepEqual(estado.map((l) => l.focusOculta), [true, true, false, false]);
+  });
+
+  it('el modo atenuar no oculta, solo baja la opacidad', async () => {
+    await ponerAjustes([
+      ['chatKeywords', 'Buenas'],
+      ['chatFocusMode', 'dim'],
+    ]);
+    await activar();
+    await pagina.waitForTimeout(1200);
+
+    const estado = await lineas();
+    assert.deepEqual(estado.map((l) => l.focusAtenuada), [true, false, false, false]);
+    assert.ok(estado.every((l) => !l.focusOculta), 'atenuar no debe ocultar');
+
+    const opacidad = await pagina.evaluate(
+      () => getComputedStyle(document.querySelector('[data-a-target="chat-line-message"]')).opacity,
+    );
+    assert.ok(Number(opacidad) < 0.5, `la línea atenuada debe verse menos, opacity=${opacidad}`);
+  });
+
+  it('al apagar no deja clases ni marcas', async () => {
+    await ponerAjustes([['chatKeywords', 'Buenas']]);
+    await activar();
+    await pagina.waitForTimeout(1200);
+    await pagina.evaluate(() => window.TwitchPP.disable('chatFocus'));
+    await pagina.waitForTimeout(400);
+
+    const queda = await pagina.evaluate(() => ({
+      ocultas: document.querySelectorAll('.twpp-focus-hidden').length,
+      atenuadas: document.querySelectorAll('.twpp-focus-dim').length,
+      marcas: document.querySelectorAll('[data-twpp-focus]').length,
+    }));
+    assert.deepEqual(queda, { ocultas: 0, atenuadas: 0, marcas: 0 });
+  });
+
+  it('el atajo Alt+Shift+F lo enciende y lo apaga', async () => {
+    await ponerAjustes([['chatKeywords', 'Buenas']]);
+    const pulsar = () =>
+      pagina.evaluate(() => {
+        document.body.dispatchEvent(
+          new KeyboardEvent('keydown', {
+            key: 'f',
+            altKey: true,
+            shiftKey: true,
+            bubbles: true,
+          }),
+        );
+      });
+
+    await pulsar();
+    await pagina.waitForTimeout(1200);
+    assert.equal(
+      await pagina.evaluate(
+        () => window.__twpp.shadow.querySelector('input[data-key="chatFocus"]').checked,
+      ),
+      true,
+      'el atajo debe activar la feature',
+    );
+    assert.ok(
+      (await pagina.evaluate(() => document.querySelectorAll('.twpp-focus-hidden').length)) > 0,
+      'con el atajo activo debe filtrar',
+    );
+
+    await pulsar();
+    await pagina.waitForTimeout(400);
+    assert.equal(await pagina.evaluate(() => document.querySelectorAll('.twpp-focus-hidden').length), 0);
   });
 });
 

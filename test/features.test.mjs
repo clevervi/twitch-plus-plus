@@ -3,6 +3,7 @@ import test from 'node:test';
 
 import { get as getFeature } from '../src/core/registry.js';
 import { channelFromHref } from '../src/core/twitch.js';
+import { buildMentionPattern } from '../src/features/mention-highlight.js';
 import '../src/features/index.js';
 
 test('cleanMode tiene todas sus reglas estrictamente prefijadas con %SCOPE%', () => {
@@ -24,12 +25,7 @@ test('cleanMode tiene todas sus reglas estrictamente prefijadas con %SCOPE%', ()
 });
 
 test('mentionHighlight no confunde palabras comunes con nombres de usuario cortos', () => {
-  const makeMatcher = (username) => {
-    const escaped = username.replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
-    return new RegExp(`(?:^|[^a-zA-Z0-9_])@?${escaped}(?:[^a-zA-Z0-9_]|$)`, 'i');
-  };
-
-  const reDan = makeMatcher('dan');
+  const reDan = buildMentionPattern('dan');
   // Coincidencias legítimas
   assert.equal(reDan.test('hola @dan como estas'), true);
   assert.equal(reDan.test('@dan: mira esto'), true);
@@ -41,7 +37,7 @@ test('mentionHighlight no confunde palabras comunes con nombres de usuario corto
   assert.equal(reDan.test('esto es dangerous'), false);
   assert.equal(reDan.test('guia de guidance'), false);
 
-  const reAl = makeMatcher('al');
+  const reAl = buildMentionPattern('al');
   assert.equal(reAl.test('@al saludos'), true);
   assert.equal(reAl.test('hola also'), false);
   assert.equal(reAl.test('always together'), false);
