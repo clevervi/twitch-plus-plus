@@ -17,7 +17,7 @@ const MODIFIERS = {
 };
 
 const NAMED_KEYS = new Set([
-  'escape', 'enter', 'return', 'space', 'tab', 'backspace', 'delete', 'insert', 'home', 'end',
+  'escape', 'enter', 'return', 'space', 'spacebar', 'tab', 'backspace', 'delete', 'insert', 'home', 'end',
   'pageup', 'pagedown', 'up', 'down', 'left', 'right', 'arrowup', 'arrowdown', 'arrowleft', 'arrowright',
   'pause', 'printscreen', 'capslock', 'numlock', 'scrolllock', ...Array.from({ length: 12 }, (_, i) => `f${i + 1}`),
 ]);

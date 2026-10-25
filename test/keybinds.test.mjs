@@ -142,6 +142,26 @@ test('los alias Return y Up se normalizan al event.key canonico', async () => {
   assert.deepEqual(calls, ['retorno', 'arriba']);
 });
 
+test('Alt+Spacebar se acepta y coincide con event.key Spacebar', async () => {
+  const { bindGlobal, comboOf, register, setCombo, stub } = await keybinds();
+  register('espacio2', 'Espacio2', 'Alt+Shift+Spacebar');
+  assert.equal(setCombo('espacio2', 'Alt+Shift+Spacebar'), true);
+  assert.equal(comboOf('espacio2').key, 'space');
+
+  const calls = [];
+  bindGlobal((id) => calls.push(id));
+  stub.window.fire('keydown', {
+    key: 'Spacebar',
+    altKey: true,
+    ctrlKey: false,
+    shiftKey: true,
+    metaKey: false,
+    preventDefault() {},
+    stopPropagation() {},
+  });
+  assert.deepEqual(calls, ['espacio2']);
+});
+
 test('isTypingTarget detecta role="textbox" y MODIFIERS reconoce mayus', async () => {
   const { comboOf, setCombo, stub, register, bindGlobal } = await keybinds();
   register('spanishKey', 'Español', 'Alt+Mayus+A');
