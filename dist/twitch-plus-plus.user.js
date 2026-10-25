@@ -1733,8 +1733,12 @@ function parseKeybind(str) {
   const combo = { alt: false, ctrl: false, shift: false, meta: false, key: '' };
   for (const part of parts) {
     if (MODIFIERS[part]) combo[MODIFIERS[part]] = true;
-    else if (isKeyPart(part)) combo.key = part;
-    else return null;
+    else if (isKeyPart(part)) {
+      // `A+B` no es un atajo: antes se quedaba con la última tecla y el usuario
+      // creía haber guardado una combinación que nunca podía coincidir.
+      if (combo.key) return null;
+      combo.key = part;
+    } else return null;
   }
   return combo.key ? combo : null;
 }
@@ -1993,8 +1997,21 @@ const RESERVED = new Set([
 function channelFromHref(href) {
   if (!href || !href.startsWith('/') || href.startsWith('//')) return null;
   const first = href.split(/[\/?#]/).filter(Boolean)[0];
-  if (!first || RESERVED.has(first.toLowerCase())) return null;
-  return decodeURIComponent(first).toLowerCase();
+  if (!first) return null;
+
+  let decoded;
+  try {
+    decoded = decodeURIComponent(first);
+  } catch {
+    // Un `%` suelto o una secuencia truncada no puede tumbar el router ni la
+    // búsqueda de canales de la sidebar.
+    return null;
+  }
+
+  // El segmento ya decodificado es el que se valida: `%2F` no es un nombre de
+  // canal y `%64irectory` no puede colarse como si fuera un canal.
+  if (!decoded || /[\/?#]/.test(decoded) || RESERVED.has(decoded.toLowerCase())) return null;
+  return decoded.toLowerCase();
 }
 
 function channelFromCard(card) {
@@ -3708,7 +3725,10 @@ function apply({ keepCursor = false } = {}) {
       matches[cursor].classList.add('twpp-chat-current');
       updateCounter();
     } else {
-      jump(0);
+      // `clearMarks()` deja el cursor en -1. `jump(0)` hacía la vuelta
+      // completa y seleccionaba la última coincidencia; desde -1 el primer
+      // salto útil es hacia delante.
+      jump(1);
     }
   }
 }

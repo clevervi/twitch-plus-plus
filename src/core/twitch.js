@@ -12,8 +12,21 @@ const RESERVED = new Set([
 export function channelFromHref(href) {
   if (!href || !href.startsWith('/') || href.startsWith('//')) return null;
   const first = href.split(/[\/?#]/).filter(Boolean)[0];
-  if (!first || RESERVED.has(first.toLowerCase())) return null;
-  return decodeURIComponent(first).toLowerCase();
+  if (!first) return null;
+
+  let decoded;
+  try {
+    decoded = decodeURIComponent(first);
+  } catch {
+    // Un `%` suelto o una secuencia truncada no puede tumbar el router ni la
+    // búsqueda de canales de la sidebar.
+    return null;
+  }
+
+  // El segmento ya decodificado es el que se valida: `%2F` no es un nombre de
+  // canal y `%64irectory` no puede colarse como si fuera un canal.
+  if (!decoded || /[\/?#]/.test(decoded) || RESERVED.has(decoded.toLowerCase())) return null;
+  return decoded.toLowerCase();
 }
 
 export function channelFromCard(card) {

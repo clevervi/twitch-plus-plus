@@ -160,6 +160,27 @@ describe('buscar en el chat', () => {
     assert.match(cuenta, /\d/, `el contador debe decir cuántos hay, decía "${cuenta}"`);
   });
 
+  it('empieza por la primera coincidencia, no por la última', async () => {
+    await pagina.evaluate(() => window.TwitchPP.enable('chatSearch'));
+    await pagina.waitForTimeout(400);
+    await escribir('a');
+    await pagina.waitForTimeout(400);
+
+    const estado = await pagina.evaluate(() => {
+      const coincidencias = [...document.querySelectorAll('.twpp-chat-match')];
+      const actual = document.querySelector('.twpp-chat-current');
+      return {
+        contador: document.querySelector('.twpp-search-count')?.textContent ?? '',
+        total: coincidencias.length,
+        indice: coincidencias.indexOf(actual),
+      };
+    });
+
+    assert.ok(estado.total >= 2, `la búsqueda debe tener varias coincidencias, tenía ${estado.total}`);
+    assert.equal(estado.contador, `1/${estado.total}`, `el contador debe empezar en la primera, decía "${estado.contador}"`);
+    assert.equal(estado.indice, 0, 'la primera coincidencia debe ser la actual');
+  });
+
   it('un patron peligroso se rechaza con un aviso, sin colgarse', async () => {
     // Sin el guard de #47/#57 esto se queda minutos calculando.
     await pagina.evaluate(() => {

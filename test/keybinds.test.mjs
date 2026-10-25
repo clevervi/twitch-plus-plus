@@ -52,6 +52,17 @@ test('setCombo acepta combinaciones válidas y descarta la basura', async () => 
   assert.equal(comboOf('test1'), null);
 });
 
+test('setCombo rechaza dos teclas no modificadoras en el mismo atajo', async () => {
+  const { comboOf, register, setCombo, store } = await keybinds();
+  register('multi', 'Dos teclas', 'Alt+M');
+  assert.equal(setCombo('multi', 'Alt+M'), true);
+
+  assert.equal(setCombo('multi', 'A+B'), false);
+  assert.equal(setCombo('multi', 'Alt+A+B'), false);
+  assert.equal(store.get('keybinds').multi, 'Alt+M', 'el atajo válido no debe cambiar');
+  assert.equal(comboOf('multi').key, 'm');
+});
+
 test('bindGlobal exige la combinación exacta y no roba teclas al escribir', async () => {
   const { bindGlobal, register, setCombo, stub } = await keybinds();
   register('panel', 'Panel', 'Alt+O');

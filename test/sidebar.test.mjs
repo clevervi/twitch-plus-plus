@@ -24,6 +24,16 @@ test('channelFromHref extrae correctamente canales válidos y descarta rutas res
   assert.equal(channelFromHref('https://twitch.tv/ibai'), null);
 });
 
+test('channelFromHref rechaza segmentos mal codificados o que no son un canal', () => {
+  assert.equal(channelFromHref('/%'), null);
+  assert.equal(channelFromHref('/%E0%A4%A'), null);
+  assert.equal(channelFromHref('/%2F'), null);
+  assert.equal(channelFromHref('/foo%2Fbar'), null);
+  assert.equal(channelFromHref('/foo%2fbar'), null);
+  assert.equal(channelFromHref('/%64irectory'), null, 'las rutas reservadas también se decodifican');
+  assert.equal(channelFromHref('/%6e%69%6e%6a%61'), 'ninja');
+});
+
 test('thumbnailUrl genera la URL del CDN oficial de Twitch con resolución ajustada en 16:9', () => {
   assert.equal(
     thumbnailUrl('ibai'),
