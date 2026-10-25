@@ -10,9 +10,27 @@ import assert from 'node:assert/strict';
 import { describe, it } from 'node:test';
 
 import { get } from '../src/core/registry.js';
-import '../src/features/auto-reconnect.js';
+import { pickPlayerVideo } from '../src/features/auto-reconnect.js';
 
 const ID = 'autoReconnect';
+
+function fakeVideo(id, width, height) {
+  return { id, getBoundingClientRect: () => ({ width, height }) };
+}
+
+function fakeRoot({ players = [], videos = [] } = {}) {
+  return {
+    querySelectorAll(selector) {
+      if (selector.includes('video-player')) return players;
+      if (selector === 'video') return videos;
+      return [];
+    },
+  };
+}
+
+function fakePlayer(videos) {
+  return { querySelectorAll: () => videos };
+}
 
 describe('declaracion de reconexion', () => {
   it('existe y va en Automatizacion', () => {
@@ -55,5 +73,35 @@ describe('declaracion de reconexion', () => {
     const f = get(ID);
     assert.equal(typeof f.onEnable, 'function');
     assert.equal(typeof f.onDisable, 'function');
+  });
+});
+
+describe('eleccion del video a vigilar', () => {
+  it('prefiere el video del player aunque un preview de fuera sea mas grande', () => {
+    const dentro = fakeVideo('dentro', 640, 360);
+    const preview = fakeVideo('preview', 1600, 900);
+    const root = fakeRoot({ players: [fakePlayer([dentro])], videos: [preview, dentro] });
+
+    assert.equal(pickPlayerVideo(root).id, 'dentro');
+  });
+
+  it('dentro del player se queda con el video de mayor area', () => {
+    const oculto = fakeVideo('oculto', 0, 0);
+    const principal = fakeVideo('principal', 1280, 720);
+    const root = fakeRoot({ players: [fakePlayer([oculto, principal])] });
+
+    assert.equal(pickPlayerVideo(root).id, 'principal');
+  });
+
+  it('si el player no tiene video usa el mayor de la pagina', () => {
+    const pequeno = fakeVideo('pequeno', 320, 180);
+    const grande = fakeVideo('grande', 800, 450);
+    const root = fakeRoot({ videos: [pequeno, grande] });
+
+    assert.equal(pickPlayerVideo(root).id, 'grande');
+  });
+
+  it('sin videos devuelve null', () => {
+    assert.equal(pickPlayerVideo(fakeRoot()), null);
   });
 });

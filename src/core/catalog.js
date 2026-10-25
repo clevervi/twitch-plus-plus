@@ -39,6 +39,10 @@ function validFeature(spec) {
   if (!ID_RE.test(String(spec.id || ''))) return false;
   if (typeof spec.label !== 'string' || !spec.label || spec.label.length > 60) return false;
   if (!SECTIONS.some((s) => s.id === spec.section)) return false;
+  // Las features del repo son solo CSS. `settings` podría redeclarar el tipo de
+  // una clave existente (por ejemplo `catalog`) y convertir la config en otra
+  // cosa, así que no se acepta desde la red.
+  if (spec.settings !== undefined) return false;
   if (typeof spec.css !== 'string' || !spec.css.trim() || spec.css.length > MAX_CSS) return false;
   if (CSS_FORBIDDEN.test(spec.css)) return false;
   if (spec.interval !== undefined && (!Number.isFinite(spec.interval) || spec.interval < 0)) return false;
@@ -49,11 +53,12 @@ function validFeature(spec) {
 export function applyCatalog(data) {
   const summary = { revision: data.revision, selectors: 0, features: 0, rejected: 0 };
 
-  if (data.selectors && typeof data.selectors === 'object') {
-    const result = applyRemoteSelectors(data.selectors);
-    summary.selectors = result.applied.length;
-    summary.rejected += result.rejected.length;
-  }
+  // Aunque el catálogo no traiga selectores, se aplica el mapa vacío: es lo que
+  // retira los overrides de una revisión anterior.
+  const remoteSelectors = data.selectors && typeof data.selectors === 'object' ? data.selectors : {};
+  const result = applyRemoteSelectors(remoteSelectors);
+  summary.selectors = result.applied.length;
+  summary.rejected += result.rejected.length;
 
   if (Array.isArray(data.features)) {
     for (const spec of data.features) {
@@ -84,7 +89,12 @@ export function applyCatalog(data) {
 }
 
 export function status() {
-  return { ...last, enabled: !!storeGet('catalog'), local: all().filter((f) => f.remote).map((f) => f.id) };
+  return {
+    ...last,
+    remote: !!(last.revision || last.selectors || last.features),
+    enabled: !!storeGet('catalog'),
+    local: all().filter((f) => f.remote).map((f) => f.id),
+  };
 }
 
 function needsFetch(force) {

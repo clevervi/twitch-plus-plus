@@ -59,6 +59,10 @@ function applyValidate(key, value) {
 }
 
 export function declare(key, type, fallback, validate) {
+  // La primera declaracion manda. Si una feature tardia (o una remota, si
+  // alguna vez aceptase settings) repite la clave, no puede cambiar su tipo ni
+  // su default: `catalog` dejaria de ser un bool y la config se volveria otra.
+  if (schema.has(key)) return;
   schema.set(key, { type, fallback, validate });
   if (cache) {
     const raw = coerce(cache[key], type);
@@ -148,15 +152,22 @@ export function set(key, value) {
 
 export function setMany(entries) {
   const current = all();
-  const keys = Object.keys(entries).filter((key) => current[key] !== entries[key]);
-  if (!keys.length) return current;
+  const cambios = new Map();
+
+  // Se coacciona antes de comparar. Comparando el valor crudo, `setMany({
+  // autoClaim: 'false' })` notificaba el cambio aunque el valor final fuera el
+  // mismo que ya habia, y eso despertaba a las features sin motivo.
   for (const [key, value] of Object.entries(entries)) {
     const def = schema.get(key);
     const coerced = def ? applyValidate(key, coerce(value, def.type)) : value;
-    current[key] = coerced === undefined ? (def ? (typeof def.fallback === 'object' && def.fallback !== null ? clone(def.fallback) : def.fallback) : value) : coerced;
+    const final = coerced === undefined ? (def ? (typeof def.fallback === 'object' && def.fallback !== null ? clone(def.fallback) : def.fallback) : value) : coerced;
+    if (current[key] !== final) cambios.set(key, final);
   }
+  if (!cambios.size) return current;
+
+  for (const [key, final] of cambios) current[key] = final;
   persist();
-  for (const key of keys) changed(key);
+  for (const key of cambios.keys()) changed(key);
   return current;
 }
 

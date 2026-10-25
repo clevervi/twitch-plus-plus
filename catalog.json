@@ -1,7 +1,7 @@
 {
   "schema": 1,
-  "revision": 5,
-  "note": "Selectores actualizados y ampliados para compatibilidad total con Twitch.",
+  "revision": 6,
+  "note": "Retirado el selector de reclamo sin contexto; los overrides remotos ausentes ya no se acumulan.",
   "selectors": {
     "chat.container": [
       "[data-test-selector=\"chat-scrollable-area__message-container\"]",
@@ -51,15 +51,6 @@
       "strong[data-a-target=\"animated-channel-viewers-count\"]",
       "[data-test-selector=\"viewer-count\"]",
       ".channel-info-bar__viewers"
-    ],
-    "claimBonus": [
-      "button:has([data-test-selector=\"claimable-bonus-icon\"])",
-      "button:has(.claimable-bonus__icon)",
-      "button[aria-label*=\"Bonus\" i]",
-      "button[aria-label*=\"bonificación\" i]",
-      "button[aria-label*=\"reclamar\" i]",
-      ".claimable-bonus__icon",
-      "[data-test-selector=\"claimable-bonus-icon\"]"
     ],
     "pauseChat": [
       "button[data-a-target=\"chat-pause-button\"]",

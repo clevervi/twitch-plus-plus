@@ -66,15 +66,41 @@ describe('apartado', () => {
     assert.match(texto, /¿sí\?/);
     assert.equal(/Boton/.test(texto), false, 'no debe perder el acento');
   });
+
+  it('degrada un encabezado de las notas y no lo vuelve viñeta', () => {
+    // Lo que dejaba el CHANGELOG lleno de lineas "- ## Correccion: ...".
+    const texto = apartado('2.2.13', '2026-10-02', '## Corrección: el resaltado cuelgaba\n- se arregla');
+    assert.match(texto, /^### Corrección: el resaltado cuelgaba$/m);
+    assert.equal(/- ##/.test(texto), false, 'no debe quedar "- ##"');
+    assert.match(texto, /^- se arregla$/m);
+  });
+
+  it('deja intacto un bloque de codigo', () => {
+    // Regresion real: `- ```js` abria una viñeta con un cercado dentro, y el
+    // bloque no se cerraba hasta el siguiente `##`. Se ve en 2.2.21.
+    const notas = '## Ejemplo\n```js\nawait TwitchPP.navegacion()\n```\n- y listo';
+    const texto = apartado('2.2.23', '2026-10-04', notas);
+    assert.match(texto, /^```js$/m);
+    assert.match(texto, /^await TwitchPP\.navegacion\(\)$/m);
+    assert.match(texto, /^```$/m);
+    assert.equal(/^\s*-\s*```/m.test(texto), false, 'el cercado no puede llevar viñeta');
+    assert.match(texto, /^- y listo$/m);
+  });
 });
 
 describe('encadenar', () => {
-  it('deja una linea en blanco entre secciones', () => {
-    // Regresion real: al quitar este salto, el apartado nuevo se pegaba al
-    // ultimo parrafo del anterior y el CHANGELOG quedaba sin separacion.
+  it('coloca el apartado nuevo encima de los anteriores', () => {
+    // Regresion real: al anadir al final, las versiones nuevas acababan bajo las
+    // viejas y el CHANGELOG se leia empezando por 2.2.3.
     const antes = '# Changelog\n\n## 2.2.11 — 2026-10-01\n\n- algo\n';
     const texto = encadenar(antes, apartado('2.2.12', '2026-10-02', '- nuevo'));
-    assert.match(texto, /- algo\n\n## 2\.2\.12/, 'debe haber una linea en blanco entre secciones');
+    assert.match(texto, /## 2\.2\.12 — 2026-10-02[\s\S]*## 2\.2\.11 — 2026-10-01/);
+  });
+
+  it('deja una linea en blanco entre secciones', () => {
+    const antes = '# Changelog\n\n## 2.2.11 — 2026-10-01\n\n- algo\n';
+    const texto = encadenar(antes, apartado('2.2.12', '2026-10-02', '- nuevo'));
+    assert.match(texto, /- nuevo\n\n## 2\.2\.11/, 'debe haber una linea en blanco entre secciones');
   });
 
   it('respeta el em dash del encabezado', () => {
@@ -91,6 +117,12 @@ describe('encadenar', () => {
   it('funciona con un changelog vacio', () => {
     const texto = encadenar('', apartado('1.0.0', '2026-10-02', '- primera'));
     assert.match(texto, /## 1\.0\.0 — 2026-10-02\n\n- primera/);
+  });
+
+  it('conserva un texto entre el titulo y la primera seccion', () => {
+    const antes = '# Changelog\n\nEste historial se lee de arriba abajo.\n\n## 2.2.11 — 2026-10-01\n\n- algo\n';
+    const texto = encadenar(antes, apartado('2.2.12', '2026-10-02', '- nuevo'));
+    assert.match(texto, /Este historial se lee de arriba abajo\.\n\n## 2\.2\.12/);
   });
 });
 

@@ -69,6 +69,27 @@ test('applyRemote rechaza claves desconocidas y selectores sospechosos', () => {
   assert.equal(candidates('chat.line').length, 2); // solo los locales
 });
 
+test('applyRemote retira los overrides que ya no vienen en el catálogo', () => {
+  resetHealth();
+  clearRemote();
+  const locales = candidates('chat.line').length;
+  applyRemote({ 'chat.line': ['[data-test-selector="remoto-que-se-retira"]'] });
+  assert.equal(candidates('chat.line').length, locales + 1);
+
+  applyRemote({ 'chat.container': ['[data-test-selector="otro-remoto"]'] });
+  assert.equal(candidates('chat.line').length, locales, 'el remoto ausente se retira');
+  assert.equal(
+    candidates('chat.line').includes('[data-test-selector="remoto-que-se-retira"]'),
+    false,
+  );
+
+  applyRemote({});
+  assert.equal(
+    candidates('chat.container').includes('[data-test-selector="otro-remoto"]'),
+    false,
+  );
+});
+
 test('isValidSelector filtra lo sospechoso', () => {
   assert.equal(isValidSelector('[data-a-target="chat-line-message"]'), true);
   assert.equal(isValidSelector('div{}'), false);

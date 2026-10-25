@@ -8,6 +8,7 @@
  */
 import { log } from '../core/log.js';
 import { defineFeature, anotarMotivo, limpiarMotivo } from '../core/registry.js';
+import { selectAll } from '../core/selectors.js';
 import { get as storeGet } from '../core/store.js';
 
 const ID = 'autoReconnect';
@@ -23,6 +24,7 @@ const MAX_INTENTOS = 4;
  * temporizador en vez de usar `tick`.
  */
 let temporizador = null;
+let ultimoVideo = null;
 let ultimoTiempo = -1;
 let ultimoAvance = 0;
 let reintentando = false;
@@ -105,9 +107,52 @@ function intentar(video, ahora) {
   log('reconexion: intento', intentos, 'en', espera(intentos) / 1000, 's');
 }
 
+/**
+ * Elige el video del reproductor principal, no el primero del documento.
+ *
+ * En la pagina puede haber miniaturas o previews con `<video>` propio. Quedarse
+ * con el primero podía vigilar un preview que nunca avanza y dejar el directo
+ * real congelado sin tocar. Si hay varios dentro del player, gana el de mayor
+ * area visible; si el player no tiene ninguno, se usa el mayor de la pagina.
+ */
+export function pickPlayerVideo(root = document) {
+  let videos = [];
+  for (const player of selectAll('player', root)) {
+    videos.push(...(player.querySelectorAll?.('video') || []));
+  }
+  if (!videos.length) {
+    videos = [...(root.querySelectorAll?.('video') || [])];
+  }
+  if (!videos.length) return null;
+
+  let mejor = videos[0];
+  let mejorArea = -1;
+  for (const video of videos) {
+    let area = 0;
+    try {
+      const rect = video.getBoundingClientRect?.();
+      area = rect ? Math.max(0, rect.width) * Math.max(0, rect.height) : 0;
+    } catch {
+      area = 0;
+    }
+    if (area > mejorArea) {
+      mejor = video;
+      mejorArea = area;
+    }
+  }
+  return mejor;
+}
+
 function comprobar() {
-  const video = document.querySelector('video');
+  const video = pickPlayerVideo();
   if (!video) return;
+
+  if (video !== ultimoVideo) {
+    ultimoVideo = video;
+    ultimoTiempo = -1;
+    ultimoAvance = Date.now();
+    sinIntento();
+  }
 
   // El usuario ha pausado a proposito, o no hay nada que reproducir: no es cosa
   // nuestra y recargarle en esa situacion seria molesto.
@@ -149,6 +194,7 @@ function arrancar() {
 function parar() {
   if (temporizador !== null) clearInterval(temporizador);
   temporizador = null;
+  ultimoVideo = null;
   sinIntento();
   limpiarMotivo(ID);
 }
@@ -156,6 +202,7 @@ function parar() {
 /** Sin timer: solo olvida el estado. Cambiar de canal no es un corte. */
 function reiniciar() {
   sinIntento();
+  ultimoVideo = null;
   ultimoTiempo = -1;
   ultimoAvance = Date.now();
   limpiarMotivo(ID);

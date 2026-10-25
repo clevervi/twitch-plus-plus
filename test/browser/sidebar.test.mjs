@@ -166,6 +166,30 @@ describe('miniatura en sidebar', () => {
     await pagina.evaluate((f) => window.TwitchPP.enable(f), ID);
   });
 
+  it('un tooltip que llega tarde no inyecta nada si la feature esta apagada', async () => {
+    // Regresion: `inject()` reintenta 8 veces cada 50 ms y la cadena no se
+    // cancelaba al apagar. El tooltip aparecia despues y la miniatura se
+    // inyectaba con la feature ya apagada, sin listeners para retirarla.
+    await pagina.evaluate(() => {
+      for (const viejo of document.querySelectorAll('.online-side-nav-channel-tooltip__body')) {
+        viejo.parentElement?.remove();
+      }
+      document.querySelector('.side-nav-card[href="/auronplay"]')
+        .dispatchEvent(new MouseEvent('mouseover', { bubbles: true }));
+    });
+
+    await pagina.evaluate((f) => window.TwitchPP.disable(f), ID);
+    await abrirTooltip('auronplay');
+    await pagina.waitForTimeout(700);
+
+    const imagenes = await pagina.evaluate(
+      () => document.querySelectorAll('img.twpp-sidebar-thumb').length,
+    );
+    assert.equal(imagenes, 0, 'un reintento vivo no puede inyectar con la feature apagada');
+
+    await pagina.evaluate((f) => window.TwitchPP.enable(f), ID);
+  });
+
   it('deja escrito por que no inyecto, para no fallar en silencio', async () => {
     // Card fuera de la sidebar: la feature la ve pero no puede actuar. Antes esto
     // no dejaba ni rastro, igual que un fallo de red o un error real.

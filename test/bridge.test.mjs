@@ -94,6 +94,30 @@ describe('puente de diagnostico', () => {
     assert.match(datos.error, /revento el informe/);
   });
 
+  it('responde al motivo real de una feature, no al id', async () => {
+    const ventana = montar({
+      globalThisFalso: {
+        diagnostics: {
+          motivos: () => [{ id: 'autoReconnect', motivo: 'el directo lleva congelado' }],
+        },
+      },
+    });
+    startBridge();
+
+    const datos = await pedir(ventana, 'motivo:autoReconnect');
+    assert.deepEqual(datos, { id: 'autoReconnect', motivo: 'el directo lleva congelado' });
+  });
+
+  it('sin motivo anotado devuelve cadena vacia, no el id', async () => {
+    const ventana = montar({
+      globalThisFalso: { diagnostics: { motivos: () => [] } },
+    });
+    startBridge();
+
+    const datos = await pedir(ventana, 'motivo:chatSearch');
+    assert.deepEqual(datos, { id: 'chatSearch', motivo: '' });
+  });
+
   it('informa de una operacion desconocida en vez de callarse', async () => {
     const ventana = montar({ globalThisFalso: { diagnostics: { report: () => ({}) } } });
     startBridge();

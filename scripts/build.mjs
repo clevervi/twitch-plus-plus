@@ -147,15 +147,19 @@ function header() {
 
 function notes() {
   try {
+    // Coincidencia exacta de version: con `startsWith(pkg.version)` la 2.2.2
+    // encajaba con el apartado de la 2.2.20 y las notas salian de otra release.
+    const escapada = String(pkg.version).replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
+    const cabecera = new RegExp(`^${escapada}(?=\\s|—|-)`);
     const section = readFileSync(resolve(ROOT, 'CHANGELOG.md'), 'utf8')
       .split(/^## /m)
-      .find((chunk) => chunk.startsWith(pkg.version));
+      .find((chunk) => cabecera.test(chunk));
     if (!section) return '';
     return section
       .split('\n')
       .slice(1)
       .filter((line) => line.trim())
-      .map((line) => line.replace(/^[-*]\s*/, '').trim())
+      .map((line) => line.replace(/^[-*]\s*/, '').replace(/^#{1,6}\s*/, '').trim())
       .join('\n')
       .trim();
   } catch {

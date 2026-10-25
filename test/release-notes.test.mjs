@@ -1,4 +1,5 @@
 import assert from 'node:assert/strict';
+import { readFileSync } from 'node:fs';
 import { describe, it } from 'node:test';
 
 import { seccionDelChangelog, versionActual } from '../scripts/release-notes.mjs';
@@ -41,6 +42,51 @@ describe('seccionDelChangelog', () => {
   it('devuelve vacio si la version no esta', () => {
     assert.equal(seccionDelChangelog(CHANGELOG, '9.9.9'), '');
     assert.equal(seccionDelChangelog('', '2.2.10'), '');
+  });
+
+  it('no corta el apartado en un subtitulo', () => {
+    const conSubtitulos = [
+      '# Changelog',
+      '',
+      '## 2.2.22 — 2026-10-03',
+      '',
+      '### Mejora',
+      '',
+      '- algo nuevo',
+      '',
+      '## 2.2.21 — 2026-10-03',
+      '',
+      '- otra cosa',
+    ].join('\n');
+    assert.equal(seccionDelChangelog(conSubtitulos, '2.2.22'), '### Mejora\n\n- algo nuevo');
+  });
+});
+
+describe('orden del CHANGELOG', () => {
+  it('va de la version mas alta a la mas baja', () => {
+    const changelog = readFileSync(new URL('../CHANGELOG.md', import.meta.url), 'utf8');
+    const versiones = [...changelog.matchAll(/^## (\d+)\.(\d+)\.(\d+)/gm)].map((m) =>
+      [Number(m[1]), Number(m[2]), Number(m[3])],
+    );
+    assert.ok(versiones.length > 0, 'el CHANGELOG debe tener apartados');
+    for (let i = 1; i < versiones.length; i += 1) {
+      const [a1, a2, a3] = versiones[i - 1];
+      const [b1, b2, b3] = versiones[i];
+      const descendente = b1 < a1 || (b1 === a1 && (b2 < a2 || (b2 === a2 && b3 < a3)));
+      assert.ok(descendente, `${versiones[i - 1].join('.')} debe ir antes que ${versiones[i].join('.')}`);
+    }
+  });
+
+  it('empieza por la version de package.json', () => {
+    const changelog = readFileSync(new URL('../CHANGELOG.md', import.meta.url), 'utf8');
+    const primera = /^## (\d+\.\d+\.\d+)/m.exec(changelog);
+    assert.ok(primera, 'el CHANGELOG debe tener apartados');
+    assert.equal(primera[1], versionActual());
+  });
+
+  it('no deja encabezados convertidos en viñetas', () => {
+    const changelog = readFileSync(new URL('../CHANGELOG.md', import.meta.url), 'utf8');
+    assert.equal(/^-\s+#{2,6}\s/m.test(changelog), false, 'quedan lineas "- ## Titulo"');
   });
 });
 

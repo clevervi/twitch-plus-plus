@@ -2,8 +2,8 @@
  * Reconexion cuando el directo se corta a mitad.
  *
  * Se prueba en Chromium porque la feature depende de `Date.now()` y de un
- * temporizador real. Laحل es falsear el reloj de la pagina para que el tiempo de
- * espera se agote en un par de segundos de reloj real.
+ * temporizador real. La solucion es falsear el reloj de la pagina para que el
+ * tiempo de espera se agote en un par de segundos de reloj real.
  *
  * Lo que mas importa es lo que NO debe hacer: no tocar un player pausado a
  * proposito, no tocar un VOD, y no recargar la pagina sin permiso. Un bucle de
@@ -30,9 +30,13 @@ after(async () => {
 afterEach(async () => {
   await pagina.evaluate((f) => window.TwitchPP.disable(f), ID);
   await pagina.evaluate(() => {
+    clearInterval(window.__avanzar);
+    if (window.__originalNow) Date.now = window.__originalNow;
     document.querySelector('#prueba-video')?.remove();
+    document.querySelector('#prueba-preview')?.remove();
     delete window.__originalNow;
     delete window.__plays;
+    delete window.__previewPlays;
   });
 });
 
@@ -58,8 +62,13 @@ async function ponerVideo({ congelado, duracion, paused }) {
         window.__plays += 1;
         return Promise.resolve();
       };
-      window.__t = congelado ? 0 : 0;
-      document.body.prepend(video);
+      video.style.width = '640px';
+      video.style.height = '360px';
+      window.__t = 0;
+      // Dentro del player real, que es donde `pickPlayerVideo()` debe mirar.
+      const player = document.querySelector('[data-a-target="video-player"]');
+      player.querySelectorAll('video').forEach((old) => old.remove());
+      player.append(video);
 
       // El reloj avanza 30 s por segundo real: la espera se agota enseguida.
       const real = Date.now;
@@ -72,6 +81,27 @@ async function ponerVideo({ congelado, duracion, paused }) {
   );
 }
 
+/** Un `<video>` de preview fuera del player, mas grande que el principal. */
+async function ponerPreview() {
+  await pagina.evaluate(() => {
+    window.__previewPlays = 0;
+    const video = document.createElement('video');
+    video.id = 'prueba-preview';
+    video.style.width = '1280px';
+    video.style.height = '720px';
+    Object.defineProperty(video, 'duration', { get: () => Infinity });
+    Object.defineProperty(video, 'currentTime', { get: () => 0 });
+    Object.defineProperty(video, 'readyState', { get: () => 4 });
+    Object.defineProperty(video, 'ended', { get: () => false });
+    Object.defineProperty(video, 'paused', { get: () => false });
+    video.play = () => {
+      window.__previewPlays += 1;
+      return Promise.resolve();
+    };
+    document.body.prepend(video);
+  });
+}
+
 const plays = () => pagina.evaluate(() => window.__plays);
 
 describe('reconexion del directo', () => {
@@ -80,6 +110,20 @@ describe('reconexion del directo', () => {
     await pagina.evaluate((f) => window.TwitchPP.enable(f), ID);
     await pagina.waitForTimeout(2000);
     assert.ok((await plays()) > 0, 'deberia haber intentado reproducir');
+  });
+
+  it('vigila el video del player, no un preview mas grande de la pagina', async () => {
+    await ponerPreview();
+    await ponerVideo({ congelado: true, duracion: Infinity, paused: false });
+    await pagina.evaluate((f) => window.TwitchPP.enable(f), ID);
+    await pagina.waitForTimeout(2000);
+
+    const cuenta = await pagina.evaluate(() => ({
+      principal: window.__plays,
+      preview: window.__previewPlays,
+    }));
+    assert.ok(cuenta.principal > 0, 'deberia despertar el video del player');
+    assert.equal(cuenta.preview, 0, 'no debe tocar el preview de fuera');
   });
 
   it('no toca un player pausado a proposito', async () => {

@@ -49,16 +49,45 @@ export function subirVersion(version, level) {
   throw new Error(`nivel desconocido: "${level}". Usa ${NIVELES.join(' | ')}`);
 }
 
-/** Apartado del CHANGELOG para una versión, con cada línea como viñeta. */
+/**
+ * Apartado del CHANGELOG para una versión, con cada línea como viñeta.
+ *
+ * Un `##` en las notas se degrada a `###`: dentro de un apartado de versión un
+ * encabezado de nivel dos rompería el salto entre secciones y `seccionDelChangelog`
+ * lo leería como si fuera la versión siguiente. Con `- ` delante quedaba
+ * `- ## Corrección: ...`, que no es un encabezado ni una viñeta.
+ */
 export function apartado(version, fecha, notes) {
-  const cuerpo = (notes || '').trim() || '- pendiente de describir';
-  const viñetas = cuerpo
-    .split('\n')
-    .map((linea) => linea.trim())
-    .filter(Boolean)
-    .map((linea) => (linea.startsWith('- ') ? linea : `- ${linea}`))
-    .join('\n');
-  return `\n## ${version} — ${fecha}\n\n${viñetas}\n`;
+  const cuerpo = (notes || '').trim() || 'pendiente de describir';
+  const lineas = [];
+  let enBloque = false;
+
+  for (const cruda of cuerpo.split('\n')) {
+    const linea = cruda.trim();
+
+    // Los bloques de codigo se copian tal cual. Antes cada linea recibia el
+    // prefijo `- `, asi que un ```js de las notas se convertia en una viñeta y
+    // el bloque quedaba abierto hasta el siguiente `##`.
+    if (/^(```|~~~)/.test(linea)) {
+      enBloque = !enBloque;
+      lineas.push(linea);
+      continue;
+    }
+    if (enBloque) {
+      lineas.push(cruda.replace(/\s+$/, ''));
+      continue;
+    }
+    if (!linea) continue;
+
+    const encabezado = /^#+(\s|$)/.exec(linea);
+    if (encabezado) {
+      lineas.push(`### ${linea.replace(/^#+\s*/, '')}`);
+      continue;
+    }
+    lineas.push(/^([-*]|\d+\.)\s/.test(linea) ? linea : `- ${linea}`);
+  }
+
+  return `\n## ${version} — ${fecha}\n\n${lineas.join('\n')}\n`;
 }
 
 /**
@@ -76,14 +105,28 @@ export function avisarDeAcentos(notes) {
 }
 
 /**
- * Añade un apartado al final del CHANGELOG.
+ * Coloca un apartado debajo del título `# Changelog`, no al final del archivo.
  *
- * El salto de línea va aquí y no dentro de `apartado()`, que ya empieza por
- * `\n`: hacen falta los dos para que quede una línea en blanco entre
- * secciones. Si se quita este, las secciones quedan pegadas.
+ * El orden es descendente, que es como se lee un historial. Añadir al final lo
+ * rompía: las secciones nuevas acababan debajo de las viejas y el archivo
+ * empezaba por una versión antigua, así que el CHANGELOG parecía congelado.
  */
 export function encadenar(changelog, seccion) {
-  return `${String(changelog).replace(/\s*$/, '')}\n${seccion}`;
+  const texto = String(changelog).replace(/\s*$/, '');
+  const titulo = /^#\s+[^\n]*\n/.exec(texto);
+  if (!titulo) return `${texto}\n${seccion}`;
+
+  const cabecera = titulo[0].trimEnd();
+  const resto = texto.slice(titulo[0].length).replace(/^\s*/, '').replace(/\s*$/, '');
+
+  // Lo que hay entre el titulo y la primera seccion es texto del changelog, no
+  // historial: la nueva seccion va debajo de ese texto, no encima.
+  const primera = /^##\s+[^\n]*$/m.exec(resto);
+  const preambulo = primera ? resto.slice(0, primera.index).replace(/\s*$/, '') : '';
+  const cuerpo = primera ? resto.slice(primera.index) : '';
+
+  const partes = [cabecera, preambulo, seccion.trim(), cuerpo].filter(Boolean);
+  return `${partes.join('\n\n')}\n`;
 }
 
 function ejecutar() {

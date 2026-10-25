@@ -56,6 +56,17 @@ test('setMany solo notifica lo que cambia de verdad', async () => {
   assert.deepEqual(seen, ['a']);
 });
 
+test('setMany compara el valor coaccionado, no el crudo', async () => {
+  const store = await freshStore();
+  store.declare('a', 'bool', false);
+  const seen = [];
+  store.onChange((key) => seen.push(key));
+
+  // 'false' coacciona a false, que es lo que ya había: no es un cambio.
+  store.setMany({ a: 'false' });
+  assert.deepEqual(seen, [], 'no debe notificar un valor que no cambia');
+});
+
 test('exportJSON / importJSON hace round-trip', async () => {
   const store = await freshStore();
   store.declare('sidebarWidth', 'number', 72);
@@ -94,6 +105,14 @@ test('declare después de la primera lectura no pisa el valor del usuario', asyn
   store.set('tardia', true);
   store.declare('tardia', 'bool', false);
   assert.equal(store.get('tardia'), true);
+});
+
+test('declare no cambia el tipo de una clave ya declarada', async () => {
+  const store = await freshStore();
+  store.declare('clave', 'bool', false);
+  store.set('clave', true);
+  store.declare('clave', 'string', '');
+  assert.equal(store.get('clave'), true, 'la redeclaracion no puede convertir el valor');
 });
 
 test('importa la config del script de un solo archivo (clave "twpp")', async () => {

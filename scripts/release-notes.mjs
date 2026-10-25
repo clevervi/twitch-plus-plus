@@ -14,7 +14,7 @@ import { fileURLToPath, pathToFileURL } from 'node:url';
 
 const ROOT = resolve(dirname(fileURLToPath(import.meta.url)), '..');
 
-/** Apartado de `## <version>` hasta el siguiente `## `, o hasta el final. */
+/** Apartado de `## <version>` hasta el siguiente encabezado de version. */
 export function seccionDelChangelog(changelog, version) {
   const escapada = String(version).replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
   const cabecera = new RegExp(`^##\\s+${escapada}\\s*(—|-|$)`);
@@ -22,9 +22,11 @@ export function seccionDelChangelog(changelog, version) {
   const inicio = lineas.findIndex((linea) => cabecera.test(linea));
   if (inicio === -1) return '';
 
+  // El corte es en `## ` y no en el primer `##`: un `###` dentro del apartado es
+  // un subtitulo de esta version, no el encabezado de la siguiente.
   let fin = lineas.length;
   for (let indice = inicio + 1; indice < lineas.length; indice += 1) {
-    if (lineas[indice].startsWith('## ')) {
+    if (/^##\s+\d+\.\d+\.\d+/.test(lineas[indice])) {
       fin = indice;
       break;
     }

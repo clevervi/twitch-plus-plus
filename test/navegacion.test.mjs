@@ -74,6 +74,12 @@ describe('historial de navegacion', () => {
     assert.equal(estado.entradas.at(-1).razon, 'pushState');
   });
 
+  it('no confunde una ruta reservada con un canal', () => {
+    irA('/directory');
+    assert.equal(navegacion().actual.path, '/directory');
+    assert.equal(navegacion().actual.canal, '');
+  });
+
   it('distingue pushState de replaceState', () => {
     irA('/midudl');
     globalThis.history.replaceState({}, '', '/rubius');

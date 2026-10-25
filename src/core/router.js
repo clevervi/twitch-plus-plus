@@ -2,6 +2,7 @@
 import { emit } from './bus.js';
 import { log } from './log.js';
 import { getValue, setValue } from './gm.js';
+import { channelFromHref } from './twitch.js';
 
 const CLAVE = 'nav.log';
 const MAX = 30;
@@ -37,7 +38,10 @@ export function navegacion() {
 
 export function currentRoute(razon = 'navigation') {
   const path = typeof location !== 'undefined' ? location.pathname : '/';
-  const channel = (path.match(/^\/([^/]+)/) || [])[1] || '';
+  // `/directory` o `/settings` no son canales. Antes se tomaba el primer
+  // segmento tal cual, así que features como el resaltado de menciones creían
+  // estar en el canal "directory".
+  const channel = channelFromHref(path) || '';
   const now = Date.now();
   const route = {
     seq: ++routeSeq,

@@ -1,6 +1,7 @@
 import assert from 'node:assert/strict';
 import { describe, it } from 'node:test';
 
+import { clampPlacement } from '../src/ui/panel.js';
 import { PANEL_CSS } from '../src/ui/panel-css.js';
 
 /** Reglas del bloque `.fab` y sus modificadores, sin depender de un navegador. */
@@ -55,5 +56,33 @@ describe('el boton flotante nunca es invisible', () => {
     assert.ok(cerca, 'debe existir .fab.near');
     const cercaValor = Number.parseFloat(cerca[1].match(/opacity:\s*([^;]+)/)[1]);
     assert.ok(cercaValor > baseValor, `near (${cercaValor}) debe verse mas que la base (${baseValor})`);
+  });
+});
+
+describe('el boton flotante se recorta a la ventana', () => {
+  it('una posicion guardada fuera de pantalla se mete dentro', () => {
+    const pos = clampPlacement(5000, 5000, 1400, 900);
+    assert.equal(pos.right, 1368);
+    assert.equal(pos.bottom, 868);
+    assert.ok(pos.x >= 0 && pos.x < 1400, `x=${pos.x}`);
+    assert.ok(pos.y >= 0 && pos.y < 900, `y=${pos.y}`);
+    assert.ok(pos.right + 26 <= 1400, 'el host entero debe caber a lo ancho');
+    assert.ok(pos.bottom + 26 <= 900, 'el host entero debe caber a lo alto');
+  });
+
+  it('una posicion negativa se pega al borde', () => {
+    const pos = clampPlacement(-50, -50, 1400, 900);
+    assert.equal(pos.right, 0);
+    assert.equal(pos.bottom, 0);
+    assert.equal(pos.x, 1387);
+    assert.equal(pos.y, 887);
+  });
+
+  it('tolera ventanas mas pequenas que el propio boton', () => {
+    const pos = clampPlacement(100, 100, 20, 20);
+    assert.equal(pos.right, 0);
+    assert.equal(pos.bottom, 0);
+    assert.equal(pos.x, 7);
+    assert.equal(pos.y, 7);
   });
 });
