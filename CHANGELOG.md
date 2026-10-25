@@ -1,5 +1,191 @@
 # Changelog
 
+## 2.2.23 — 2026-10-23
+
+### Corregido
+- **Auto-reclamo**: solo cuenta el cofre de puntos de canal. Un botón "Reclamar" de recompensas fuera de ese resumen ya no se pulsa, el catálogo remoto dejó de imponer selectores de reclamo y los overrides retirados dejan de acumularse.
+- **Reconexión**: vigila el vídeo del reproductor en vez de un preview más grande, reinicia el estado al cambiar de vídeo y no marca la comprobación diaria si el repo no responde.
+- **Pausa de chat**: el panel refleja la pausa que inicia Twitch sin esperar a un cambio de ruta.
+- **Panel**: el FAB se recorta a la ventana al reducirla y el resaltado al acercar el ratón vuelve a funcionar en cualquier esquina.
+- **Sidebar**: al apagar la feature ya no quedan reintentos vivos que inyecten miniaturas.
+- **Atajos**: la barra espaciadora ya dispara el atajo configurado.
+- **Diagnóstico**: `motivoDe(id)` devuelve el motivo real y el reporte vuelve a indicar si el catálogo es remoto.
+- **Router**: `/directory`, `/settings` y demás rutas reservadas ya no se tratan como canales.
+- **Config**: `setMany()` no notifica valores que no cambian y `declare()` no puede cambiar el tipo de una clave ya declarada.
+- **Scheduler**: las features vuelven a actualizarse al regresar a una pestaña que estuvo oculta.
+- **Red**: el `fetch` de respaldo tiene timeout y no deja el arranque colgado.
+### Tests
+- 246 unitarios + 83 de navegador.
+
+## 2.2.22 — 2026-10-03
+
+### Mejora
+- **Reconectar si se corta el directo** (#127): si el vídeo lleva 8 segundos congelado en un directo mientras tú no lo has pausado a propósito, el script intenta despertarlo. Espera progresiva entre intentos y, tras 4, se detiene y deja constancia en lugar de seguir insistiendo.
+### Detalles
+- **No evita que un directo termine.** El vídeo viene del servidor del streamer; cuando deja de emitir no hay nada que reproducir, y ningún código en tu navegador cambia eso. Solo se recupera de cortes mientras el canal sigue emitiendo.
+- Apagada por defecto. Actívala en el panel, en **Automatización**.
+- La recarga de página está **apagada** también: primero intenta solo `play()`, que resuelve casi todos los cortes. Recargar en bucle puede acabar con la IP bloqueada por Twitch, así que no se hace sin permiso.
+- Espera inicial y espera máxima configurables.
+- Solo afecta a directos: en un VOD la recarga te perdería la posición.
+### Corregido
+- La reconexión no daba más de 4 intentos. Al agotarlos se reiniciaba el contador y volvía a empezar: un bucle infinito disfrazado de espera progresiva.
+### Tests
+- 6 casos sobre los valores por defecto y el ciclo de vida, 5 en Chromium con el reloj falseado.
+- Total: 218 unitarios + 79 de navegador.
+
+## 2.2.21 — 2026-10-03
+
+### Diagnóstico
+- **Historial de navegación** (#122): `TwitchPP.navegacion()` devuelve las últimas rutas con el motivo de cada salto (`pushState`, `replaceState`, `popstate`, `initial`) y, si hubo recarga, de qué canal se salió. Antes el router recibía ese dato y lo tiraba.
+### Por qué
+- Para poder evitar el salto al terminar una raid (#113) hace falta una medición que no se puede sacar leyendo el código: ¿Twitch cambia la ruta sin recargar, o recarga la página? Según cuál sea, el arreglo es distinto.
+- Esto lo convierte en una línea:
+
+  ```js
+  await TwitchPP.navegacion()
+  ```
+
+  y hace que no haya que pegar sondas en la consola.
+### Details de implementación
+- Solo se escribe en almacenamiento cuando la página se va (`pagehide`). Durante el uso normal no hay ninguna escritura, y ese es justo el momento en que hay que guardar: un salto con recarga se llevaría por delante la evidencia.
+- Tope de 30 entradas: el diagnóstico interesa de los últimos segundos, no del historial completo.
+### Tests
+- 6 casos nuevos para el historial de navegación.
+- Total: 212 unitarios + 74 de navegador.
+
+## 2.2.20 — 2026-10-03
+
+### Diagnóstico
+- **Motivo de inactividad** (#116): ahora se puede saber por qué una feature está activa y no hace su trabajo. Antes, un fallo silencioso y un fallo de red se veían exactamente igual desde fuera: fue lo que escondió los bugs #102 y #109. Se expone en `statuses()` y en `diagnostics.motivos()`.
+- **Puente de diagnóstico** (#117): `TwitchPP.diagnostics()` y `TwitchPP.motivoDe(id)` ya se pueden llamar desde la consola de la página. Antes, con el aislamiento de `@grant`, no había forma de consultar el estado real del script.
+### Por qué
+- Depurar ocurre en el navegador de quien lo usa, no en CI. Hoy hicieron falta dos sondas escritas durante la sesión para encontrar dos bugs. Con esto, la información que buscaban esas sondas la da el propio script.
+### Tests
+- 8 casos para el motivo de inactividad, 6 para el puente, y uno en navegador real que comprueba que el motivo aparece en `diagnostics.features()`.
+- Total: 206 unitarios + 74 de navegador.
+### Notas
+- El test del puente cazó un bug antes de publicar: el handler leía el evento en vez de su `detail`, así que en un navegador real no habría respondido nunca.
+- El puente cruza **cadenas**, no objetos: entre mundos un objeto puede llegar vacío y el fallo sería silencioso.
+- Si la CSP de Twitch bloquea el script inyectado, el puente simplemente no existe y todo lo demás sigue funcionando.
+
+## 2.2.19 — 2026-10-03
+
+### Correcciones
+- **Miniatura en sidebar** (#109): al volver a un canal que ya habías visitado, la miniatura no aparecía o tardaba mucho. Twitch no destruye el tooltip anterior, lo deja conectado durante la transición de salida marcado como `aria-hidden`, y el script se quedaba enganchado a ese en vez de al nuevo. Ahora solo se usan los tooltips vivos y se reintenta mientras Twitch abre el correcto.
+- **Miniatura en sidebar** (#109): las miniaturas se apilaban al pasar rápido de un canal a otro, porque la limpieza dependía de un temporizador que siempre se cancelaba. Ahora se quita la anterior al cambiar de canal.
+- **Miniatura en sidebar** (#102): la miniatura no aparecía en absoluto, porque el canal no se leía de la card cuando la card es el propio enlace.
+### Tests
+- 1 test nuevo para el filtro de tooltips, verificado que falla contra el código anterior.
+- Total: 192 unitarios + 69 de navegador.
+
+## 2.2.18 — 2026-10-03
+
+### Corrección
+- **Miniatura en sidebar** vuelve a aparecer. `channelFromCard()` buscaba el canal solo entre los descendientes de la card, pero Twitch hace que la card **sea** el enlace. Sin canal no se inyectaba nada y la feature se apagaba en silencio, sin error ni aviso. Issue #102.
+### Tests
+- Dos tests de regresión para `channelFromCard`: card que es el `<a>` y card con el enlace dentro. Comprobado que fallan contra el código anterior.
+
+## 2.2.17 — 2026-10-02
+
+### Corrección urgente: el tema OLED y el contraste alto estaban apagados
+- Si tienes la versión de ayer, dos de las features no funcionan: **Tema OLED** y **Contraste alto**. El resto del script va bien.
+- Por un error mío al escribir un ajuste: al comprobar el tema de Twitch, el código fallaba en lugar de responder, y ese fallo se traducía en «no activado». Nada de tu configuración estaba mal, y no había forma de verlo desde el panel.
+- Lo que sí funcionaba era la mejora que venía con esa versión: ahora el tema claro de Twitch se respeta de verdad, porque la detección ya no se pregunta a sí misma qué color tiene la página.
+- Si tenías las dos features apagadas y te parecían un problema, ya está resuelto. Sorry por el susto.
+### Corrección: los overlays de extensión volvían a quedarse ocultos
+- Con **Sin extensiones** activada, los recuadros de las extensiones desaparecían bien, pero al desactivar el ajuste alguno se quedaba escondido sin poder volver.
+- Consecuencia real: si la activabas por error y la quitabas, tenías que recargar la página.
+- Era una palabra mal escrita al devolver los estilos que el propio script había puesto antes de esconderlos. El error se escondía porque el script no lo lanzaba como fallo visible, sino que lo anotaba en silencio. Por eso no se notaba y por eso parecía imposible.
+### Área afectada
+- `package.json`, `CHANGELOG.md`, `dist/`
+
+## 2.2.16 — 2026-10-02
+
+### Corrección: «Solo en tema oscuro de Twitch» ya no se ignoraba
+- Si tenías activado el ajuste que dice no pisar el tema de Twitch, el script te ponía la página negra igualmente.
+- La causa era bastante tonta: el tema se detectaba mirando el color del fondo de la página, y ese color lo ponía el propio script en negro. O sea, se preguntaba a sí mismo qué tema había, y se contestaba siempre «oscuro». Da igual cuántas veces cambiaras el tema en Twitch: la detección nunca podía ver una página clara.
+- Ahora el tema se lee de un sitio que el script no toca, y se comprueba que el fondo tenga color de verdad: un fondo transparente contaba como negro.
+- También se ha añadido el caso simétrico al que ya existía: si la página dice que el tema es claro, se respeta. Si tu versión de Twitch no usa ese nombre, no cambia nada: el ajuste sigue funcionando gracias a la otra parte del arreglo.
+- No verás ninguna diferencia si ya usabas el tema oscuro, que es lo que a la mayoría le importa. Si tenías que pelearte con el script para ver la página clara, esto es lo que te faltaba.
+
+## 2.2.15 — 2026-10-02
+
+### Corrección: pausar el chat no pausaba el chat
+- La función que congela la lista de mensajes cuando pulsas «Pausar chat» iba a mirar por dónde podía deslizarse, pero empezaba a mirar **un nivel por encima de donde está el chat**. Así que nunca llegaba a mirar el chat.
+- El resultado era que el bloqueo se ponía sobre un elemento que no se puede desplazar. El script escuchaba a los scrolls, los interceptaba, y escribía la posición allí donde no se nota. El chat seguía bajando igual.
+- Afectaba a quien no ve el botón de pausa propio de Twitch, porque si lo tiene, el script pulsa ese y sí funciona. El botón desaparece cuando el chat está plegado, o cuando Twitch cambia sus etiquetas internas. Ahí «Pausar chat» no hacía nada, sin avisar.
+- Ahora sí. Y si vas hacia arriba con la rueda mientras está pausado, tienes un momento para leer, y el chat vuelve a pararse donde lo dejes.
+
+## 2.2.14 — 2026-10-02
+
+### Corrección: apagar y volver a encender «Resaltar menciones» dejaba de funcionar
+- La feature marca cada línea de chat con dos señales: una clase para pintar el resaltado, y un atributo para no volver a mirar esa misma línea.
+- El atributo se ponía en todas las líneas, pero al desactivar solo se limpiaban las que tenían la clase. Las demás se quedaban con el atributo puesto para siempre.
+- Y ahí está el problema: al volver a encender, la feature salta las líneas que ya tienen el atributo, precisamente las que debería volver a mirar. Un ciclo de apagar y encender dejaba esas líneas sin posibilidad de volver a resaltarse, aunque su texto hubiera cambiado y ahora fueran una mención.
+
+## 2.2.13 — 2026-10-02
+
+### Corrección: el resaltado de palabras clave cuelgaba la pestaña igual que el buscador
+- Con *Tratar como regex* activado, las palabras del cuadro de texto se unían con `|` y se compilaban. Solo se escapaba la barra invertida y la propia barra, así que escribir `(a+)+$` construía un patrón catastrófico sin haber pedido una regex: solo esperar que se resalte una palabra.
+- Una sola línea de chat de 41 caracteres tardaba **137 segundos** con ese patrón, y el resaltado revisa la pantalla cada segundo.
+- Ahora las dos features donde el usuario escribe expresiones pasan por el mismo comprobador, en `src/core/regex.js`:
+- **Buscador de chat**: ya lo usaba desde la versión anterior. Lo que cambia es el texto del aviso: dice cuántos caracteres acepta en vez de un «demasiado largo» sin número.
+- **Resaltado de palabras clave**: es el que se arregla aquí. Antes no comprobaba nada.
+- Un patrón con **sintaxis inválida** sigue cayendo a texto plano sin avisar, porque es un error de quien escribe y no un problema de rendimiento. Solo se avisa cuando el patrón cuelga el navegador de verdad.
+
+## 2.2.12 — 2026-10-01
+
+- **El buscador de chat ya no cuelga la pestaña**: con la opción de expresión regular, lo que escribías se pasaba tal cual a `new RegExp` y se ejecutaba contra cada línea del chat, en cada tecla y cada 1,2 segundos. Un patrón como `(a+)+$` compilaba bien y luego se pasaba minutos calculando, y eso congela la pestaña de Twitch entera. Ahora los cuantificadores anidados y los patrones de más de 200 caracteres se rechazan antes de compilar, y el buscador avisa en el contador.
+- **El contraste OLED alto ya no pone texto blanco sobre el tema claro**: la feature no dependía de `Tema OLED`, así que con Twitch en tema claro seguía aplicando su CSS y ponía `--color-text-base` a blanco sobre fondo blanco. Ahora comparte su misma condición.
+- **Desactivar y volver a activar `Sin extensiones` vuelve a funcionar**: el registro de elementos ocultados nunca se limpiaba, así que al reencender la feature los iframes y overlays de extensión se quedaban visibles para siempre. Además, al desactivar ya no se borra el estilo que tenía Twitch, sino que se restaura.
+- **El catálogo remoto deja de ganar por llegar antes**: un selector del repo que acertaba una vez se quedaba como campeón para siempre. Ahora el orden lo marca el historial de cada candidato, y tres fallos seguidos lo degradan.
+- **Diagnóstico de rendimiento**: `TwitchPP.diagnostics.perf()` devuelve ticks, consultas al DOM, ráfagas de mutación y tiempo de arranque.
+- **Suite de navegador**: 15 tests en Chromium real que leen estilos computados, para lo que el DOM stub no puede comprobar. No forma parte de `npm run verify`, que sigue funcionando sin instalar nada.
+- **Las notas del CHANGELOG se leen de un archivo**: en Windows, el texto con acentos que pasa por la línea de comandos llegaba estropeado.
+- **Tests**: 182 en verde, antes 143.
+
+## 2.2.11 — 2026-10-01
+
+- **Botón flotante siempre visible**: la regla base de `.fab` era `opacity: 0` y `pointer-events: none`, así que el botón `++` no se veía ni se podía pulsar salvo que el ratón estuviera a menos de 140 px. Ahora está presente a `.3` y siempre pulsable; `awake` y `near` suben opacidad en lugar de hacerlo aparecer.
+- **La sonda no dejaba la configuración sucia**: `probe()` encendía todas las features y las restauraba al final, sin protección. Una excepción a mitad dejaba el panel con todo encendido y persistido, justo en la herramienta que sirve para recuperar la configuración. Ahora restaura en un `finally`.
+- **Temporizador huérfano en miniaturas**: `sidebar-thumbnails` programaba un `setTimeout` de 2 s sin guardar el identificador, y `teardown()` no lo podía cancelar. Apagar la feature antes de los dos segundos dejaba el precargado vivo, pidiendo imágenes al CDN de Twitch con la feature apagada.
+- **Diagnóstico de rendimiento**: `TwitchPP.diagnostics.perf()` devuelve ticks, media de ticks por segundo, consultas al DOM, ráfagas de mutación y tiempo de arranque. `report()` incluye dos líneas nuevas con las cifras.
+- **La CI se desincronizó de `npm run verify`**: `ci.yml` repetía los pasos a mano y se quedó sin el detector de idioma, que no se ejecutó en ningún pull request. Ahora delega en `verify`, y hay un test que falla si vuelven a separarse.
+- **Correcciones de proceso**: el validador de PR lee las etiquetas desde la API en vez del payload del evento, y no se aplica a los PR de Dependabot, que no pueden llevar issue.
+- **Tests**: 122 unitarios en verde, antes 99.
+
+## 2.2.10 — 2026-10-01
+
+- **Grants que faltaban**: `GM_deleteValue` y `GM_addValueChangeListener` no estaban declarados en el encabezado. Sin ellos, «Restablecer configuración» no borraba nada y la sincronización entre pestañas nunca ocurría.
+- **`managerName()` corregido**: comprobaba `GM_info` con `typeof === 'function'` cuando `GM_info` es un objeto, así que el informe siempre decía «desconocido».
+- **Diagnóstico de APIs**: `TwitchPP.diagnostics.apis()` y la línea «APIs ausentes» en `report()`.
+- **Matriz de compatibilidad** en el README, con lo verificado y lo supuesto.
+- **Tests**: 88 unitarios en verde.
+
+## 2.2.9 — 2026-10-01
+
+- Blindaje integral: fijar escape CSS en modo limpio, limites de regex en menciones, observador dinamico en scheduler, atajo de panel en inputs y soporte de mayus
+
+## 2.2.8 — 2026-10-01
+
+- Fix controles de player con overlays específicos, acotación estricta de tooltips de sidebar, corrección FAB no invasivo y selectores robustos
+
+## 2.2.7 — 2026-10-01
+
+- Actualización de selectores con base en informe de consola en vivo: soporte para sideNav.link, sideNav.more, claimBonus y pauseChat en Twitch moderno
+
+## 2.2.6 — 2026-10-01
+
+- Resolución completa de hallazgos v7: throttle() robusto sin doble ejecución ni argumentos obsoletos, scheduler con MIN_RUN_GAP anti-coalescencia, heurística de extensiones invertida a detección explícita EXTENSION_ICON_HINT protegiendo todos los controles de player (Subtitles, CC, PiP, Audio, RewindLive, Studio)
+
+## 2.2.5 — 2026-10-01
+
+- Auditoría exhaustiva de los 20 bugs del inventario v1.3.0: autoClaim post-click check, chatPause estado nativo sincronizado, sidebarCompact protección de avatar, multi-pestaña GM_addValueChangeListener, FAB con detección de proximidad y pointer-events seguros, restauración de foco previo y Escape en el panel, cola de toasts y limpieza de chatSearch
+
+## 2.2.4 — 2026-10-01
+
+- Fix tooltip miniatura sidebar en layout moderno, aspect ratio 16:9 estricto, optimizaciones de CPU y sync de ajustes en panel
+
 ## 2.2.3 — 2026-09-30
 
 - **Multi-idioma en auto-claim**: soporte ampliado para inglés (`claim bonus`), español (`reclamar bonificación`), portugués (`resgatar bônus`), alemán (`bonus abholen`), francés (`réclamer un bonus`) y ruso (`забрать бонус`).
@@ -60,170 +246,3 @@
 ## 1.3.0
 
 - Versión anterior (script de un solo archivo): OLED, sidebar compacta, ocultar offline, buscador de chat, miniaturas, analítica de viewers, auto Channel Points y pausa de chat.
-
-## 2.2.4 — 2026-10-01
-
-- Fix tooltip miniatura sidebar en layout moderno, aspect ratio 16:9 estricto, optimizaciones de CPU y sync de ajustes en panel
-
-## 2.2.5 — 2026-10-01
-
-- Auditoría exhaustiva de los 20 bugs del inventario v1.3.0: autoClaim post-click check, chatPause estado nativo sincronizado, sidebarCompact protección de avatar, multi-pestaña GM_addValueChangeListener, FAB con detección de proximidad y pointer-events seguros, restauración de foco previo y Escape en el panel, cola de toasts y limpieza de chatSearch
-
-## 2.2.6 — 2026-10-01
-
-- Resolución completa de hallazgos v7: throttle() robusto sin doble ejecución ni argumentos obsoletos, scheduler con MIN_RUN_GAP anti-coalescencia, heurística de extensiones invertida a detección explícita EXTENSION_ICON_HINT protegiendo todos los controles de player (Subtitles, CC, PiP, Audio, RewindLive, Studio)
-
-## 2.2.7 — 2026-10-01
-
-- Actualización de selectores con base en informe de consola en vivo: soporte para sideNav.link, sideNav.more, claimBonus y pauseChat en Twitch moderno
-
-## 2.2.8 — 2026-10-01
-
-- Fix controles de player con overlays específicos, acotación estricta de tooltips de sidebar, corrección FAB no invasivo y selectores robustos
-
-## 2.2.9 — 2026-10-01
-
-- Blindaje integral: fijar escape CSS en modo limpio, limites de regex en menciones, observador dinamico en scheduler, atajo de panel en inputs y soporte de mayus
-
-## 2.2.10 — 2026-10-01
-
-- **Grants que faltaban**: `GM_deleteValue` y `GM_addValueChangeListener` no estaban declarados en el encabezado. Sin ellos, «Restablecer configuración» no borraba nada y la sincronización entre pestañas nunca ocurría.
-- **`managerName()` corregido**: comprobaba `GM_info` con `typeof === 'function'` cuando `GM_info` es un objeto, así que el informe siempre decía «desconocido».
-- **Diagnóstico de APIs**: `TwitchPP.diagnostics.apis()` y la línea «APIs ausentes» en `report()`.
-- **Matriz de compatibilidad** en el README, con lo verificado y lo supuesto.
-- **Tests**: 88 unitarios en verde.
-
-## 2.2.11 — 2026-10-01
-
-- **Botón flotante siempre visible**: la regla base de `.fab` era `opacity: 0` y `pointer-events: none`, así que el botón `++` no se veía ni se podía pulsar salvo que el ratón estuviera a menos de 140 px. Ahora está presente a `.3` y siempre pulsable; `awake` y `near` suben opacidad en lugar de hacerlo aparecer.
-- **La sonda no dejaba la configuración sucia**: `probe()` encendía todas las features y las restauraba al final, sin protección. Una excepción a mitad dejaba el panel con todo encendido y persistido, justo en la herramienta que sirve para recuperar la configuración. Ahora restaura en un `finally`.
-- **Temporizador huérfano en miniaturas**: `sidebar-thumbnails` programaba un `setTimeout` de 2 s sin guardar el identificador, y `teardown()` no lo podía cancelar. Apagar la feature antes de los dos segundos dejaba el precargado vivo, pidiendo imágenes al CDN de Twitch con la feature apagada.
-- **Diagnóstico de rendimiento**: `TwitchPP.diagnostics.perf()` devuelve ticks, media de ticks por segundo, consultas al DOM, ráfagas de mutación y tiempo de arranque. `report()` incluye dos líneas nuevas con las cifras.
-- **La CI se desincronizó de `npm run verify`**: `ci.yml` repetía los pasos a mano y se quedó sin el detector de idioma, que no se ejecutó en ningún pull request. Ahora delega en `verify`, y hay un test que falla si vuelven a separarse.
-- **Correcciones de proceso**: el validador de PR lee las etiquetas desde la API en vez del payload del evento, y no se aplica a los PR de Dependabot, que no pueden llevar issue.
-- **Tests**: 122 unitarios en verde, antes 99.
-
-## 2.2.12 — 2026-10-01
-
-- **El buscador de chat ya no cuelga la pestaña**: con la opción de expresión regular, lo que escribías se pasaba tal cual a `new RegExp` y se ejecutaba contra cada línea del chat, en cada tecla y cada 1,2 segundos. Un patrón como `(a+)+$` compilaba bien y luego se pasaba minutos calculando, y eso congela la pestaña de Twitch entera. Ahora los cuantificadores anidados y los patrones de más de 200 caracteres se rechazan antes de compilar, y el buscador avisa en el contador.
-- **El contraste OLED alto ya no pone texto blanco sobre el tema claro**: la feature no dependía de `Tema OLED`, así que con Twitch en tema claro seguía aplicando su CSS y ponía `--color-text-base` a blanco sobre fondo blanco. Ahora comparte su misma condición.
-- **Desactivar y volver a activar `Sin extensiones` vuelve a funcionar**: el registro de elementos ocultados nunca se limpiaba, así que al reencender la feature los iframes y overlays de extensión se quedaban visibles para siempre. Además, al desactivar ya no se borra el estilo que tenía Twitch, sino que se restaura.
-- **El catálogo remoto deja de ganar por llegar antes**: un selector del repo que acertaba una vez se quedaba como campeón para siempre. Ahora el orden lo marca el historial de cada candidato, y tres fallos seguidos lo degradan.
-- **Diagnóstico de rendimiento**: `TwitchPP.diagnostics.perf()` devuelve ticks, consultas al DOM, ráfagas de mutación y tiempo de arranque.
-- **Suite de navegador**: 15 tests en Chromium real que leen estilos computados, para lo que el DOM stub no puede comprobar. No forma parte de `npm run verify`, que sigue funcionando sin instalar nada.
-- **Las notas del CHANGELOG se leen de un archivo**: en Windows, el texto con acentos que pasa por la línea de comandos llegaba estropeado.
-- **Tests**: 182 en verde, antes 143.
-
-## 2.2.13 — 2026-10-02
-
-- ## Corrección: el resaltado de palabras clave cuelgaba la pestaña igual que el buscador
-- Con *Tratar como regex* activado, las palabras del cuadro de texto se unían con `|` y se compilaban. Solo se escapaba la barra invertida y la propia barra, así que escribir `(a+)+$` construía un patrón catastrófico sin haber pedido una regex: solo esperar que se resalte una palabra.
-- Una sola línea de chat de 41 caracteres tardaba **137 segundos** con ese patrón, y el resaltado revisa la pantalla cada segundo.
-- Ahora las dos features donde el usuario escribe expresiones pasan por el mismo comprobador, en `src/core/regex.js`:
-- **Buscador de chat**: ya lo usaba desde la versión anterior. Lo que cambia es el texto del aviso: dice cuántos caracteres acepta en vez de un «demasiado largo» sin número.
-- **Resaltado de palabras clave**: es el que se arregla aquí. Antes no comprobaba nada.
-- Un patrón con **sintaxis inválida** sigue cayendo a texto plano sin avisar, porque es un error de quien escribe y no un problema de rendimiento. Solo se avisa cuando el patrón cuelga el navegador de verdad.
-
-## 2.2.14 — 2026-10-02
-
-- ## Corrección: apagar y volver a encender «Resaltar menciones» dejaba de funcionar
-- La feature marca cada línea de chat con dos señales: una clase para pintar el resaltado, y un atributo para no volver a mirar esa misma línea.
-- El atributo se ponía en todas las líneas, pero al desactivar solo se limpiaban las que tenían la clase. Las demás se quedaban con el atributo puesto para siempre.
-- Y ahí está el problema: al volver a encender, la feature salta las líneas que ya tienen el atributo, precisamente las que debería volver a mirar. Un ciclo de apagar y encender dejaba esas líneas sin posibilidad de volver a resaltarse, aunque su texto hubiera cambiado y ahora fueran una mención.
-
-## 2.2.15 — 2026-10-02
-
-- ## Corrección: pausar el chat no pausaba el chat
-- La función que congela la lista de mensajes cuando pulsas «Pausar chat» iba a mirar por dónde podía deslizarse, pero empezaba a mirar **un nivel por encima de donde está el chat**. Así que nunca llegaba a mirar el chat.
-- El resultado era que el bloqueo se ponía sobre un elemento que no se puede desplazar. El script escuchaba a los scrolls, los interceptaba, y escribía la posición allí donde no se nota. El chat seguía bajando igual.
-- Afectaba a quien no ve el botón de pausa propio de Twitch, porque si lo tiene, el script pulsa ese y sí funciona. El botón desaparece cuando el chat está plegado, o cuando Twitch cambia sus etiquetas internas. Ahí «Pausar chat» no hacía nada, sin avisar.
-- Ahora sí. Y si vas hacia arriba con la rueda mientras está pausado, tienes un momento para leer, y el chat vuelve a pararse donde lo dejes.
-
-## 2.2.16 — 2026-10-02
-
-- ## Corrección: «Solo en tema oscuro de Twitch» ya no se ignoraba
-- Si tenías activado el ajuste que dice no pisar el tema de Twitch, el script te ponía la página negra igualmente.
-- La causa era bastante tonta: el tema se detectaba mirando el color del fondo de la página, y ese color lo ponía el propio script en negro. O sea, se preguntaba a sí mismo qué tema había, y se contestaba siempre «oscuro». Da igual cuántas veces cambiaras el tema en Twitch: la detección nunca podía ver una página clara.
-- Ahora el tema se lee de un sitio que el script no toca, y se comprueba que el fondo tenga color de verdad: un fondo transparente contaba como negro.
-- También se ha añadido el caso simétrico al que ya existía: si la página dice que el tema es claro, se respeta. Si tu versión de Twitch no usa ese nombre, no cambia nada: el ajuste sigue funcionando gracias a la otra parte del arreglo.
-- No verás ninguna diferencia si ya usabas el tema oscuro, que es lo que a la mayoría le importa. Si tenías que pelearte con el script para ver la página clara, esto es lo que te faltaba.
-
-## 2.2.17 — 2026-10-02
-
-- ## Corrección urgente: el tema OLED y el contraste alto estaban apagados
-- Si tienes la versión de ayer, dos de las features no funcionan: **Tema OLED** y **Contraste alto**. El resto del script va bien.
-- Por un error mío al escribir un ajuste: al comprobar el tema de Twitch, el código fallaba en lugar de responder, y ese fallo se traducía en «no activado». Nada de tu configuración estaba mal, y no había forma de verlo desde el panel.
-- Lo que sí funcionaba era la mejora que venía con esa versión: ahora el tema claro de Twitch se respeta de verdad, porque la detección ya no se pregunta a sí misma qué color tiene la página.
-- Si tenías las dos features apagadas y te parecían un problema, ya está resuelto. Sorry por el susto.
-- ## Corrección: los overlays de extensión volvían a quedarse ocultos
-- Con **Sin extensiones** activada, los recuadros de las extensiones desaparecían bien, pero al desactivar el ajuste alguno se quedaba escondido sin poder volver.
-- Consecuencia real: si la activabas por error y la quitabas, tenías que recargar la página.
-- Era una palabra mal escrita al devolver los estilos que el propio script había puesto antes de esconderlos. El error se escondía porque el script no lo lanzaba como fallo visible, sino que lo anotaba en silencio. Por eso no se notaba y por eso parecía imposible.
-- ## Área afectada
-- `package.json`, `CHANGELOG.md`, `dist/`
-
-## 2.2.18 — 2026-10-03
-
-- ## Corrección
-- **Miniatura en sidebar** vuelve a aparecer. `channelFromCard()` buscaba el canal solo entre los descendientes de la card, pero Twitch hace que la card **sea** el enlace. Sin canal no se inyectaba nada y la feature se apagaba en silencio, sin error ni aviso. Issue #102.
-- ## Tests
-- Dos tests de regresión para `channelFromCard`: card que es el `<a>` y card con el enlace dentro. Comprobado que fallan contra el código anterior.
-
-## 2.2.19 — 2026-10-03
-
-- ## Correcciones
-- **Miniatura en sidebar** (#109): al volver a un canal que ya habías visitado, la miniatura no aparecía o tardaba mucho. Twitch no destruye el tooltip anterior, lo deja conectado durante la transición de salida marcado como `aria-hidden`, y el script se quedaba enganchado a ese en vez de al nuevo. Ahora solo se usan los tooltips vivos y se reintenta mientras Twitch abre el correcto.
-- **Miniatura en sidebar** (#109): las miniaturas se apilaban al pasar rápido de un canal a otro, porque la limpieza dependía de un temporizador que siempre se cancelaba. Ahora se quita la anterior al cambiar de canal.
-- **Miniatura en sidebar** (#102): la miniatura no aparecía en absoluto, porque el canal no se leía de la card cuando la card es el propio enlace.
-- ## Tests
-- 1 test nuevo para el filtro de tooltips, verificado que falla contra el código anterior.
-- Total: 192 unitarios + 69 de navegador.
-
-## 2.2.20 — 2026-10-03
-
-- ## Diagnóstico
-- **Motivo de inactividad** (#116): ahora se puede saber por qué una feature está activa y no hace su trabajo. Antes, un fallo silencioso y un fallo de red se veían exactamente igual desde fuera: fue lo que escondió los bugs #102 y #109. Se expone en `statuses()` y en `diagnostics.motivos()`.
-- **Puente de diagnóstico** (#117): `TwitchPP.diagnostics()` y `TwitchPP.motivoDe(id)` ya se pueden llamar desde la consola de la página. Antes, con el aislamiento de `@grant`, no había forma de consultar el estado real del script.
-- ## Por qué
-- Depurar ocurre en el navegador de quien lo usa, no en CI. Hoy hicieron falta dos sondas escritas durante la sesión para encontrar dos bugs. Con esto, la información que buscaban esas sondas la da el propio script.
-- ## Tests
-- 8 casos para el motivo de inactividad, 6 para el puente, y uno en navegador real que comprueba que el motivo aparece en `diagnostics.features()`.
-- Total: 206 unitarios + 74 de navegador.
-- ## Notas
-- El test del puente cazó un bug antes de publicar: el handler leía el evento en vez de su `detail`, así que en un navegador real no habría respondido nunca.
-- El puente cruza **cadenas**, no objetos: entre mundos un objeto puede llegar vacío y el fallo sería silencioso.
-- Si la CSP de Twitch bloquea el script inyectado, el puente simplemente no existe y todo lo demás sigue funcionando.
-
-## 2.2.21 — 2026-10-03
-
-- ## Diagnóstico
-- **Historial de navegación** (#122): `TwitchPP.navegacion()` devuelve las últimas rutas con el motivo de cada salto (`pushState`, `replaceState`, `popstate`, `initial`) y, si hubo recarga, de qué canal se salió. Antes el router recibía ese dato y lo tiraba.
-- ## Por qué
-- Para poder evitar el salto al terminar una raid (#113) hace falta una medición que no se puede sacar leyendo el código: ¿Twitch cambia la ruta sin recargar, o recarga la página? Según cuál sea, el arreglo es distinto.
-- Esto lo convierte en una línea:
-- ```js
-- await TwitchPP.navegacion()
-- ```
-- y hace que no haya que pegar sondas en la consola.
-- ## Details de implementación
-- Solo se escribe en almacenamiento cuando la página se va (`pagehide`). Durante el uso normal no hay ninguna escritura, y ese es justo el momento en que hay que guardar: un salto con recarga se llevaría por delante la evidencia.
-- Tope de 30 entradas: el diagnóstico interesa de los últimos segundos, no del historial completo.
-- ## Tests
-- 6 casos nuevos para el historial de navegación.
-- Total: 212 unitarios + 74 de navegador.
-
-## 2.2.22 — 2026-10-03
-
-- ## Mejora
-- **Reconectar si se corta el directo** (#127): si el vídeo lleva 8 segundos congelado en un directo mientras tú no lo has pausado a propósito, el script intenta despertarlo. Espera progresiva entre intentos y, tras 4, se detiene y deja constancia en lugar de seguir insistiendo.
-- ## Detalles
-- **No evita que un directo termine.** El vídeo viene del servidor del streamer; cuando deja de emitir no hay nada que reproducir, y ningún código en tu navegador cambia eso. Solo se recupera de cortes mientras el canal sigue emitiendo.
-- Apagada por defecto. Actívala en el panel, en **Automatización**.
-- La recarga de página está **apagada** también: primero intenta solo `play()`, que resuelve casi todos los cortes. Recargar en bucle puede acabar con la IP bloqueada por Twitch, así que no se hace sin permiso.
-- Espera inicial y espera máxima configurables.
-- Solo afecta a directos: en un VOD la recarga te perdería la posición.
-- ## Corregido
-- La reconexión no daba más de 4 intentos. Al agotarlos se reiniciaba el contador y volvía a empezar: un bucle infinito disfrazado de espera progresiva.
-- ## Tests
-- 6 casos sobre los valores por defecto y el ciclo de vida, 5 en Chromium con el reloj falseado.
-- Total: 218 unitarios + 79 de navegador.
