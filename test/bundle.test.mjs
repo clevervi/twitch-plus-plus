@@ -96,7 +96,7 @@ test('el panel renderiza una fila por feature y por atajo', () => {
   const features = shadow.querySelectorAll('input[type="checkbox"][data-key]');
   const keybinds = shadow.querySelectorAll('.kb-input');
   assert.ok(features.length >= 15, `solo ${features.length} toggles`);
-  assert.equal(keybinds.length, 3);
+  assert.equal(keybinds.length, 4);
   assert.equal(shadow.getElementById('panel') !== null, true);
   assert.equal(shadow.getElementById('fab') !== null, true);
 });

@@ -37,6 +37,7 @@ declare('debug', 'bool', false);
 function registerKeybinds() {
   registerKeybind('panel', 'Abrir panel', 'Alt+Shift+T', { allowWhileTyping: true });
   registerKeybind('chatPause', 'Pausar chat', 'Alt+Shift+P');
+  registerKeybind('chatFocus', 'Modo concentración', 'Alt+Shift+F');
   registerKeybind('pauseAll', 'Desactivar todo', 'Alt+Shift+X');
 }
 
@@ -47,6 +48,11 @@ function runAction(id) {
   }
   if (id === 'chatPause') {
     ChatPause.toggle();
+    UI.sync();
+    return;
+  }
+  if (id === 'chatFocus') {
+    setFeature('chatFocus', !storeGet('chatFocus'));
     UI.sync();
     return;
   }

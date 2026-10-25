@@ -3377,12 +3377,241 @@ defineFeature({
   },
 });
 return {
+  buildMatcher: buildMatcher,
+};
+})();
 
+/* ---- src/features/mention-highlight.js ---- */
+const __m25 = (function () {
+const { defineFeature: defineFeature } = __m6;
+const { chatContainer: chatContainer, chatLines: chatLines, currentUsername: currentUsername, messageText: messageText } = __m15;
+
+/** Resalta los mensajes que te mencionan. */
+
+
+
+const CLASS = 'twpp-mention';
+const ATTR = 'data-twpp-mention';
+let username = null;
+let pattern = null;
+
+/**
+ * Patrón de mención para un nombre concreto. Es puro para poder reutilizarlo
+ * desde el modo concentración sin depender de que esta feature esté activa.
+ */
+function buildMentionPattern(name) {
+  const value = String(name || '').trim();
+  if (!value) return null;
+  const escaped = value.replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
+  return new RegExp(`(?:^|[^a-zA-Z0-9_])@?${escaped}(?:[^a-zA-Z0-9_]|$)`, 'i');
+}
+
+function detectUsername() {
+  if (username) return username;
+  username = currentUsername();
+  if (!username) return null;
+  pattern = buildMentionPattern(username);
+  return username;
+}
+
+// La clase ES el estado: si el usuario se detecta tarde o cambia de cuenta,
+// los mensajes ya marcados se reevalúan solos.
+function sweep() {
+  if (!detectUsername()) return;
+  const container = chatContainer();
+  if (!container) return;
+  for (const line of chatLines(container)) {
+    if (line.hasAttribute(ATTR)) continue;
+    line.setAttribute(ATTR, '1');
+    if (pattern.test(messageText(line))) line.classList.add(CLASS);
+  }
+}
+
+// Se buscan los DOS marcadores, no solo los que tienen la clase. Con
+// `.twpp-mention` como único criterio, los nodos que ya tenían el atributo
+// puesto pero no llegaron a resaltarse se quedaban marcados para siempre: en el
+// siguiente sweep() la línea se saltaba por tener el atributo y no se reevaluaba
+// nunca más.
+function clear() {
+  for (const line of document.querySelectorAll(`.${CLASS}, [${ATTR}]`)) {
+    line.classList.remove(CLASS);
+    line.removeAttribute(ATTR);
+  }
+}
+
+defineFeature({
+  id: 'mentionHighlight',
+  label: 'Resaltar menciones',
+  section: 'chat',
+  default: false,
+  interval: 700,
+  css: `
+    %SCOPE% .twpp-mention {
+      background: rgba(145, 71, 255, .18) !important;
+      border-left: 3px solid #9147ff !important;
+      padding-left: 6px !important;
+    }
+  `,
+  tick: sweep,
+  onEnable() {
+    username = null;
+    pattern = null;
+    sweep();
+  },
+  onDisable: clear,
+  onRoute() {
+    username = null;
+    pattern = null;
+    clear();
+  },
+});
+return {
+  buildMentionPattern: buildMentionPattern,
+};
+})();
+
+/* ---- src/features/chat-focus.js ---- */
+const __m26 = (function () {
+const { anotarMotivo: anotarMotivo, defineFeature: defineFeature, limpiarMotivo: limpiarMotivo } = __m6;
+const { get: storeGet, onChange: onChange } = __m5;
+const { chatContainer: chatContainer, chatLines: chatLines, currentUsername: currentUsername, messageText: messageText, usernameOf: usernameOf } = __m15;
+const { buildMatcher: buildMatcher } = __m24;
+const { buildMentionPattern: buildMentionPattern } = __m25;
+
+/** Modo concentración: deja solo las menciones y las palabras clave. */
+
+
+
+
+
+
+const ID = 'chatFocus';
+const HIDE = 'twpp-focus-hidden';
+const DIM = 'twpp-focus-dim';
+const ATTR = 'data-twpp-focus';
+
+let username = null;
+let mention = null;
+let stop = null;
+
+/**
+ * Una línea se queda si te menciona o si contiene alguna palabra clave. Sin
+ * ningún criterio se queda todo: ocultar el chat entero por no haber
+ * configurado nada sería peor que no hacer nada.
+ */
+function isRelevant(text, mention, matcher) {
+  if (!mention && !matcher) return true;
+  if (mention?.test(text)) return true;
+  if (matcher instanceof RegExp ? matcher.test(text) : matcher?.(text)) return true;
+  return false;
+}
+
+function clear() {
+  for (const line of document.querySelectorAll(`.${HIDE}, .${DIM}, [${ATTR}]`)) {
+    line.classList.remove(HIDE, DIM);
+    line.removeAttribute(ATTR);
+  }
+}
+
+function sweep() {
+  const actual = currentUsername();
+  if (actual !== username) {
+    username = actual;
+    mention = buildMentionPattern(actual);
+    clear();
+  }
+
+  const matcher = buildMatcher();
+  if (!mention && !matcher) {
+    anotarMotivo(ID, 'sin menciones ni palabras clave que buscar');
+    clear();
+    return;
+  }
+
+  const container = chatContainer();
+  if (!container) {
+    anotarMotivo(ID, 'chat no disponible en esta pagina');
+    return;
+  }
+  limpiarMotivo(ID);
+
+  const mode = storeGet('chatFocusMode') === 'dim' ? 'dim' : 'hide';
+  const mark = mode === 'dim' ? DIM : HIDE;
+  const other = mode === 'dim' ? HIDE : DIM;
+  for (const line of chatLines(container)) {
+    if (line.hasAttribute(ATTR)) continue;
+    line.setAttribute(ATTR, '1');
+    // Tus propios mensajes se quedan: ocultarlos haría dudar de si se enviaron.
+    if (username && usernameOf(line) === username.toLowerCase()) continue;
+    if (isRelevant(messageText(line), mention, matcher)) continue;
+    line.classList.remove(other);
+    line.classList.add(mark);
+  }
+}
+
+defineFeature({
+  id: ID,
+  label: 'Modo concentración',
+  section: 'chat',
+  default: false,
+  interval: 700,
+  settings: [
+    {
+      key: 'chatFocusMode',
+      label: 'Qué hacer con el resto',
+      type: 'select',
+      options: [['hide', 'Ocultar'], ['dim', 'Atenuar']],
+      default: 'hide',
+    },
+    {
+      key: 'chatKeywords',
+      label: 'Palabras clave (separadas por coma)',
+      type: 'text',
+      placeholder: 'hola, clip, raid',
+    },
+    { key: 'chatKeywordRegex', label: 'Tratar como regex', type: 'bool', default: false },
+  ],
+  css: `
+    %SCOPE% .twpp-focus-hidden {
+      display: none !important;
+    }
+    %SCOPE% .twpp-focus-dim {
+      opacity: .2 !important;
+    }
+  `,
+  tick: sweep,
+  onEnable() {
+    username = null;
+    mention = null;
+    clear();
+    stop = onChange((key) => {
+      if (key !== 'chatKeywords' && key !== 'chatKeywordRegex' && key !== 'chatFocusMode') return;
+      clear();
+      sweep();
+    });
+    sweep();
+  },
+  onDisable() {
+    stop?.();
+    stop = null;
+    username = null;
+    mention = null;
+    limpiarMotivo(ID);
+    clear();
+  },
+  onRoute() {
+    username = null;
+    mention = null;
+    clear();
+  },
+});
+return {
+  isRelevant: isRelevant,
 };
 })();
 
 /* ---- src/features/chat-search.js ---- */
-const __m25 = (function () {
+const __m27 = (function () {
 const { qs: qs } = __m11;
 const { defineFeature: defineFeature } = __m6;
 const { compilarSeguro: compilarSeguro } = __m23;
@@ -3587,7 +3816,7 @@ return {
 })();
 
 /* ---- src/features/clean-mode.js ---- */
-const __m26 = (function () {
+const __m28 = (function () {
 const { defineFeature: defineFeature } = __m6;
 
 defineFeature({
@@ -3621,7 +3850,7 @@ return {
 })();
 
 /* ---- src/features/dark-mode.js ---- */
-const __m27 = (function () {
+const __m29 = (function () {
 const { defineFeature: defineFeature } = __m6;
 const { get: storeGet } = __m5;
 const { isDarkTheme: isDarkTheme } = __m15;
@@ -3743,7 +3972,7 @@ return {
 })();
 
 /* ---- src/features/hide-blocks.js ---- */
-const __m28 = (function () {
+const __m30 = (function () {
 const { defineFeature: defineFeature } = __m6;
 
 defineFeature({
@@ -3809,7 +4038,7 @@ return {
 })();
 
 /* ---- src/features/hide-chat-extras.js ---- */
-const __m29 = (function () {
+const __m31 = (function () {
 const { defineFeature: defineFeature } = __m6;
 
 defineFeature({
@@ -3832,7 +4061,7 @@ return {
 })();
 
 /* ---- src/features/hide-extensions.js ---- */
-const __m30 = (function () {
+const __m32 = (function () {
 const { qsAll: qsAll } = __m11;
 const { log: log } = __m2;
 const { defineFeature: defineFeature } = __m6;
@@ -4072,7 +4301,7 @@ return {
 })();
 
 /* ---- src/features/hide-offline-channels.js ---- */
-const __m31 = (function () {
+const __m33 = (function () {
 const { qs: qs } = __m11;
 const { defineFeature: defineFeature } = __m6;
 const { selectAll: selectAll } = __m3;
@@ -4137,87 +4366,8 @@ return {
 };
 })();
 
-/* ---- src/features/mention-highlight.js ---- */
-const __m32 = (function () {
-const { defineFeature: defineFeature } = __m6;
-const { chatContainer: chatContainer, chatLines: chatLines, currentUsername: currentUsername, messageText: messageText } = __m15;
-
-/** Resalta los mensajes que te mencionan. */
-
-
-
-const CLASS = 'twpp-mention';
-const ATTR = 'data-twpp-mention';
-let username = null;
-let pattern = null;
-
-function detectUsername() {
-  if (username) return username;
-  username = currentUsername();
-  if (!username) return null;
-  const escaped = username.replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
-  pattern = new RegExp(`(?:^|[^a-zA-Z0-9_])@?${escaped}(?:[^a-zA-Z0-9_]|$)`, 'i');
-  return username;
-}
-
-// La clase ES el estado: si el usuario se detecta tarde o cambia de cuenta,
-// los mensajes ya marcados se reevalúan solos.
-function sweep() {
-  if (!detectUsername()) return;
-  const container = chatContainer();
-  if (!container) return;
-  for (const line of chatLines(container)) {
-    if (line.hasAttribute(ATTR)) continue;
-    line.setAttribute(ATTR, '1');
-    if (pattern.test(messageText(line))) line.classList.add(CLASS);
-  }
-}
-
-// Se buscan los DOS marcadores, no solo los que tienen la clase. Con
-// `.twpp-mention` como único criterio, los nodos que ya tenían el atributo
-// puesto pero no llegaron a resaltarse se quedaban marcados para siempre: en el
-// siguiente sweep() la línea se saltaba por tener el atributo y no se reevaluaba
-// nunca más.
-function clear() {
-  for (const line of document.querySelectorAll(`.${CLASS}, [${ATTR}]`)) {
-    line.classList.remove(CLASS);
-    line.removeAttribute(ATTR);
-  }
-}
-
-defineFeature({
-  id: 'mentionHighlight',
-  label: 'Resaltar menciones',
-  section: 'chat',
-  default: false,
-  interval: 700,
-  css: `
-    %SCOPE% .twpp-mention {
-      background: rgba(145, 71, 255, .18) !important;
-      border-left: 3px solid #9147ff !important;
-      padding-left: 6px !important;
-    }
-  `,
-  tick: sweep,
-  onEnable() {
-    username = null;
-    pattern = null;
-    sweep();
-  },
-  onDisable: clear,
-  onRoute() {
-    username = null;
-    pattern = null;
-    clear();
-  },
-});
-return {
-
-};
-})();
-
 /* ---- src/features/sidebar-compact.js ---- */
-const __m33 = (function () {
+const __m34 = (function () {
 const { defineFeature: defineFeature } = __m6;
 const { get: storeGet, onChange: onChange } = __m5;
 
@@ -4279,7 +4429,7 @@ return {
 })();
 
 /* ---- src/features/sidebar-thumbnails.js ---- */
-const __m34 = (function () {
+const __m35 = (function () {
 const { log: log } = __m2;
 const { defineFeature: defineFeature, anotarMotivo: anotarMotivo, limpiarMotivo: limpiarMotivo } = __m6;
 const { get: storeGet } = __m5;
@@ -4667,7 +4817,7 @@ return {
 })();
 
 /* ---- src/features/theater-clean.js ---- */
-const __m35 = (function () {
+const __m36 = (function () {
 const { defineFeature: defineFeature } = __m6;
 
 defineFeature({
@@ -4701,7 +4851,7 @@ return {
 })();
 
 /* ---- src/features/viewer-analytics.js ---- */
-const __m36 = (function () {
+const __m37 = (function () {
 const { defineFeature: defineFeature } = __m6;
 const { get: storeGet } = __m5;
 const { chatContainer: chatContainer, chatLines: chatLines, usernameOf: usernameOf, viewerCount: viewerCount } = __m15;
@@ -4855,7 +5005,7 @@ return {
 })();
 
 /* ---- src/features/index.js ---- */
-const __m37 = (function () {
+const __m38 = (function () {
 /**
  * Índice de features.
  *
@@ -4868,7 +5018,7 @@ return {
 })();
 
 /* ---- src/ui/panel-css.js ---- */
-const __m38 = (function () {
+const __m39 = (function () {
 const PANEL_CSS = `
   :host { all: initial; }
   * { box-sizing: border-box; font-family: "Inter","Roobert",-apple-system,"Segoe UI",Roboto,sans-serif; }
@@ -4995,7 +5145,7 @@ return {
 })();
 
 /* ---- src/ui/presets.js ---- */
-const __m39 = (function () {
+const __m40 = (function () {
 /** Presets: un clic y la config queda como quieres. */
 const PRESETS = {
   minimal: ['darkMode', 'cleanMode', 'autoClaim'],
@@ -5049,7 +5199,7 @@ return {
 })();
 
 /* ---- src/ui/panel.js ---- */
-const __m40 = (function () {
+const __m41 = (function () {
 const { on: onBus } = __m0;
 const { setDebug: setDebug, trackedErrors: trackedErrors } = __m2;
 const { all: allFeatures, apply: apply, applyAll: applyAll, SECTIONS: SECTIONS, statuses: statuses } = __m6;
@@ -5062,8 +5212,8 @@ const { clearCache: clearCache, refresh: refreshCatalog, status: catalogStatus }
 const { check: checkUpdate, install: installUpdate, shouldCheck: shouldCheck } = __m19;
 const { ChatPause: ChatPause } = __m20;
 const { VERSION: VERSION } = __m8;
-const { PANEL_CSS: PANEL_CSS } = __m38;
-const { PRESETS: PRESETS, PRESET_LABELS: PRESET_LABELS, idsOf: idsOf } = __m39;
+const { PANEL_CSS: PANEL_CSS } = __m39;
+const { PRESETS: PRESETS, PRESET_LABELS: PRESET_LABELS, idsOf: idsOf } = __m40;
 
 /** Panel de control en shadow DOM (sin colisiones con el CSS de Twitch). */
 
@@ -5787,7 +5937,7 @@ return {
 })();
 
 /* ---- src/app.js ---- */
-const __m41 = (function () {
+const __m42 = (function () {
 const { on: onBus } = __m0;
 const { refresh: refreshCatalog, status: catalogStatus, warm: warmCatalog } = __m9;
 const { onIdle: onIdle, ready: ready } = __m11;
@@ -5807,7 +5957,7 @@ const { show: toast } = __m18;
 const { check: checkUpdate, shouldCheck: shouldCheck } = __m19;
 const { VERSION: VERSION } = __m8;
 const { ChatPause: ChatPause } = __m20;
-const { UI: UI } = __m40;
+const { UI: UI } = __m41;
 
 /**
  * Arranque y API de diagnóstico.
@@ -5848,6 +5998,7 @@ declare('debug', 'bool', false);
 function registerKeybinds() {
   registerKeybind('panel', 'Abrir panel', 'Alt+Shift+T', { allowWhileTyping: true });
   registerKeybind('chatPause', 'Pausar chat', 'Alt+Shift+P');
+  registerKeybind('chatFocus', 'Modo concentración', 'Alt+Shift+F');
   registerKeybind('pauseAll', 'Desactivar todo', 'Alt+Shift+X');
 }
 
@@ -5858,6 +6009,11 @@ function runAction(id) {
   }
   if (id === 'chatPause') {
     ChatPause.toggle();
+    UI.sync();
+    return;
+  }
+  if (id === 'chatFocus') {
+    setFeature('chatFocus', !storeGet('chatFocus'));
     UI.sync();
     return;
   }
@@ -6028,7 +6184,7 @@ return {
 })();
 
 /* ---- src/core/bridge.js ---- */
-const __m42 = (function () {
+const __m43 = (function () {
 const { log: log } = __m2;
 
 /**
@@ -6144,9 +6300,9 @@ return {
 })();
 
 /* ---- src/index.js ---- */
-const __m43 = (function () {
-const { diagnostics: diagnostics, setFeature: setFeature, start: start } = __m41;
-const { start: startBridge } = __m42;
+const __m44 = (function () {
+const { diagnostics: diagnostics, setFeature: setFeature, start: start } = __m42;
+const { start: startBridge } = __m43;
 const { VERSION: VERSION } = __m8;
 
 /**
@@ -6172,6 +6328,6 @@ return {
 };
 })();
 
-__m43;
+__m44;
 
 })();
