@@ -68,6 +68,51 @@ export function get(id) {
   return byId.get(id) || null;
 }
 
+/**
+ * Sustituye una feature remota manteniendo su sitio en el registro. El catálogo
+ * puede cambiar el CSS sin recargar la página; las features locales nunca se
+ * pisan desde la red.
+ */
+export function replaceRemote(spec) {
+  if (!spec || !spec.id) return null;
+  const feature = byId.get(spec.id);
+  if (!feature || !feature.remote) return null;
+
+  const section = SECTIONS.some((s) => s.id === spec.section) ? spec.section : 'advanced';
+  const next = {
+    id: feature.id,
+    label: spec.label,
+    section,
+    css: spec.css,
+    interval: spec.interval || 0,
+    remote: true,
+    default: false,
+  };
+  for (const key of Object.keys(feature)) {
+    if (!(key in next)) delete feature[key];
+  }
+  Object.assign(feature, next);
+  apply(feature.id);
+  return feature;
+}
+
+/** Retira una feature remota y su clase; la preferencia del usuario se conserva. */
+export function removeRemote(id) {
+  const feature = byId.get(id);
+  if (!feature || !feature.remote) return false;
+
+  const index = features.indexOf(feature);
+  if (index >= 0) features.splice(index, 1);
+  byId.delete(id);
+  failures.delete(id);
+  lastRun.delete(id);
+  guards.delete(id);
+  reasons.delete(id);
+  document.documentElement.classList.remove(scopeClass(id));
+  emit('feature:toggled', { id, on: false, enabled: false });
+  return true;
+}
+
 export function isEnabled(id) {
   return !!storeGet(id);
 }

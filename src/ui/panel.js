@@ -7,7 +7,7 @@ import { brokenSelectors, selectorReport } from '../core/selectors.js';
 import { declare, exportJSON, get, importJSON, reset as resetStore, set, setMany } from '../core/store.js';
 import { list as keybindList, setCombo } from '../core/keybinds.js';
 import { setHost as setToastHost, show as toast } from '../core/toast.js';
-import { clearCache, refresh as refreshCatalog, status as catalogStatus } from '../core/catalog.js';
+import { refresh as refreshCatalog, status as catalogStatus } from '../core/catalog.js';
 import { check as checkUpdate, install as installUpdate, shouldCheck } from '../core/updater.js';
 import { ChatPause } from '../features/chat-pause.js';
 import { VERSION } from '../core/version.js';
@@ -634,7 +634,6 @@ async function runUpdateCheck() {
 async function runCatalogRefresh() {
   const button = shadow.querySelector('[data-action="catalog"]');
   button.disabled = true;
-  clearCache();
   const result = await refreshCatalog({ force: true });
   button.disabled = false;
   renderCatalogNote(result);

@@ -1089,6 +1089,51 @@ function get(id) {
   return byId.get(id) || null;
 }
 
+/**
+ * Sustituye una feature remota manteniendo su sitio en el registro. El catálogo
+ * puede cambiar el CSS sin recargar la página; las features locales nunca se
+ * pisan desde la red.
+ */
+function replaceRemote(spec) {
+  if (!spec || !spec.id) return null;
+  const feature = byId.get(spec.id);
+  if (!feature || !feature.remote) return null;
+
+  const section = SECTIONS.some((s) => s.id === spec.section) ? spec.section : 'advanced';
+  const next = {
+    id: feature.id,
+    label: spec.label,
+    section,
+    css: spec.css,
+    interval: spec.interval || 0,
+    remote: true,
+    default: false,
+  };
+  for (const key of Object.keys(feature)) {
+    if (!(key in next)) delete feature[key];
+  }
+  Object.assign(feature, next);
+  apply(feature.id);
+  return feature;
+}
+
+/** Retira una feature remota y su clase; la preferencia del usuario se conserva. */
+function removeRemote(id) {
+  const feature = byId.get(id);
+  if (!feature || !feature.remote) return false;
+
+  const index = features.indexOf(feature);
+  if (index >= 0) features.splice(index, 1);
+  byId.delete(id);
+  failures.delete(id);
+  lastRun.delete(id);
+  guards.delete(id);
+  reasons.delete(id);
+  document.documentElement.classList.remove(scopeClass(id));
+  emit('feature:toggled', { id, on: false, enabled: false });
+  return true;
+}
+
 function isEnabled(id) {
   return !!storeGet(id);
 }
@@ -1234,6 +1279,8 @@ return {
   defineFeature: defineFeature,
   all: all,
   get: get,
+  replaceRemote: replaceRemote,
+  removeRemote: removeRemote,
   isEnabled: isEnabled,
   apply: apply,
   applyAll: applyAll,
@@ -1323,7 +1370,7 @@ const { emit: emit } = __m0;
 const { getJson: getJson, getValue: getValue, setValue: setValue } = __m1;
 const { log: log, warn: warn } = __m2;
 const { applyRemote: applyRemoteSelectors, clearRemote: clearRemoteSelectors } = __m3;
-const { SECTIONS: SECTIONS, all: all, apply: apply, defineFeature: defineFeature } = __m6;
+const { SECTIONS: SECTIONS, all: all, apply: apply, defineFeature: defineFeature, removeRemote: removeRemote, replaceRemote: replaceRemote } = __m6;
 const { rebuild: rebuildStyles } = __m7;
 const { get: storeGet } = __m5;
 const { CATALOG_URL: CATALOG_URL } = __m8;
@@ -1379,9 +1426,22 @@ function validFeature(spec) {
   return true;
 }
 
+/** Copia solo los campos que el catálogo puede definir; nada de hooks ni settings. */
+function remoteFeature(spec) {
+  return {
+    id: spec.id,
+    label: spec.label,
+    section: spec.section,
+    css: spec.css,
+    interval: spec.interval || 0,
+    remote: true,
+    default: false,
+  };
+}
+
 /** Aplica un catálogo ya validado. Devuelve un resumen de lo aplicado. */
 function applyCatalog(data) {
-  const summary = { revision: data.revision, selectors: 0, features: 0, rejected: 0 };
+  const summary = { revision: data.revision, selectors: 0, features: 0, removed: 0, rejected: 0 };
 
   // Aunque el catálogo no traiga selectores, se aplica el mapa vacío: es lo que
   // retira los overrides de una revisión anterior.
@@ -1390,29 +1450,42 @@ function applyCatalog(data) {
   summary.selectors = result.applied.length;
   summary.rejected += result.rejected.length;
 
-  if (Array.isArray(data.features)) {
-    for (const spec of data.features) {
-      if (!validFeature(spec)) {
-        summary.rejected += 1;
-        continue;
-      }
-      if (all().some((f) => f.id === spec.id)) continue;
-      defineFeature({ ...spec, remote: true, interval: spec.interval || 0, default: false });
+  const listed = new Set();
+  const specs = Array.isArray(data.features) ? data.features : [];
+  for (const spec of specs) {
+    if (spec && typeof spec.id === 'string') listed.add(spec.id);
+    if (!validFeature(spec)) {
+      summary.rejected += 1;
+      continue;
+    }
+    const existing = all().find((feature) => feature.id === spec.id);
+    if (!existing) {
+      defineFeature(remoteFeature(spec));
       apply(spec.id);
       summary.features += 1;
+      continue;
     }
+    if (!existing.remote) continue;
+    replaceRemote(remoteFeature(spec));
+    summary.features += 1;
   }
 
+  for (const feature of all().filter((item) => item.remote)) {
+    if (listed.has(feature.id)) continue;
+    if (removeRemote(feature.id)) summary.removed += 1;
+  }
+
+  const totalFeatures = all().filter((feature) => feature.remote).length;
   last = {
     revision: Number(data.revision) || 0,
     updatedAt: Date.now(),
     selectors: summary.selectors,
-    features: summary.features,
+    features: totalFeatures,
     note: String(data.note || data.notes || '').slice(0, 400),
     error: '',
   };
   writeCache(data);
-  if (summary.selectors || summary.features) rebuildStyles();
+  if (summary.selectors || summary.features || summary.removed) rebuildStyles();
   emit('catalog:updated', summary);
   log('catálogo aplicado:', summary);
   return summary;
@@ -1468,9 +1541,14 @@ function warm() {
 }
 
 function clearCache() {
+  let removed = false;
+  for (const feature of all().filter((item) => item.remote)) {
+    removed = removeRemote(feature.id) || removed;
+  }
   clearRemoteSelectors();
   setValue(CACHE_KEY, null);
   last = { revision: 0, updatedAt: 0, selectors: 0, features: 0, note: '', error: '' };
+  if (removed) rebuildStyles();
 }
 return {
   applyCatalog: applyCatalog,
@@ -5233,7 +5311,7 @@ const { brokenSelectors: brokenSelectors, selectorReport: selectorReport } = __m
 const { declare: declare, exportJSON: exportJSON, get: get, importJSON: importJSON, reset: resetStore, set: set, setMany: setMany } = __m5;
 const { list: keybindList, setCombo: setCombo } = __m12;
 const { setHost: setToastHost, show: toast } = __m18;
-const { clearCache: clearCache, refresh: refreshCatalog, status: catalogStatus } = __m9;
+const { refresh: refreshCatalog, status: catalogStatus } = __m9;
 const { check: checkUpdate, install: installUpdate, shouldCheck: shouldCheck } = __m19;
 const { ChatPause: ChatPause } = __m20;
 const { VERSION: VERSION } = __m8;
@@ -5876,7 +5954,6 @@ async function runUpdateCheck() {
 async function runCatalogRefresh() {
   const button = shadow.querySelector('[data-action="catalog"]');
   button.disabled = true;
-  clearCache();
   const result = await refreshCatalog({ force: true });
   button.disabled = false;
   renderCatalogNote(result);
