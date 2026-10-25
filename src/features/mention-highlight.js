@@ -7,12 +7,22 @@ const ATTR = 'data-twpp-mention';
 let username = null;
 let pattern = null;
 
+/**
+ * Patrón de mención para un nombre concreto. Es puro para poder reutilizarlo
+ * desde el modo concentración sin depender de que esta feature esté activa.
+ */
+export function buildMentionPattern(name) {
+  const value = String(name || '').trim();
+  if (!value) return null;
+  const escaped = value.replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
+  return new RegExp(`(?:^|[^a-zA-Z0-9_])@?${escaped}(?:[^a-zA-Z0-9_]|$)`, 'i');
+}
+
 function detectUsername() {
   if (username) return username;
   username = currentUsername();
   if (!username) return null;
-  const escaped = username.replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
-  pattern = new RegExp(`(?:^|[^a-zA-Z0-9_])@?${escaped}(?:[^a-zA-Z0-9_]|$)`, 'i');
+  pattern = buildMentionPattern(username);
   return username;
 }
 

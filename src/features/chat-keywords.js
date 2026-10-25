@@ -16,7 +16,7 @@ function keywords() {
     .filter(Boolean);
 }
 
-function buildMatcher() {
+export function buildMatcher() {
   const list = keywords();
   // Separador escapado, no un NUL literal: un byte 0 en el fuente hace que
   // herramientas como grep o los visores traten el archivo como binario.
