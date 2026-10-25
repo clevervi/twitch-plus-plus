@@ -217,4 +217,43 @@ describe('la pausa nativa de Twitch se refleja en el panel', () => {
     await pagina.evaluate(() => document.querySelector('#prueba-pausa-nativa')?.remove());
     await dejarPausa(false);
   });
+
+  it('reanudar pulsa el botón nuevo si Twitch reemplazó el anterior', async () => {
+    await pagina.evaluate(() => {
+      const boton = document.createElement('button');
+      boton.id = 'prueba-pausa-vieja';
+      boton.dataset.aTarget = 'chat-pause-button';
+      boton.setAttribute('aria-label', 'Reanudar chat');
+      boton.textContent = 'Reanudar chat';
+      document.querySelector('[data-a-target="chat-room-component-layout"]').prepend(boton);
+    });
+    assert.equal(await esperarPanelPausado(true), true, 'la pausa nativa debe adoptarse primero');
+
+    await pagina.evaluate(() => {
+      const sala = document.querySelector('[data-a-target="chat-room-component-layout"]');
+      const vieja = document.querySelector('#prueba-pausa-vieja');
+      const nueva = document.createElement('button');
+      nueva.id = 'prueba-pausa-nativa';
+      nueva.dataset.aTarget = 'chat-pause-button';
+      nueva.setAttribute('aria-label', 'Reanudar chat');
+      nueva.textContent = 'Reanudar chat';
+      nueva.addEventListener('click', () => {
+        nueva.setAttribute('aria-label', 'Pausar chat');
+        nueva.textContent = 'Pausar chat';
+      });
+      vieja.remove();
+      sala.prepend(nueva);
+      // Sin esperar al `ensure()` de 600 ms: el botón viejo ya está desconectado.
+      window.__twpp.shadow.querySelector('[data-action="pause"]').click();
+    });
+
+    await pagina.waitForTimeout(800);
+    const siguePausado = await pagina.evaluate(
+      () => window.__twpp.shadow.querySelector('[data-action="pause"]').classList.contains('on'),
+    );
+    assert.equal(siguePausado, false, 'el panel no debe volver a marcar pausa tras reanudar');
+
+    await dejarPausa(false);
+    await pagina.evaluate(() => document.querySelector('#prueba-pausa-nativa')?.remove());
+  });
 });
