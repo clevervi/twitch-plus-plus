@@ -113,6 +113,35 @@ test('la barra espaciadora coincide aunque event.key sea un espacio', async () =
   assert.deepEqual(calls, ['espacio']);
 });
 
+test('los alias Return y Up se normalizan al event.key canonico', async () => {
+  // `parseKeybind()` acepta ambos alias, pero el navegador envia `Enter` y
+  // `ArrowUp`. Si se guardan sin normalizar, el atajo nunca coincide.
+  const { bindGlobal, comboOf, register, setCombo, stub } = await keybinds();
+  register('retorno', 'Enter', 'Alt+Return');
+  register('arriba', 'Arriba', 'Alt+Up');
+  assert.equal(setCombo('retorno', 'Alt+Return'), true);
+  assert.equal(setCombo('arriba', 'Alt+Up'), true);
+  assert.equal(comboOf('retorno').key, 'enter');
+  assert.equal(comboOf('arriba').key, 'arrowup');
+
+  const calls = [];
+  bindGlobal((id) => calls.push(id));
+  const key = (overrides) => ({
+    key: 'O',
+    altKey: false,
+    ctrlKey: false,
+    shiftKey: false,
+    metaKey: false,
+    preventDefault() {},
+    stopPropagation() {},
+    ...overrides,
+  });
+
+  stub.window.fire('keydown', key({ key: 'Enter', altKey: true }));
+  stub.window.fire('keydown', key({ key: 'ArrowUp', altKey: true }));
+  assert.deepEqual(calls, ['retorno', 'arriba']);
+});
+
 test('isTypingTarget detecta role="textbox" y MODIFIERS reconoce mayus', async () => {
   const { comboOf, setCombo, stub, register, bindGlobal } = await keybinds();
   register('spanishKey', 'Español', 'Alt+Mayus+A');
