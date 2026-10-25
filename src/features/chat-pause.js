@@ -68,6 +68,11 @@ function detach() {
   state.el.removeEventListener('wheel', state.onUser);
   state.el.removeEventListener('touchmove', state.onUser);
   clearTimeout(state.userTimer);
+  state.userTimer = null;
+  // El temporizador de la rueda es lo único que devolvía este flag a false.
+  // Si se cancela al reanudar, la siguiente pausa se quedaría creyendo que el
+  // usuario sigue moviendo el scroll y no volvería a bloquearlo.
+  state.userScrolling = false;
   state.el = null;
 }
 

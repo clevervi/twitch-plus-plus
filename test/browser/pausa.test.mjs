@@ -143,6 +143,23 @@ describe('pausar el chat congela el scroll', () => {
     assert.equal(await esperarTop(0), 0, 'tras reanudar debe poder desplazarse libremente');
   });
 
+  it('reanudar justo despues de la rueda no desactiva el siguiente bloqueo', async () => {
+    await IR_A(300);
+    await PAUSAR();
+
+    await pagina.evaluate(() => {
+      const contenedor = document.querySelector('.chat-scrollable-area__message-container');
+      contenedor.dispatchEvent(new WheelEvent('wheel', { bubbles: true, deltaY: 120 }));
+      const boton = window.__twpp.shadow.querySelector('[data-action="pause"]');
+      boton.click(); // reanudar: detach() cancela el temporizador de la rueda
+      boton.click(); // volver a pausar antes de que se cumplan los 150 ms
+    });
+
+    await pagina.waitForTimeout(200);
+    await IR_A(0);
+    assert.equal(await esperarTop(300), 300, 'la pausa nueva tiene que volver a bloquear el scroll');
+  });
+
   it('un ciclo largo de pausar y reanudar no deja el chat bloqueado', async () => {
     for (let i = 0; i < 5; i += 1) {
       await PAUSAR();
