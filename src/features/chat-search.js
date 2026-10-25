@@ -88,7 +88,10 @@ function apply({ keepCursor = false } = {}) {
       matches[cursor].classList.add('twpp-chat-current');
       updateCounter();
     } else {
-      jump(0);
+      // `clearMarks()` deja el cursor en -1. `jump(0)` hacía la vuelta
+      // completa y seleccionaba la última coincidencia; desde -1 el primer
+      // salto útil es hacia delante.
+      jump(1);
     }
   }
 }

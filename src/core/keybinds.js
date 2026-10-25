@@ -41,8 +41,12 @@ function parseKeybind(str) {
   const combo = { alt: false, ctrl: false, shift: false, meta: false, key: '' };
   for (const part of parts) {
     if (MODIFIERS[part]) combo[MODIFIERS[part]] = true;
-    else if (isKeyPart(part)) combo.key = part;
-    else return null;
+    else if (isKeyPart(part)) {
+      // `A+B` no es un atajo: antes se quedaba con la última tecla y el usuario
+      // creía haber guardado una combinación que nunca podía coincidir.
+      if (combo.key) return null;
+      combo.key = part;
+    } else return null;
   }
   return combo.key ? combo : null;
 }
