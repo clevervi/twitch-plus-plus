@@ -191,22 +191,26 @@ function getJson(url, { timeout = 10000, headers } = {}) {
       return;
     }
 
-    globalThis.GM_xmlhttpRequest({
-      method: 'GET',
-      url,
-      timeout,
-      headers,
-      onload(res) {
-        if (!res || res.status < 200 || res.status >= 300) return done(null);
-        try {
-          done(JSON.parse(res.responseText));
-        } catch {
-          done(null);
-        }
-      },
-      onerror: () => done(null),
-      ontimeout: () => done(null),
-    });
+    try {
+      globalThis.GM_xmlhttpRequest({
+        method: 'GET',
+        url,
+        timeout,
+        headers,
+        onload(res) {
+          try {
+            if (!res || res.status < 200 || res.status >= 300) return done(null);
+            done(JSON.parse(res.responseText));
+          } catch {
+            done(null);
+          }
+        },
+        onerror: () => done(null),
+        ontimeout: () => done(null),
+      });
+    } catch {
+      done(null);
+    }
   });
 }
 

@@ -102,3 +102,37 @@ test('getJson aborta el fetch de respaldo al agotar el timeout', async () => {
     env.limpiar();
   }
 });
+
+test('getJson resuelve null si GM_xmlhttpRequest lanza sincronamente', async () => {
+  const env = instalar();
+  globalThis.GM_xmlhttpRequest = () => {
+    throw new Error('boom');
+  };
+
+  try {
+    const resultado = await getJson('https://example.test/datos.json', { timeout: 50 });
+    assert.equal(resultado, null, 'debe resolver null en vez de rechazar');
+  } finally {
+    env.limpiar();
+  }
+});
+
+test('getJson resuelve null si onload lanza', async () => {
+  const env = instalar();
+  const res = {};
+  Object.defineProperty(res, 'status', {
+    get() {
+      throw new Error('boom');
+    },
+  });
+  globalThis.GM_xmlhttpRequest = (options) => {
+    options.onload(res);
+  };
+
+  try {
+    const resultado = await getJson('https://example.test/datos.json', { timeout: 50 });
+    assert.equal(resultado, null, 'debe resolver null en vez de rechazar');
+  } finally {
+    env.limpiar();
+  }
+});
