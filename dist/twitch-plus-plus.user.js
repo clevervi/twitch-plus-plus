@@ -1792,6 +1792,22 @@ const NAMED_KEYS = new Set([
   'pause', 'printscreen', 'capslock', 'numlock', 'scrolllock', ...Array.from({ length: 12 }, (_, i) => `f${i + 1}`),
 ]);
 
+// `NAMED_KEYS` acepta estos nombres, pero el navegador manda el valor canónico
+// en `event.key`: sin normalizar, el atajo se guarda y nunca coincide.
+const KEY_ALIASES = {
+  return: 'enter',
+  up: 'arrowup',
+  down: 'arrowdown',
+  left: 'arrowleft',
+  right: 'arrowright',
+};
+
+function normalizeKey(key) {
+  const value = String(key || '').toLowerCase();
+  if (value === ' ' || value === 'spacebar') return 'space';
+  return KEY_ALIASES[value] || value;
+}
+
 /** Una tecla válida: un carácter, un nombre de tecla o F1–F12. */
 function isKeyPart(part) {
   if (/^[a-z0-9]$/.test(part)) return true;
@@ -1815,7 +1831,7 @@ function parseKeybind(str) {
       // `A+B` no es un atajo: antes se quedaba con la última tecla y el usuario
       // creía haber guardado una combinación que nunca podía coincidir.
       if (combo.key) return null;
-      combo.key = part;
+      combo.key = normalizeKey(part);
     } else return null;
   }
   return combo.key ? combo : null;
@@ -1823,10 +1839,9 @@ function parseKeybind(str) {
 
 function matchKeybind(combo, event) {
   if (!combo) return false;
-  // `event.key` para la barra espaciadora es `' '`, no `'space'`: sin esta
-  // equivalencia el atajo se guardaba como valido y no disparaba nunca.
-  const tecla = String(event.key || '').toLowerCase();
-  const normalizada = tecla === ' ' || tecla === 'spacebar' ? 'space' : tecla;
+  // `event.key` usa valores canónicos (`Enter`, `ArrowUp`), mientras que el
+  // parser también acepta alias (`Return`, `Up`). Ambos lados se normalizan.
+  const normalizada = normalizeKey(event.key);
   return (
     combo.alt === event.altKey &&
     combo.ctrl === event.ctrlKey &&
