@@ -72,19 +72,31 @@ const memory = new Map();
 const PREFIX = 'twpp:';
 
 function localGet(key) {
+  // La memoria es el fallback cuando localStorage no está disponible o falla.
+  // Si hay un valor guardado ahí, tiene prioridad sobre un getItem que devuelva
+  // null o que lance.
+  if (memory.has(key)) return memory.get(key);
+
   try {
-    return globalThis.localStorage ? globalThis.localStorage.getItem(PREFIX + key) : null;
+    if (globalThis.localStorage) return globalThis.localStorage.getItem(PREFIX + key);
   } catch {
-    return null;
+    /* caída a memoria */
   }
+  return null;
 }
 
 function localSet(key, value) {
+  let guardado = false;
   try {
-    if (globalThis.localStorage) globalThis.localStorage.setItem(PREFIX + key, value);
+    if (globalThis.localStorage) {
+      globalThis.localStorage.setItem(PREFIX + key, value);
+      guardado = true;
+    }
   } catch {
-    memory.set(key, value);
+    /* caída a memoria */
   }
+  if (guardado) memory.delete(key);
+  else memory.set(key, value);
 }
 
 function getValue(key, fallback) {
@@ -126,6 +138,7 @@ function deleteValue(key) {
   } catch {
     /* ignore */
   }
+  memory.delete(key);
 }
 
 function addValueChangeListener(key, fn) {

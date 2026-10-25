@@ -136,3 +136,48 @@ test('getJson resuelve null si onload lanza', async () => {
     env.limpiar();
   }
 });
+
+test('getValue lee de memoria si localStorage no puede guardar', async () => {
+  const env = instalar();
+  delete globalThis.GM_getValue;
+  delete globalThis.GM_setValue;
+  delete globalThis.GM_deleteValue;
+  globalThis.localStorage = {
+    getItem: (key) => (env.local.has(key) ? env.local.get(key) : null),
+    setItem: () => {
+      throw new Error('sin espacio');
+    },
+    removeItem: (key) => env.local.delete(key),
+  };
+
+  try {
+    setValue('clave', 42);
+    assert.equal(getValue('clave', 'por defecto'), 42, 'el fallback en memoria debe ser legible');
+  } finally {
+    env.limpiar();
+  }
+});
+
+test('deleteValue limpia también la memoria de fallback', async () => {
+  const env = instalar();
+  delete globalThis.GM_getValue;
+  delete globalThis.GM_setValue;
+  delete globalThis.GM_deleteValue;
+  globalThis.localStorage = {
+    getItem: (key) => (env.local.has(key) ? env.local.get(key) : null),
+    setItem: () => {
+      throw new Error('sin espacio');
+    },
+    removeItem: () => {
+      throw new Error('sin acceso');
+    },
+  };
+
+  try {
+    setValue('clave', 42);
+    deleteValue('clave');
+    assert.equal(getValue('clave', 'por defecto'), 'por defecto', 'memoria borrada');
+  } finally {
+    env.limpiar();
+  }
+});
