@@ -2847,10 +2847,13 @@ const ChatPause = {
   },
 
   resume() {
-    if (state.mode === 'native' && state.native && state.native.isConnected) {
-      if (nativeSaysPaused(state.native)) {
-        state.native.click();
-      }
+    if (state.mode === 'native') {
+      // Twitch puede reemplazar el botón entre dos ticks de `ensure()`. Si se
+      // pulsa la referencia vieja, que ya está desconectada, el chat sigue
+      // pausado y el panel vuelve a marcarlo como pausado al siguiente tick.
+      const current = nativeButton();
+      const button = current || (state.native?.isConnected ? state.native : null);
+      if (button && nativeSaysPaused(button)) button.click();
     }
     state.native = null;
     state.active = false;
