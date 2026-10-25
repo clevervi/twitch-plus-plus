@@ -109,13 +109,22 @@ export const ChatPause = {
   pause() {
     const native = nativeButton();
     if (native) {
-      const wasPaused = nativeSaysPaused(native);
+      // `pause()` debe asegurar que el chat queda pausado, no alternar. Si Twitch
+      // ya lo tenía pausado, pulsar el botón lo reanudaría.
+      if (nativeSaysPaused(native)) {
+        state.active = true;
+        state.mode = 'native';
+        state.native = native;
+        state.missedChecks = 0;
+        emitChange();
+        return true;
+      }
       native.click();
-      state.active = !wasPaused;
-      state.mode = state.active ? 'native' : null;
-      state.native = state.active ? native : null;
+      state.active = true;
+      state.mode = 'native';
+      state.native = native;
       state.missedChecks = 0;
-      toast(state.active ? 'Chat pausado' : 'Chat reanudado');
+      toast('Chat pausado');
       emitChange();
       return true;
     }
