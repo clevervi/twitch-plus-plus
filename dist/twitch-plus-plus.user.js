@@ -5793,112 +5793,176 @@ const PANEL_CSS = `
   .wrap.open-down .panel { transform-origin: top right; }
   .wrap.open-down.align-left .panel { transform-origin: top left; }
   .toasts {
-    position: absolute; right: 0; bottom: 40px;
+    position: absolute; right: 0; bottom: 50px;
     display: flex; flex-direction: column; gap: 6px;
     pointer-events: none; z-index: 10; align-items: flex-end;
   }
-  .wrap.open-down .toasts { bottom: auto; top: 40px; }
+  .wrap.open-down .toasts { bottom: auto; top: 50px; }
   .toast {
-    background: #9147ff; color: #fff; padding: 7px 12px; border-radius: 6px;
-    font-size: 12px; font-weight: 600; box-shadow: 0 4px 14px rgba(0,0,0,.5);
+    background: #9147ff; color: #fff; padding: 8px 12px; border-radius: 6px;
+    font-size: 12.5px; font-weight: 600; box-shadow: 0 4px 14px rgba(0,0,0,.5);
     opacity: 0; transform: translateY(6px);
     transition: opacity .2s ease, transform .2s ease;
   }
   .toast.in { opacity: 1; transform: translateY(0); }
   .fab {
-    width: 26px; height: 26px; border: none; border-radius: 50%;
-    background: #9147ff; color: #fff; font-size: 11px; font-weight: 800;
+    width: 40px; height: 40px; border: none; border-radius: 50%;
+    background: #9147ff; color: #fff; font-size: 15px; font-weight: 800;
     letter-spacing: -1px; cursor: pointer; padding: 0;
-    box-shadow: 0 3px 10px rgba(0,0,0,.4);
-    opacity: .3; pointer-events: auto;
-    transform: scale(.9);
+    box-shadow: 0 3px 12px rgba(0,0,0,.45);
+    opacity: .6; pointer-events: auto;
+    transform: scale(1);
     transition: opacity .22s ease, transform .22s ease, background .18s ease;
   }
-  .fab.awake, .fab.reveal { opacity: .6; transform: scale(1); }
-  .fab.flash { opacity: .75; transform: scale(1.05); }
-  .fab.near { opacity: 1; transform: scale(1.15); background: #a970ff; }
-  .fab:hover { opacity: 1; transform: scale(1.15); background: #a970ff; }
+  .fab.awake, .fab.reveal { opacity: .8; transform: scale(1.02); }
+  .fab.flash { opacity: .9; transform: scale(1.06); }
+  .fab.near { opacity: 1; transform: scale(1.08); background: #a970ff; }
+  .fab:hover { opacity: 1; transform: scale(1.08); background: #a970ff; }
   .fab.active { background: #ff5c5c; opacity: .95; }
-  .fab.dragging { cursor: grabbing !important; opacity: .85; transform: scale(1.1); }
+  .fab.dragging { cursor: grabbing !important; opacity: .85; transform: scale(1.05); }
+  .fab:focus-visible { outline: 2px solid #fff; outline-offset: 2px; }
   .panel {
-    width: 300px; max-height: 80vh; display: flex; flex-direction: column;
-    background: #0e0e10; border: 1px solid #2a2a2d; border-radius: 10px;
-    box-shadow: 0 8px 28px rgba(0,0,0,.65); overflow: hidden;
-    color: #efeff1; font-size: 12.5px; user-select: none;
+    --bg: #0e0e10; --panel: #18181b; --surface: #111114; --border: #2a2a2d;
+    --text: #efeff1; --muted: #a2a2ad;
+    --input: #0e0e10; --input-border: #3a3a3d; --switch-off: #3a3a3d;
+    --accent: #9147ff; --accent-hover: #a970ff; --accent-text: #bf94ff;
+    --danger: #ff5c5c; --danger-text: #ff9a9a;
+    --danger-border: rgba(255,92,92,.45); --danger-soft: rgba(255,92,92,.12);
+    --remote: #00d4aa;
+    width: 340px; max-height: 80vh; display: flex; flex-direction: column;
+    background: var(--bg); border: 1px solid var(--border); border-radius: 10px;
+    box-shadow: 0 12px 34px rgba(0,0,0,.65); overflow: hidden;
+    color: var(--text); font-size: 13.5px; user-select: none;
+  }
+  .panel[data-theme="light"] {
+    --bg: #ffffff; --panel: #f7f7f8; --surface: #fafafa; --border: #d8d8de;
+    --text: #0e0e10; --muted: #53535f;
+    --input: #ffffff; --input-border: #c8c8d0; --switch-off: #c8c8d0;
+    --accent: #9147ff; --accent-hover: #772ce8; --accent-text: #5c16c5;
+    --danger: #c81e1e; --danger-text: #a31212;
+    --danger-border: rgba(200,30,30,.35); --danger-soft: rgba(200,30,30,.08);
+    --remote: #007a63;
+    box-shadow: 0 12px 34px rgba(0,0,0,.18);
   }
   .panel[hidden] { display: none; }
   .head {
     display: flex; align-items: center; justify-content: space-between;
-    padding: 9px 12px; background: #18181b; border-bottom: 1px solid #2a2a2d;
-    font-weight: 700; font-size: 13px;
+    padding: 10px 12px; background: var(--panel); border-bottom: 1px solid var(--border);
+    font-weight: 700; font-size: 13.5px;
   }
-  .head .plus { color: #9147ff; }
-  .ver { font-size: 10.5px; font-weight: 400; color: #adadb8; }
-  .toolbar { display: flex; gap: 6px; padding: 8px 10px; background: #111114; border-bottom: 1px solid #2a2a2d; }
+  .head .plus { color: var(--accent-text); }
+  .head-right { display: flex; align-items: center; gap: 8px; }
+  .ver { font-size: 10.5px; font-weight: 400; color: var(--muted); user-select: text; }
+  .close {
+    width: 26px; height: 26px; padding: 0; border: 0; border-radius: 6px;
+    background: transparent; color: var(--muted); font-size: 18px; line-height: 1;
+    display: flex; align-items: center; justify-content: center; cursor: pointer;
+  }
+  .close:hover { background: var(--surface); color: var(--text); }
+  .close:focus-visible { outline: 2px solid var(--accent); outline-offset: 1px; }
+  .toolbar { display: flex; gap: 8px; padding: 8px 12px; background: var(--surface); border-bottom: 1px solid var(--border); }
   .search, .preset {
-    background: #0e0e10; color: #efeff1; border: 1px solid #3a3a3d;
-    border-radius: 6px; padding: 5px 8px; font-size: 11.5px; outline: none;
+    background: var(--input); color: var(--text); border: 1px solid var(--input-border);
+    border-radius: 6px; padding: 6px 8px; font-size: 12.5px; outline: none;
   }
-  .search { flex: 1; }
-  .search:focus, .preset:focus { border-color: #9147ff; }
-  .body { flex: 1; overflow-y: auto; padding: 4px 12px 10px; }
+  .search { flex: 1; min-width: 0; }
+  .preset { max-width: 130px; }
+  .search:focus, .preset:focus { border-color: var(--accent); }
+  .search:focus-visible, .preset:focus-visible { outline: 2px solid var(--accent); outline-offset: 1px; }
+  .body { flex: 1; overflow-y: auto; padding: 2px 14px 10px; }
   .body::-webkit-scrollbar { width: 8px; }
-  .body::-webkit-scrollbar-thumb { background: #2a2a2d; border-radius: 4px; }
-  .section { margin-top: 4px; }
+  .body::-webkit-scrollbar-thumb { background: var(--border); border-radius: 4px; }
+  .section { margin-top: 2px; }
   .section-title {
-    font-size: 10px; font-weight: 700; letter-spacing: .08em; text-transform: uppercase;
-    color: #9147ff; margin: 8px 0 4px; cursor: pointer;
-    display: flex; align-items: center; justify-content: space-between;
+    width: 100%; display: flex; align-items: center; justify-content: space-between;
+    padding: 8px 0 4px; margin: 0; border: 0; background: none;
+    color: var(--accent-text); font: inherit; font-size: 10.5px; font-weight: 700;
+    letter-spacing: .08em; text-transform: uppercase; text-align: left; cursor: pointer;
   }
-  .section-title::after { content: "▾"; font-size: 10px; opacity: .6; transition: transform .18s ease; }
+  .section-title:hover { color: var(--accent-hover); }
+  .section-title:focus-visible { outline: 2px solid var(--accent); outline-offset: 2px; border-radius: 3px; }
+  .section-title::after { content: "▾"; font-size: 10px; opacity: .7; transition: transform .18s ease; }
   .section.collapsed .section-title::after { transform: rotate(-90deg); }
   .section.collapsed .section-body { display: none; }
-  .row { display: flex; align-items: center; justify-content: space-between; padding: 6px 0; color: #dedee3; }
+  .row { display: flex; align-items: center; justify-content: space-between; gap: 10px; padding: 7px 0; color: var(--text); }
   .row.label { cursor: pointer; }
-  .row.label:hover { color: #fff; }
+  .row-text { display: flex; flex-direction: column; gap: 2px; min-width: 0; flex: 1; }
+  .row-title { font-size: 13px; line-height: 1.35; }
+  .row-note { font-size: 11px; line-height: 1.35; color: var(--muted); user-select: text; }
+  .row-note[hidden] { display: none; }
   .row input[type="checkbox"] {
-    appearance: none; width: 32px; height: 17px; border-radius: 999px;
-    background: #3a3a3d; position: relative; cursor: pointer; flex: 0 0 auto; margin: 0;
+    appearance: none; width: 34px; height: 18px; border-radius: 999px;
+    background: var(--switch-off); position: relative; cursor: pointer; flex: 0 0 auto; margin: 0;
     transition: background .18s ease;
   }
   .row input[type="checkbox"]::after {
-    content: ""; position: absolute; top: 2px; left: 2px; width: 13px; height: 13px;
+    content: ""; position: absolute; top: 2px; left: 2px; width: 14px; height: 14px;
     border-radius: 50%; background: #fff; transition: transform .18s ease;
   }
-  .row input[type="checkbox"]:checked { background: #9147ff; }
-  .row input[type="checkbox"]:checked::after { transform: translateX(15px); }
-  .settings { padding: 0 0 6px 2px; display: flex; flex-direction: column; gap: 4px; }
+  .row input[type="checkbox"]:checked { background: var(--accent); }
+  .row input[type="checkbox"]:checked::after { transform: translateX(16px); }
+  .row input[type="checkbox"]:focus-visible { outline: 2px solid var(--accent); outline-offset: 2px; }
+  .settings {
+    padding: 0 0 8px 10px; margin-left: 2px; border-left: 1px solid var(--border);
+    display: flex; flex-direction: column; gap: 5px;
+  }
   .settings[hidden] { display: none; }
   .setting { display: flex; align-items: center; justify-content: space-between; gap: 8px; }
-  .setting > span { color: #adadb8; font-size: 11.5px; }
+  .setting > span { color: var(--muted); font-size: 11.5px; line-height: 1.35; }
   .setting input[type="text"], .setting input[type="number"], .setting select {
-    flex: 1; min-width: 0; max-width: 170px; padding: 4px 6px;
-    background: #0e0e10; color: #efeff1; border: 1px solid #3a3a3d;
-    border-radius: 5px; font-size: 11.5px; outline: none;
+    flex: 1; min-width: 0; max-width: 170px; padding: 5px 6px;
+    background: var(--input); color: var(--text); border: 1px solid var(--input-border);
+    border-radius: 5px; font-size: 12px; outline: none;
   }
-  .setting input[type="text"]:focus, .setting input[type="number"]:focus, .setting select:focus { border-color: #9147ff; }
+  .setting input:focus, .setting select:focus { border-color: var(--accent); }
+  .setting input:focus-visible, .setting select:focus-visible { outline: 2px solid var(--accent); outline-offset: 1px; }
   .setting .check { margin: 0; }
   .kb-input {
-    width: 88px; padding: 3px 6px; background: #0e0e10; color: #efeff1;
-    border: 1px solid #3a3a3d; border-radius: 4px; font-size: 11px;
+    width: 96px; padding: 4px 6px; background: var(--input); color: var(--text);
+    border: 1px solid var(--input-border); border-radius: 4px; font-size: 11px;
     font-family: ui-monospace, Menlo, monospace; outline: none; text-align: center;
   }
-  .kb-input:focus { border-color: #9147ff; }
-  .badge-remote { font-size: 9px; color: #00d4aa; border: 1px solid rgba(0,212,170,.5); border-radius: 3px; padding: 0 3px; margin-left: 4px; }
-  .actions { padding: 8px 12px; background: #111114; border-top: 1px solid #2a2a2d; display: flex; flex-direction: column; gap: 6px; }
+  .kb-input:focus { border-color: var(--accent); }
+  .kb-input:focus-visible { outline: 2px solid var(--accent); outline-offset: 1px; }
+  .badge-remote {
+    font-size: 9px; color: var(--remote); border: 1px solid var(--remote);
+    border-radius: 3px; padding: 0 3px; margin-left: 4px;
+  }
+  .advanced-actions {
+    display: flex; flex-direction: column; gap: 6px;
+    margin-top: 10px; padding-top: 10px; border-top: 1px solid var(--border);
+  }
+  .advanced-title {
+    font-size: 10px; font-weight: 700; letter-spacing: .08em; text-transform: uppercase;
+    color: var(--muted); margin-bottom: 2px;
+  }
+  .actions { padding: 8px 12px; background: var(--surface); border-top: 1px solid var(--border); }
   .action-btn {
-    width: 100%; padding: 7px 10px; border: 1px solid #3a3a3d; border-radius: 6px;
-    background: #1f1f23; color: #efeff1; font-size: 12px; font-weight: 600; cursor: pointer;
+    width: 100%; padding: 9px 10px; border: 1px solid var(--input-border); border-radius: 6px;
+    background: var(--panel); color: var(--text); font-size: 12.5px; font-weight: 600; cursor: pointer;
     transition: background .15s ease, border-color .15s ease;
   }
-  .action-btn:hover { background: #26262b; border-color: #9147ff; }
-  .action-btn.on { background: #9147ff; border-color: #9147ff; color: #fff; }
+  .action-btn:hover { background: var(--surface); border-color: var(--accent); }
+  .action-btn:focus-visible { outline: 2px solid var(--accent); outline-offset: 2px; }
   .action-btn:disabled { opacity: .5; cursor: default; }
-  .action-row { display: flex; gap: 6px; }
-  .action-row .action-btn { flex: 1; padding: 6px 4px; font-size: 11px; }
-  .foot { padding: 6px 12px; background: #18181b; border-top: 1px solid #2a2a2d; font-size: 10px; color: #7d7d88; text-align: center; }
-  .note { padding: 0 12px 8px; font-size: 10.5px; color: #7d7d88; background: #111114; }
+  .action-btn.primary { background: var(--accent); border-color: var(--accent); color: #fff; }
+  .action-btn.primary:hover { background: var(--accent-hover); border-color: var(--accent-hover); }
+  .action-btn.primary.on { background: var(--danger); border-color: var(--danger); color: #fff; }
+  .action-btn.danger { color: var(--danger-text); border-color: var(--danger-border); }
+  .action-btn.danger:hover { background: var(--danger-soft); border-color: var(--danger); }
+  .foot {
+    padding: 7px 12px; background: var(--panel); border-top: 1px solid var(--border);
+    font-size: 11px; line-height: 1.45; color: var(--muted); text-align: center; user-select: text;
+  }
+  .foot #active { color: var(--text); font-weight: 600; }
+  .note {
+    padding: 0 12px 8px; font-size: 11.5px; line-height: 1.45;
+    color: var(--muted); background: var(--surface); user-select: text;
+  }
   .note[hidden] { display: none; }
+  @media (prefers-reduced-motion: reduce) {
+    .fab, .toast, .section-title::after { transition: none; }
+  }
 `;
 return {
   PANEL_CSS: PANEL_CSS,
@@ -5944,7 +6008,7 @@ const PRESETS = {
 
 const PRESET_LABELS = {
   minimal: 'Minimal',
-  balanced: 'Balanced',
+  balanced: 'Equilibrado',
   aggressive: 'Agresivo',
   custom: 'Personalizado',
 };
@@ -5973,6 +6037,7 @@ const { refresh: refreshCatalog, status: catalogStatus } = __m9;
 const { check: checkUpdate, install: installUpdate, shouldCheck: shouldCheck } = __m19;
 const { ChatPause: ChatPause } = __m20;
 const { VERSION: VERSION } = __m8;
+const { isDarkTheme: isDarkTheme } = __m15;
 const { PANEL_CSS: PANEL_CSS } = __m42;
 const { PRESETS: PRESETS, PRESET_LABELS: PRESET_LABELS, idsOf: idsOf } = __m43;
 
@@ -5992,8 +6057,11 @@ const { PRESETS: PRESETS, PRESET_LABELS: PRESET_LABELS, idsOf: idsOf } = __m43;
 
 
 
+
+const FAB_SIZE = 40;
+
 declare('fabRight', 'number', 14);
-declare('fabBottom', 'number', 56);
+declare('fabBottom', 'number', 88);
 declare('hasSeenFab', 'bool', false);
 
 let host = null;
@@ -6007,6 +6075,7 @@ let built = false;
 let cachedFabX = 0;
 let cachedFabY = 0;
 let fabState = 'idle';
+let refs = null;
 
 const NODE = {
   panel: 'panel',
@@ -6017,6 +6086,8 @@ const NODE = {
   body: 'body',
   note: 'note',
   pause: 'pause',
+  close: 'close',
+  active: 'active',
 };
 
 function node(name) {
@@ -6072,9 +6143,15 @@ function settingHtml(feature) {
 
 function featureRow(feature) {
   const tag = feature.remote ? '<span class="badge-remote">repo</span>' : '';
-  return `<div class="feature" data-feature="${feature.id}">
-    <label class="row label" data-search="${escapeHtml(feature.label.toLowerCase())}">
-      <span>${escapeHtml(feature.label)}${tag}</span>
+  const search = [feature.label, ...(feature.settings || []).map((setting) => setting.label)]
+    .join(' ')
+    .toLowerCase();
+  return `<div class="feature" data-feature="${feature.id}" data-search="${escapeHtml(search)}">
+    <label class="row label">
+      <span class="row-text">
+        <span class="row-title">${escapeHtml(feature.label)}${tag}</span>
+        <span class="row-note" data-status="${feature.id}" hidden></span>
+      </span>
       <input type="checkbox" data-key="${feature.id}">
     </label>
     ${settingHtml(feature)}
@@ -6107,10 +6184,19 @@ function sectionsHtml() {
             <span>Modo depuración</span>
             <input type="checkbox" data-key="debug">
           </label>
-          ${keys.map(keybindRow).join('')}`
+          ${keys.map(keybindRow).join('')}
+          <div class="advanced-actions">
+            <div class="advanced-title">Mantenimiento</div>
+            <button class="action-btn" data-action="update" type="button">Buscar actualización</button>
+            <button class="action-btn" data-action="catalog" type="button">Recargar catálogo</button>
+            <button class="action-btn" data-action="export" type="button">Exportar</button>
+            <button class="action-btn" data-action="import" type="button">Importar</button>
+            <button class="action-btn" data-action="diagnostics" type="button">Diagnóstico</button>
+            <button class="action-btn danger" data-action="reset" type="button">Reset</button>
+          </div>`
         : features.map(featureRow).join('');
     return `<div class="section" data-section="${section.id}">
-      <div class="section-title">${escapeHtml(section.title)}</div>
+      <button class="section-title" type="button" aria-expanded="true">${escapeHtml(section.title)}</button>
       <div class="section-body">${body}</div>
     </div>`;
   }).join('');
@@ -6125,11 +6211,11 @@ function sectionsHtml() {
 function clampPlacement(right, bottom, winW = 1200, winH = 800) {
   const ancho = Number.isFinite(winW) && winW > 0 ? winW : 1200;
   const alto = Number.isFinite(winH) && winH > 0 ? winH : 800;
-  const maxRight = Math.max(0, ancho - 32);
-  const maxBottom = Math.max(0, alto - 32);
+  const maxRight = Math.max(0, ancho - FAB_SIZE);
+  const maxBottom = Math.max(0, alto - FAB_SIZE);
   const r = Math.min(maxRight, Math.max(0, Number.isFinite(right) ? right : 14));
-  const b = Math.min(maxBottom, Math.max(0, Number.isFinite(bottom) ? bottom : 56));
-  return { right: r, bottom: b, x: ancho - r - 13, y: alto - b - 13 };
+  const b = Math.min(maxBottom, Math.max(0, Number.isFinite(bottom) ? bottom : 88));
+  return { right: r, bottom: b, x: ancho - r - FAB_SIZE / 2, y: alto - b - FAB_SIZE / 2 };
 }
 
 function applyPlacement(right, bottom) {
@@ -6159,7 +6245,7 @@ function applyPlacement(right, bottom) {
   }
 
   if (isTop) {
-    const topPx = Math.max(0, winH - pos.bottom - 26);
+    const topPx = Math.max(0, winH - pos.bottom - FAB_SIZE);
     host.style.top = `${topPx}px`;
     host.style.bottom = 'auto';
   } else {
@@ -6168,7 +6254,7 @@ function applyPlacement(right, bottom) {
   }
 
   if (isLeft) {
-    const leftPx = Math.max(0, winW - pos.right - 26);
+    const leftPx = Math.max(0, winW - pos.right - FAB_SIZE);
     host.style.left = `${leftPx}px`;
     host.style.right = 'auto';
   } else {
@@ -6177,7 +6263,7 @@ function applyPlacement(right, bottom) {
   }
 
   if (panel) {
-    const availH = isTop ? (pos.bottom - 20) : (winH - pos.bottom - 36);
+    const availH = isTop ? (pos.bottom - FAB_SIZE - 10) : (winH - pos.bottom - FAB_SIZE - 10);
     panel.style.maxHeight = `${Math.max(220, Math.min(650, availH))}px`;
   }
 }
@@ -6190,38 +6276,31 @@ function build() {
   shadow = host.attachShadow({ mode: 'open' });
   shadow.innerHTML = `<style>${PANEL_CSS}</style>
     <div class="wrap">
-      <div class="toasts" id="toasts"></div>
-      <section class="panel" id="panel" hidden>
+      <div class="toasts" id="toasts" aria-live="polite"></div>
+      <section class="panel" id="panel" role="dialog" aria-label="Panel de Twitch++" hidden>
         <header class="head">
-          <span>Twitch<span class="plus">++</span></span>
-          <span class="ver">v${VERSION}</span>
+          <span class="brand">Twitch<span class="plus">++</span></span>
+          <span class="head-right">
+            <span class="ver">v${VERSION}</span>
+            <button class="close" id="close" type="button" aria-label="Cerrar panel" title="Cerrar (Esc)">×</button>
+          </span>
         </header>
         <div class="toolbar">
-          <input class="search" id="search" type="text" placeholder="Buscar…" spellcheck="false">
-          <select class="preset" id="preset">
+          <input class="search" id="search" type="search" placeholder="Buscar…" spellcheck="false" autocomplete="off" aria-label="Buscar ajustes">
+          <select class="preset" id="preset" aria-label="Preset">
             ${Object.entries(PRESET_LABELS)
               .map(([id, label]) => `<option value="${id}">${label}</option>`)
               .join('')}
           </select>
         </div>
         <div class="body" id="body">${sectionsHtml()}</div>
-        <div class="note" id="note" hidden></div>
+        <div class="note" id="note" role="status" hidden></div>
         <div class="actions">
-          <button class="action-btn" id="pause" data-action="pause">Pausar chat</button>
-          <div class="action-row">
-            <button class="action-btn" data-action="update">Buscar actualización</button>
-            <button class="action-btn" data-action="catalog">Recargar catálogo</button>
-          </div>
-          <div class="action-row">
-            <button class="action-btn" data-action="export">Exportar</button>
-            <button class="action-btn" data-action="import">Importar</button>
-            <button class="action-btn" data-action="diagnostics">Diagnóstico</button>
-            <button class="action-btn" data-action="reset">Reset</button>
-          </div>
+          <button class="action-btn primary" id="pause" data-action="pause" type="button">Pausar chat</button>
         </div>
-        <footer class="foot">Alt+Shift+T panel · Alt+Shift+P pausa de chat</footer>
+        <footer class="foot"><span id="active"></span> · Alt+Shift+T panel · Esc cierra</footer>
       </section>
-      <button class="fab" id="fab" title="Twitch++">++</button>
+      <button class="fab" id="fab" type="button" title="Twitch++" aria-label="Abrir panel de Twitch++" aria-expanded="false" aria-controls="panel">++</button>
     </div>`;
 
   (document.body || document.documentElement).appendChild(host);
@@ -6231,11 +6310,63 @@ function build() {
   setToastHost(node('toasts'));
 
   applyPlacement(get('fabRight'), get('fabBottom'));
+  applyTheme();
+  cacheRefs();
   bind();
   built = true;
   sync();
   flashFab();
   scheduleIdle();
+}
+
+/** Referencias estables para que `sync()` no recorra el shadow DOM en cada ruta. */
+function cacheRefs() {
+  if (!shadow) return;
+  const features = new Map();
+  for (const feature of allFeatures()) {
+    features.set(feature.id, {
+      input: shadow.querySelector(`input[data-key="${feature.id}"]`),
+      settings: shadow.querySelector(`[data-settings="${feature.id}"]`),
+      status: shadow.querySelector(`[data-status="${feature.id}"]`),
+    });
+  }
+  refs = {
+    features,
+    extras: ['catalog', 'autoUpdate', 'debug'].map((key) => ({
+      key,
+      input: shadow.querySelector(`input[data-key="${key}"]`),
+    })),
+    settings: [...shadow.querySelectorAll('input[data-setting], select[data-setting]')],
+    keybinds: [...shadow.querySelectorAll('.kb-input')],
+    preset: node('preset'),
+    pause: node('pause'),
+    active: node('active'),
+  };
+}
+
+/** El panel sigue el tema de Twitch: no es una isla negra en una página clara. */
+function applyTheme() {
+  if (panel) panel.dataset.theme = isDarkTheme() ? 'dark' : 'light';
+}
+
+/** Filtra por label y por nombres de ajustes; abre la sección si hay match. */
+function applySearch() {
+  if (!shadow) return;
+  const query = (node('search')?.value || '').toLowerCase().trim();
+  for (const section of shadow.querySelectorAll('.section')) {
+    let visible = 0;
+    for (const row of section.querySelectorAll('[data-search]')) {
+      const match = !query || (row.dataset.search || '').includes(query);
+      row.style.display = match ? '' : 'none';
+      if (match) visible += 1;
+    }
+    section.style.display = visible > 0 || !query ? '' : 'none';
+    const title = section.querySelector('.section-title');
+    if (query && visible > 0) {
+      section.classList.remove('collapsed');
+      title?.setAttribute('aria-expanded', 'true');
+    }
+  }
 }
 
 function setNote(html) {
@@ -6406,6 +6537,8 @@ function bind() {
     togglePanel();
   });
 
+  node('close').addEventListener('click', () => togglePanel(false));
+
   shadow.addEventListener('change', (event) => {
     const toggle = event.target.closest('input[type="checkbox"][data-key]');
     if (toggle) {
@@ -6442,7 +6575,9 @@ function bind() {
   shadow.addEventListener('click', (event) => {
     const title = event.target.closest('.section-title');
     if (title) {
-      title.closest('.section')?.classList.toggle('collapsed');
+      const section = title.closest('.section');
+      const collapsed = section?.classList.toggle('collapsed');
+      title.setAttribute('aria-expanded', String(!collapsed));
       return;
     }
     const action = event.target.closest('[data-action]');
@@ -6463,26 +6598,28 @@ function bind() {
     handlers[action.dataset.action]?.();
   });
 
-  node('search').addEventListener('input', (event) => {
-    const query = event.target.value.toLowerCase().trim();
-    for (const section of shadow.querySelectorAll('.section')) {
-      let visible = 0;
-      for (const row of section.querySelectorAll('[data-search]')) {
-        const match = !query || (row.dataset.search || '').includes(query);
-        row.style.display = match ? '' : 'none';
-        if (match) visible += 1;
-      }
-      section.style.display = visible > 0 || !query ? '' : 'none';
-    }
-  });
+  node('search').addEventListener('input', applySearch);
 
   node('preset').addEventListener('change', (event) => applyPreset(event.target.value));
 
   onBus('route', () => sync());
   onBus('chatPause:change', () => sync());
   onBus('catalog:updated', () => {
-    // el catálogo pudo añadir features: hay que redibujar las filas
-    node('body').innerHTML = sectionsHtml();
+    // el catálogo pudo añadir features: hay que redibujar las filas sin perder
+    // scroll, secciones colapsadas ni el filtro activo.
+    const body = node('body');
+    const scroll = body.scrollTop;
+    const collapsed = [...shadow.querySelectorAll('.section.collapsed')].map((s) => s.dataset.section);
+    body.innerHTML = sectionsHtml();
+    for (const id of collapsed) {
+      const section = shadow.querySelector(`.section[data-section="${id}"]`);
+      if (!section) continue;
+      section.classList.add('collapsed');
+      section.querySelector('.section-title')?.setAttribute('aria-expanded', 'false');
+    }
+    body.scrollTop = scroll;
+    cacheRefs();
+    applySearch();
     sync();
   });
   onBus('feature:disabled', ({ id }) => {
@@ -6531,11 +6668,15 @@ function togglePanel(force) {
   if (!panel) build();
   const open = typeof force === 'boolean' ? force : panel.hidden;
   panel.hidden = !open;
+  fab.setAttribute('aria-expanded', String(open));
+  fab.setAttribute('aria-label', open ? 'Cerrar panel de Twitch++' : 'Abrir panel de Twitch++');
   if (open) {
     prevFocus = document.activeElement;
+    applyTheme();
     applyPlacement(get('fabRight'), get('fabBottom'));
     fab.classList.add('awake');
     clearTimeout(idleTimer);
+    sync();
     setTimeout(() => {
       const search = node('search');
       if (search && typeof search.focus === 'function') search.focus();
@@ -6556,40 +6697,54 @@ function togglePanel(force) {
 
 function sync() {
   if (!shadow) return;
+  if (!refs) cacheRefs();
+
+  const list = statuses();
+  const byId = new Map(list.map((item) => [item.id, item]));
+
   for (const feature of allFeatures()) {
-    const input = shadow.querySelector(`input[data-key="${feature.id}"]`);
-    if (input) input.checked = !!get(feature.id);
-    const box = shadow.querySelector(`[data-settings="${feature.id}"]`);
-    if (box) box.hidden = !get(feature.id);
+    const cached = refs?.features.get(feature.id);
+    if (!cached) continue;
+    const enabled = !!get(feature.id);
+    if (cached.input) cached.input.checked = enabled;
+    if (cached.settings) cached.settings.hidden = !enabled;
+    if (cached.status) {
+      const info = byId.get(feature.id);
+      const note = enabled && info ? info.motivo || (info.blocked ? 'inactiva ahora' : '') : '';
+      cached.status.textContent = note;
+      cached.status.hidden = !note;
+    }
   }
-  for (const key of ['catalog', 'autoUpdate', 'debug']) {
-    const input = shadow.querySelector(`input[data-key="${key}"]`);
+
+  for (const { key, input } of refs?.extras || []) {
     if (input) input.checked = !!get(key);
   }
 
-  for (const input of shadow.querySelectorAll('input[data-setting]')) {
+  for (const input of refs?.settings || []) {
     const key = input.dataset.setting;
     if (input.type === 'checkbox') input.checked = !!get(key);
     else input.value = String(get(key) ?? '');
   }
-  for (const select of shadow.querySelectorAll('select[data-setting]')) {
-    const key = select.dataset.setting;
-    select.value = String(get(key) ?? '');
-  }
 
   const keybinds = get('keybinds') || {};
-  for (const input of shadow.querySelectorAll('.kb-input')) {
+  for (const input of refs?.keybinds || []) {
     input.value = keybinds[input.dataset.kb] || '';
   }
 
   const preset = get('preset');
-  node('preset').value = PRESETS[preset] ? preset : 'custom';
+  if (refs?.preset) refs.preset.value = PRESETS[preset] ? preset : 'custom';
 
-  const pause = node('pause');
-  pause.textContent = ChatPause.isActive() ? 'Reanudar chat' : 'Pausar chat';
-  pause.classList.toggle('on', ChatPause.isActive());
+  if (refs?.pause) {
+    refs.pause.textContent = ChatPause.isActive() ? 'Reanudar chat' : 'Pausar chat';
+    refs.pause.classList.toggle('on', ChatPause.isActive());
+  }
   fab.classList.toggle('active', ChatPause.isActive());
   fab.title = ChatPause.isActive() ? 'Twitch++ — chat pausado' : 'Twitch++ (Alt+Shift+T)';
+  if (refs?.active) {
+    const active = list.filter((feature) => feature.active).length;
+    refs.active.textContent = `${active}/${list.length} activas`;
+  }
+  if (panel && !panel.hidden) applyTheme();
 }
 
 async function runUpdateCheck() {
@@ -6614,20 +6769,18 @@ async function runCatalogRefresh() {
   button.disabled = true;
   const result = await refreshCatalog({ force: true });
   button.disabled = false;
-  renderCatalogNote(result);
+  renderCatalogNote();
   sync();
   toast(result?.error ? 'Catálogo no disponible' : 'Catálogo actualizado');
 }
 
-function renderCatalogNote(result) {
+function renderCatalogNote() {
   const info = catalogStatus();
-  if (!get('catalog')) return setNote('Catálogo remoto desactivado.');
-  if (info.error) return setNote(`Catálogo: ${escapeHtml(info.error)}`);
-  const parts = [`Catálogo rev. ${info.revision}`];
-  if (info.selectors) parts.push(`${info.selectors} selectores remotos`);
-  if (info.features) parts.push(`${info.features} features del repo`);
-  if (info.note) parts.push(escapeHtml(info.note));
-  setNote(parts.join(' · '));
+  if (!get('catalog')) return setNote('');
+  if (info.error) {
+    return setNote('No se pudo leer el catálogo remoto; se usan los selectores locales. El detalle está en Diagnóstico.');
+  }
+  setNote('');
 }
 
 function runExport() {

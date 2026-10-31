@@ -35,7 +35,7 @@ export const PRESETS = {
 
 export const PRESET_LABELS = {
   minimal: 'Minimal',
-  balanced: 'Balanced',
+  balanced: 'Equilibrado',
   aggressive: 'Agresivo',
   custom: 'Personalizado',
 };
