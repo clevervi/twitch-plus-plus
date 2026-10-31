@@ -19,6 +19,7 @@
 // @grant        GM_openInTab
 // @grant        GM_info
 // @connect      raw.githubusercontent.com
+// @connect      gql.twitch.tv
 // @run-at       document-start
 // @noframes
 // ==/UserScript==
@@ -174,8 +175,8 @@ function openInTab(url) {
   return null;
 }
 
-/** GET JSON con timeout. Devuelve `null` en cualquier fallo (sin lanzar). */
-function getJson(url, { timeout = 10000, headers } = {}) {
+/** GET/POST JSON con timeout. Devuelve `null` en cualquier fallo (sin lanzar). */
+function requestJson({ url, method = 'GET', body, timeout = 10000, headers }) {
   return new Promise((resolve) => {
     let settled = false;
     const done = (value) => {
@@ -190,7 +191,7 @@ function getJson(url, { timeout = 10000, headers } = {}) {
       const controller = typeof AbortController === 'function' ? new AbortController() : null;
       const timer = controller && timeout > 0 ? setTimeout(() => controller.abort(), timeout) : null;
       try {
-        fetch(url, { headers, signal: controller?.signal })
+        fetch(url, { method, headers, body, signal: controller?.signal })
           .then((res) => (res.ok ? res.json() : null))
           .then(done)
           .catch(() => done(null))
@@ -206,10 +207,11 @@ function getJson(url, { timeout = 10000, headers } = {}) {
 
     try {
       globalThis.GM_xmlhttpRequest({
-        method: 'GET',
+        method,
         url,
         timeout,
         headers,
+        data: body,
         onload(res) {
           try {
             if (!res || res.status < 200 || res.status >= 300) return done(null);
@@ -224,6 +226,21 @@ function getJson(url, { timeout = 10000, headers } = {}) {
     } catch {
       done(null);
     }
+  });
+}
+
+function getJson(url, { timeout = 10000, headers } = {}) {
+  return requestJson({ url, timeout, headers });
+}
+
+/** POST con cuerpo JSON. El `Content-Type` se puede sobrescribir desde `headers`. */
+function postJson(url, payload, { timeout = 10000, headers } = {}) {
+  return requestJson({
+    url,
+    method: 'POST',
+    body: typeof payload === 'string' ? payload : JSON.stringify(payload),
+    timeout,
+    headers: { 'Content-Type': 'application/json', ...headers },
   });
 }
 
@@ -263,6 +280,7 @@ return {
   addValueChangeListener: addValueChangeListener,
   openInTab: openInTab,
   getJson: getJson,
+  postJson: postJson,
   managerName: managerName,
   capabilities: capabilities,
 };
@@ -4513,8 +4531,611 @@ return {
 };
 })();
 
-/* ---- src/features/sidebar-compact.js ---- */
+/* ---- src/core/session.js ---- */
 const __m34 = (function () {
+/** sessionStorage con JSON: por pestaña, sobrevive a una recarga y nunca lanza. */
+function read(key) {
+  try {
+    const raw = globalThis.sessionStorage?.getItem(key);
+    return raw ? JSON.parse(raw) : null;
+  } catch {
+    return null;
+  }
+}
+
+function write(key, value) {
+  try {
+    globalThis.sessionStorage?.setItem(key, JSON.stringify(value));
+  } catch {
+    /* sin sessionStorage se pierde la persistencia, no la funcionalidad */
+  }
+}
+
+function remove(key) {
+  try {
+    globalThis.sessionStorage?.removeItem(key);
+  } catch {
+    /* ignore */
+  }
+}
+return {
+  read: read,
+  write: write,
+  remove: remove,
+};
+})();
+
+/* ---- src/features/live-return.js ---- */
+const __m35 = (function () {
+const { postJson: postJson } = __m1;
+const { log: log } = __m2;
+const { anotarMotivo: anotarMotivo, defineFeature: defineFeature, limpiarMotivo: limpiarMotivo } = __m6;
+const { read: leerSesion, remove: borrarSesion, write: guardarSesion } = __m34;
+const { get: storeGet } = __m5;
+const { channelFromHref: channelFromHref } = __m15;
+
+/**
+ * Volver al canal cuando el streamer vuelve a emitir.
+ *
+ * Se arma al salir de un canal que se quedo offline: si el salto es una raid,
+ * se sabe sin consultar nada; si es una navegacion normal, se pregunta una vez
+ * a Twitch. Mientras hay un objetivo se consulta cada minuto, y cuando el canal
+ * aparece en directo se vuelve a el.
+ *
+ * La consulta es el GQL publico de Twitch: no usa la cuenta, no manda tokens y
+ * solo pregunta si un login tiene stream. Va por `postJson` (`gm.js`) para
+ * respetar el mismo timeout y fallback que el resto de la red del script.
+ */
+
+
+
+
+
+
+
+const ID = 'liveReturn';
+const CLAVE_OBJETIVO = 'twpp:liveReturn.target';
+const CLAVE_ULTIMO = 'twpp:liveReturn.last';
+const CLAVE_RETORNO = 'twpp:liveReturn.retorno';
+
+const GQL = 'https://gql.twitch.tv/gql';
+const CONSULTA = 'query($login:String!){user(login:$login){stream{id}}}';
+// Cliente web publico de Twitch. Solo se pregunta por un login; no se envia
+// ningun dato de la cuenta ni se necesita OAuth.
+const CLIENT_ID = 'kimne78kx3ncx6brgo4mv6wki5h1ko';
+
+const INTERVALO = 60_000;
+const VENTANA_ULTIMO = 10 * 60_000;
+const VENTANA_RETORNO = 30_000;
+const MAX_FALLOS = 5;
+const TOPE_REINTENTO = 10 * 60_000;
+
+let activo = false;
+let objetivo = null;
+let ultimo = null;
+let proximo = 0;
+let fallos = 0;
+let comprobando = false;
+let volviendo = null;
+const comprobandoSalida = new Set();
+
+function canalActual() {
+  return channelFromHref(globalThis.location?.pathname || '/') || '';
+}
+
+function esSaltoDeRaid() {
+  try {
+    return new URLSearchParams(globalThis.location?.search || '').get('referrer') === 'raid';
+  } catch {
+    return false;
+  }
+}
+
+function limiteMs() {
+  const horas = Number(storeGet('liveReturnMax'));
+  return (Number.isFinite(horas) && horas > 0 ? horas : 6) * 3600_000;
+}
+
+/**
+ * Pregunta a Twitch si `canal` tiene stream. Devuelve un objeto porque hay tres
+ * respuestas distintas: en directo, offline y "no se pudo preguntar".
+ */
+async function estaEnDirecto(canal) {
+  if (!canal) return { ok: false };
+  const respuesta = await postJson(
+    GQL,
+    { query: CONSULTA, variables: { login: canal } },
+    { headers: { 'Client-ID': CLIENT_ID }, timeout: 8000 },
+  );
+
+  if (!respuesta || typeof respuesta !== 'object' || !respuesta.data) return { ok: false };
+  const user = respuesta.data.user;
+  if (user === null) return { ok: true, existe: false, live: false };
+  if (!user || typeof user !== 'object') return { ok: false };
+  return { ok: true, existe: true, live: Boolean(user.stream?.id) };
+}
+
+function guardarObjetivo() {
+  guardarSesion(CLAVE_OBJETIVO, objetivo);
+}
+
+function armar(canal) {
+  if (!canal || canal === canalActual()) return;
+  if (objetivo?.canal === canal) {
+    limpiarMotivo(ID);
+    return;
+  }
+
+  const ahora = Date.now();
+  objetivo = { canal, desde: ahora, limite: ahora + limiteMs() };
+  guardarObjetivo();
+  proximo = ahora + INTERVALO;
+  fallos = 0;
+  limpiarMotivo(ID);
+  log('vuelta: se vigila', canal, 'hasta', new Date(objetivo.limite).toISOString());
+}
+
+function desarmar(motivo = '') {
+  if (objetivo) log('vuelta: se deja de vigilar', objetivo.canal, motivo);
+  objetivo = null;
+  proximo = 0;
+  fallos = 0;
+  borrarSesion(CLAVE_OBJETIVO);
+  if (motivo) anotarMotivo(ID, motivo);
+  else limpiarMotivo(ID);
+}
+
+function alSalir() {
+  const canal = volviendo || canalActual();
+  if (!canal) return;
+  guardarSesion(CLAVE_ULTIMO, { canal, at: Date.now() });
+  volviendo = null;
+}
+
+/**
+ * Al salir de A hacia cualquier otro sitio se pregunta una vez por A. Si ya
+ * estaba offline, se arma; si seguia en directo, no se toca nada. La raid se
+ * salta la consulta porque es la prueba de que A acaba de terminar.
+ */
+async function comprobarSalida(canal) {
+  if (!canal || canal === canalActual() || comprobandoSalida.has(canal)) return;
+  comprobandoSalida.add(canal);
+  try {
+    const estado = await estaEnDirecto(canal);
+    if (!activo) return;
+    if (estado.ok && estado.existe && !estado.live && canalActual() !== canal) armar(canal);
+  } finally {
+    comprobandoSalida.delete(canal);
+  }
+}
+
+function enRuta(route) {
+  if (!activo) return;
+
+  const actual = route?.canal || '';
+  const previo = ultimo;
+  const ahora = Date.now();
+
+  ultimo = { canal: actual, at: ahora, deSesion: false };
+  if (actual) guardarSesion(CLAVE_ULTIMO, ultimo);
+
+  if (objetivo && actual === objetivo.canal) desarmar();
+
+  if (!previo?.canal || previo.canal === actual) return;
+  if (previo.deSesion && ahora - previo.at > VENTANA_ULTIMO) return;
+
+  if (esSaltoDeRaid()) armar(previo.canal);
+  else comprobarSalida(previo.canal);
+}
+
+function comprobar(now) {
+  if (!activo || !objetivo || comprobando) return;
+  if (now >= objetivo.limite) {
+    desarmar('se agoto el tiempo de espera');
+    return;
+  }
+  if (now < proximo) return;
+
+  const canal = objetivo.canal;
+  comprobando = true;
+  estaEnDirecto(canal)
+    .then((estado) => {
+      comprobando = false;
+      if (!activo || !objetivo || objetivo.canal !== canal) return;
+
+      if (!estado.ok) {
+        fallos += 1;
+        if (fallos >= MAX_FALLOS) {
+          desarmar('no se pudo comprobar si el canal volvia');
+          return;
+        }
+        proximo = Date.now() + Math.min(INTERVALO * 2 ** fallos, TOPE_REINTENTO);
+        return;
+      }
+
+      fallos = 0;
+      if (!estado.existe) {
+        desarmar('el canal ya no existe');
+        return;
+      }
+      if (!estado.live) {
+        proximo = Date.now() + INTERVALO;
+        return;
+      }
+      if (Date.now() >= objetivo.limite) {
+        desarmar('se agoto el tiempo de espera');
+        return;
+      }
+      if (canalActual() === canal) {
+        desarmar();
+        return;
+      }
+
+      log('vuelta: el canal vuelve a emitir, se va a', canal);
+      volviendo = canal;
+      guardarSesion(CLAVE_RETORNO, { canal, at: Date.now() });
+      desarmar();
+      globalThis.location?.assign?.(`/${canal}`);
+    })
+    .catch(() => {
+      comprobando = false;
+      fallos += 1;
+      if (fallos >= MAX_FALLOS) desarmar('no se pudo comprobar si el canal volvia');
+      else proximo = Date.now() + Math.min(INTERVALO * 2 ** fallos, TOPE_REINTENTO);
+    });
+}
+
+function arrancar() {
+  if (activo) return;
+  activo = true;
+  comprobando = false;
+  fallos = 0;
+  volviendo = null;
+
+  const ahora = Date.now();
+  const guardado = leerSesion(CLAVE_OBJETIVO);
+  if (guardado?.canal && Number.isFinite(guardado.limite) && ahora < guardado.limite) {
+    objetivo = guardado;
+    proximo = ahora + INTERVALO;
+    log('vuelta: se recupera el objetivo de', guardado.canal);
+  } else {
+    objetivo = null;
+    borrarSesion(CLAVE_OBJETIVO);
+  }
+
+  const cargando = globalThis.document?.readyState === 'loading';
+  const retorno = leerSesion(CLAVE_RETORNO);
+  const previo = leerSesion(CLAVE_ULTIMO);
+  const actual = canalActual();
+
+  if (retorno?.canal && retorno.canal === actual && ahora - retorno.at < VENTANA_RETORNO) {
+    // Venimos de nuestro propio retorno: el canal anterior real es este, no el
+    // que quedo guardado al salir. Sin esto se podria armar el canal de origen
+    // y entrar en un ping-pong.
+    borrarSesion(CLAVE_RETORNO);
+    ultimo = { canal: actual, at: ahora, deSesion: false };
+    guardarSesion(CLAVE_ULTIMO, ultimo);
+  } else if (cargando && previo?.canal && Number.isFinite(previo.at) && ahora - previo.at < VENTANA_ULTIMO) {
+    ultimo = { ...previo, deSesion: true };
+  } else {
+    if (retorno) borrarSesion(CLAVE_RETORNO);
+    ultimo = { canal: actual, at: ahora, deSesion: false };
+    if (actual) guardarSesion(CLAVE_ULTIMO, ultimo);
+  }
+
+  if (objetivo && objetivo.canal === actual) desarmar();
+
+  globalThis.window?.addEventListener?.('pagehide', alSalir);
+  limpiarMotivo(ID);
+}
+
+function parar() {
+  if (!activo) return;
+  activo = false;
+  objetivo = null;
+  ultimo = null;
+  proximo = 0;
+  fallos = 0;
+  comprobando = false;
+  volviendo = null;
+  comprobandoSalida.clear();
+  borrarSesion(CLAVE_OBJETIVO);
+  borrarSesion(CLAVE_ULTIMO);
+  borrarSesion(CLAVE_RETORNO);
+  globalThis.window?.removeEventListener?.('pagehide', alSalir);
+  limpiarMotivo(ID);
+}
+
+defineFeature({
+  id: ID,
+  label: 'Volver cuando el canal vuelva a emitir',
+  section: 'auto',
+  default: false,
+  interval: 5000,
+  tick: comprobar,
+  onEnable: arrancar,
+  onDisable: parar,
+  onRoute: enRuta,
+  settings: [
+    {
+      key: 'liveReturnMax',
+      label: 'Dejar de esperar tras',
+      type: 'select',
+      options: [['2', '2 h'], ['6', '6 h'], ['24', '24 h']],
+      default: '6',
+    },
+  ],
+});
+return {
+  estaEnDirecto: estaEnDirecto,
+};
+})();
+
+/* ---- src/features/raid-guard.js ---- */
+const __m36 = (function () {
+const { log: log } = __m2;
+const { anotarMotivo: anotarMotivo, defineFeature: defineFeature, limpiarMotivo: limpiarMotivo } = __m6;
+const { read: leerSesion, remove: borrarSesion, write: guardarSesion } = __m34;
+const { channelFromHref: channelFromHref } = __m15;
+
+/**
+ * No dejarse llevar a la raid cuando el directo termina.
+ *
+ * Twitch puede saltar al canal de la raid de dos maneras: cambiando la ruta sin
+ * recargar o recargando la pagina. La primera se deshace con `history.back()`
+ * (o con `location.replace()` si la entrada anterior ya no existe) y la segunda
+ * se reconoce al arrancar por el `referrer=raid` de la URL.
+ *
+ * Un clic o un Enter sobre un enlace de raid cuenta como intencion del usuario:
+ * en ese caso el guardia no toca nada.
+ */
+
+
+
+
+
+const ID = 'raidGuard';
+const CLAVE = 'twpp:raidGuard';
+const CLAVE_MANUAL = `${CLAVE}.manual`;
+const CLAVE_REBOTE = `${CLAVE}.rebote`;
+const VENTANA_MANUAL = 3000;
+const VENTANA_MANUAL_RECARGA = 30_000;
+const VENTANA_SALIDA = 60_000;
+const VENTANA_REBOTE = 10_000;
+const VENTANA_ANTI_BUCLE = 5000;
+const MAX_BLOQUEOS = 3;
+const SELECTOR_RAID = '[data-a-target*="raid" i], [data-test-selector*="raid" i]';
+
+let activo = false;
+let anterior = null;
+let manual = { at: 0, destino: '' };
+let bloqueos = 0;
+let ultimoDestino = '';
+let ultimoBloqueo = 0;
+let pendiente = null;
+
+function urlActual() {
+  const { pathname = '/', search = '', hash = '' } = globalThis.location || {};
+  return `${pathname}${search}${hash}`;
+}
+
+function canalDe(url) {
+  try {
+    return channelFromHref(new URL(url, 'https://www.twitch.tv').pathname) || '';
+  } catch {
+    return '';
+  }
+}
+
+/** `true` si la URL lleva el marcador que Twitch pone al entrar en una raid. */
+function esSaltoDeRaid(href) {
+  if (!href) return false;
+  try {
+    return new URL(href, 'https://www.twitch.tv').searchParams.get('referrer') === 'raid';
+  } catch {
+    return false;
+  }
+}
+
+function esManual(destino) {
+  if (!manual.at || Date.now() - manual.at >= VENTANA_MANUAL) return false;
+  return !manual.destino || manual.destino === destino;
+}
+
+function recordarManual(evento) {
+  const target = evento?.target;
+  if (!target || typeof target.closest !== 'function') return;
+
+  const enRaid = target.closest(SELECTOR_RAID);
+  const enlace = target.closest('a[href]');
+  const href = enlace?.getAttribute?.('href') || '';
+  const destino = canalDe(href);
+
+  if (!destino && !enRaid) return;
+  manual = { at: Date.now(), destino: destino || '' };
+  guardarSesion(CLAVE_MANUAL, manual);
+}
+
+function alTeclear(evento) {
+  if (evento?.key !== 'Enter') return;
+  recordarManual(evento);
+}
+
+/**
+ * Al irse la pagina se recuerda de donde salimos. No se guarda una URL con
+ * `referrer=raid`: si la raid vuelve a recargar, no queremos rebotar en circulo.
+ */
+function alSalir() {
+  if (esSaltoDeRaid(urlActual())) return;
+  guardarSesion(CLAVE, { url: urlActual(), at: Date.now() });
+}
+
+function reiniciarContador() {
+  bloqueos = 0;
+  ultimoDestino = '';
+  ultimoBloqueo = 0;
+}
+
+function bloquear(previo, route, actual) {
+  const ahora = Date.now();
+  const destino = route.path || actual;
+  if (destino === ultimoDestino && ahora - ultimoBloqueo < VENTANA_ANTI_BUCLE) {
+    bloqueos += 1;
+  } else {
+    bloqueos = 1;
+    ultimoDestino = destino;
+  }
+  ultimoBloqueo = ahora;
+
+  if (bloqueos > MAX_BLOQUEOS) {
+    anotarMotivo(ID, 'Twitch insiste en la raid; se deja pasar');
+    log('raid: se deja pasar tras', MAX_BLOQUEOS, 'intentos');
+    return;
+  }
+
+  limpiarMotivo(ID);
+  log('raid: se evita el salto a', route.path, 'y se vuelve a', previo);
+
+  // El primer salto con pushState se deshace sin recargar. Si Twitch vuelve a
+  // empujar la misma raid, una recarga rompe el bucle de su router.
+  const metodo = route.razon === 'pushState' && bloqueos === 1 ? 'atras' : 'recarga';
+  if (pendiente !== null) clearTimeout(pendiente);
+  pendiente = setTimeout(() => {
+    pendiente = null;
+    if (metodo === 'atras') globalThis.history?.back?.();
+    else globalThis.location?.replace?.(previo);
+  }, 0);
+}
+
+function enRuta(route) {
+  if (!activo) return;
+
+  const actual = urlActual();
+  const previo = anterior;
+  const esRaid = esSaltoDeRaid(actual);
+
+  if (!esRaid) {
+    anterior = { url: actual, canal: route?.canal || '' };
+    // El contador solo se reinicia cuando la racha de raids ya paso: si se
+    // reiniciara en cada vuelta al canal, el anti-bucle no serviria de nada.
+    if (ultimoBloqueo && Date.now() - ultimoBloqueo > VENTANA_ANTI_BUCLE * 2) reiniciarContador();
+    limpiarMotivo(ID);
+    return;
+  }
+
+  // Volver atras a mano o cargar la pagina no son saltos que haya que deshacer.
+  if (route.razon !== 'pushState' && route.razon !== 'replaceState') {
+    anterior = { url: actual, canal: route?.canal || '' };
+    return;
+  }
+
+  // Sin un canal anterior del que fiarse no hay a donde volver.
+  if (!previo || esSaltoDeRaid(previo.url)) {
+    anterior = { url: actual, canal: route?.canal || '' };
+    return;
+  }
+
+  const destino = route.canal || canalDe(actual);
+  if (!destino || destino === previo.canal) {
+    anterior = { url: actual, canal: route?.canal || '' };
+    return;
+  }
+
+  if (esManual(destino)) {
+    anterior = { url: actual, canal: route?.canal || '' };
+    limpiarMotivo(ID);
+    log('raid: el usuario ha pedido el salto');
+    return;
+  }
+
+  // No se actualiza `anterior`: si `history.back()` se retrasa, el siguiente
+  // empujon de Twitch debe seguir viendo el canal del que venimos.
+  bloquear(previo.url, route, actual);
+}
+
+/**
+ * Si la pagina acaba de cargar en una raid, la salida anterior esta en
+ * `sessionStorage` (por pestaña, no en la config global). Se vuelve una sola vez
+ * para no entrar en un bucle si Twitch insiste.
+ */
+function comprobarRecarga() {
+  if (!esSaltoDeRaid(urlActual())) return;
+
+  const guardado = leerSesion(CLAVE);
+  const manualGuardado = leerSesion(CLAVE_MANUAL);
+  const rebote = leerSesion(CLAVE_REBOTE);
+  const ahora = Date.now();
+
+  if (manualGuardado && ahora - manualGuardado.at < VENTANA_MANUAL_RECARGA) {
+    if (!manualGuardado.destino || manualGuardado.destino === canalDe(urlActual())) {
+      borrarSesion(CLAVE);
+      borrarSesion(CLAVE_MANUAL);
+      return;
+    }
+  }
+
+  if (!guardado?.url || !Number.isFinite(guardado.at)) return;
+  if (ahora - guardado.at > VENTANA_SALIDA) {
+    borrarSesion(CLAVE);
+    return;
+  }
+  if (rebote && ahora - rebote < VENTANA_REBOTE) return;
+  if (canalDe(guardado.url) === canalDe(urlActual())) return;
+
+  guardarSesion(CLAVE_REBOTE, { at: ahora, url: urlActual() });
+  log('raid: recarga detectada, se vuelve a', guardado.url);
+  globalThis.location?.replace?.(guardado.url);
+}
+
+function arrancar() {
+  if (activo) return;
+  activo = true;
+
+  anterior = esSaltoDeRaid(urlActual()) ? null : { url: urlActual(), canal: canalDe(urlActual()) };
+
+  globalThis.document?.addEventListener?.('click', recordarManual, true);
+  globalThis.document?.addEventListener?.('keydown', alTeclear, true);
+  globalThis.window?.addEventListener?.('pagehide', alSalir);
+
+  // Solo al cargar la pagina. Encenderla desde el panel no debe rebotar a una
+  // salida vieja que no tiene nada que ver con lo que se esta viendo ahora.
+  if (globalThis.document?.readyState === 'loading') comprobarRecarga();
+}
+
+function parar() {
+  if (!activo) return;
+  activo = false;
+
+  globalThis.document?.removeEventListener?.('click', recordarManual, true);
+  globalThis.document?.removeEventListener?.('keydown', alTeclear, true);
+  globalThis.window?.removeEventListener?.('pagehide', alSalir);
+
+  if (pendiente !== null) clearTimeout(pendiente);
+  pendiente = null;
+  anterior = null;
+  manual = { at: 0, destino: '' };
+  reiniciarContador();
+  limpiarMotivo(ID);
+  borrarSesion(CLAVE_MANUAL);
+  borrarSesion(CLAVE_REBOTE);
+}
+
+defineFeature({
+  id: ID,
+  label: 'No saltar automáticamente a la raid',
+  section: 'auto',
+  default: false,
+  onEnable: arrancar,
+  onDisable: parar,
+  onRoute: enRuta,
+});
+return {
+  esSaltoDeRaid: esSaltoDeRaid,
+};
+})();
+
+/* ---- src/features/sidebar-compact.js ---- */
+const __m37 = (function () {
 const { defineFeature: defineFeature } = __m6;
 const { get: storeGet, onChange: onChange } = __m5;
 
@@ -4576,7 +5197,7 @@ return {
 })();
 
 /* ---- src/features/sidebar-thumbnails.js ---- */
-const __m35 = (function () {
+const __m38 = (function () {
 const { log: log } = __m2;
 const { defineFeature: defineFeature, anotarMotivo: anotarMotivo, limpiarMotivo: limpiarMotivo } = __m6;
 const { get: storeGet } = __m5;
@@ -4964,7 +5585,7 @@ return {
 })();
 
 /* ---- src/features/theater-clean.js ---- */
-const __m36 = (function () {
+const __m39 = (function () {
 const { defineFeature: defineFeature } = __m6;
 
 defineFeature({
@@ -4998,7 +5619,7 @@ return {
 })();
 
 /* ---- src/features/viewer-analytics.js ---- */
-const __m37 = (function () {
+const __m40 = (function () {
 const { defineFeature: defineFeature } = __m6;
 const { get: storeGet } = __m5;
 const { chatContainer: chatContainer, chatLines: chatLines, usernameOf: usernameOf, viewerCount: viewerCount } = __m15;
@@ -5152,7 +5773,7 @@ return {
 })();
 
 /* ---- src/features/index.js ---- */
-const __m38 = (function () {
+const __m41 = (function () {
 /**
  * Índice de features.
  *
@@ -5165,7 +5786,7 @@ return {
 })();
 
 /* ---- src/ui/panel-css.js ---- */
-const __m39 = (function () {
+const __m42 = (function () {
 const PANEL_CSS = `
   :host { all: initial; }
   * { box-sizing: border-box; font-family: "Inter","Roobert",-apple-system,"Segoe UI",Roboto,sans-serif; }
@@ -5292,7 +5913,7 @@ return {
 })();
 
 /* ---- src/ui/presets.js ---- */
-const __m40 = (function () {
+const __m43 = (function () {
 /** Presets: un clic y la config queda como quieres. */
 const PRESETS = {
   minimal: ['darkMode', 'cleanMode', 'autoClaim'],
@@ -5346,7 +5967,7 @@ return {
 })();
 
 /* ---- src/ui/panel.js ---- */
-const __m41 = (function () {
+const __m44 = (function () {
 const { on: onBus } = __m0;
 const { setDebug: setDebug, trackedErrors: trackedErrors } = __m2;
 const { all: allFeatures, apply: apply, applyAll: applyAll, SECTIONS: SECTIONS, statuses: statuses } = __m6;
@@ -5359,8 +5980,8 @@ const { refresh: refreshCatalog, status: catalogStatus } = __m9;
 const { check: checkUpdate, install: installUpdate, shouldCheck: shouldCheck } = __m19;
 const { ChatPause: ChatPause } = __m20;
 const { VERSION: VERSION } = __m8;
-const { PANEL_CSS: PANEL_CSS } = __m39;
-const { PRESETS: PRESETS, PRESET_LABELS: PRESET_LABELS, idsOf: idsOf } = __m40;
+const { PANEL_CSS: PANEL_CSS } = __m42;
+const { PRESETS: PRESETS, PRESET_LABELS: PRESET_LABELS, idsOf: idsOf } = __m43;
 
 /** Panel de control en shadow DOM (sin colisiones con el CSS de Twitch). */
 
@@ -6083,7 +6704,7 @@ return {
 })();
 
 /* ---- src/app.js ---- */
-const __m42 = (function () {
+const __m45 = (function () {
 const { on: onBus } = __m0;
 const { refresh: refreshCatalog, status: catalogStatus, warm: warmCatalog } = __m9;
 const { onIdle: onIdle, ready: ready } = __m11;
@@ -6103,7 +6724,7 @@ const { show: toast } = __m18;
 const { check: checkUpdate, shouldCheck: shouldCheck } = __m19;
 const { VERSION: VERSION } = __m8;
 const { ChatPause: ChatPause } = __m20;
-const { UI: UI } = __m41;
+const { UI: UI } = __m44;
 
 /**
  * Arranque y API de diagnóstico.
@@ -6330,7 +6951,7 @@ return {
 })();
 
 /* ---- src/core/bridge.js ---- */
-const __m43 = (function () {
+const __m46 = (function () {
 const { log: log } = __m2;
 
 /**
@@ -6446,9 +7067,9 @@ return {
 })();
 
 /* ---- src/index.js ---- */
-const __m44 = (function () {
-const { diagnostics: diagnostics, setFeature: setFeature, start: start } = __m42;
-const { start: startBridge } = __m43;
+const __m47 = (function () {
+const { diagnostics: diagnostics, setFeature: setFeature, start: start } = __m45;
+const { start: startBridge } = __m46;
 const { VERSION: VERSION } = __m8;
 
 /**
@@ -6474,6 +7095,6 @@ return {
 };
 })();
 
-__m44;
+__m47;
 
 })();
