@@ -1,5 +1,17 @@
 # Changelog
 
+## 2.2.25 — 2026-10-31
+
+### Mejora
+- **Guardia de raids** (#113): evita el salto automático al canal de la raid y vuelve al canal anterior. Cubre saltos SPA y recargas, respeta los clics manuales y no entra en bucle.
+- **Vuelta al canal** (#128): si te vas de un canal que quedó offline, lo vigila cada minuto y te devuelve a él cuando vuelve a emitir. Se arma también con las raids y tiene un límite de espera configurable.
+### Detalles
+- Las dos van apagadas por defecto porque tocan la navegación.
+- `liveReturn` consulta el GQL público de Twitch y se detiene tras cinco fallos de red.
+- `session.js` y `postJson()` quedan como piezas compartidas del núcleo.
+### Tests
+- 304 unitarios + 95 de navegador.
+
 ## 2.2.24 — 2026-10-25
 
 ### Mejora
