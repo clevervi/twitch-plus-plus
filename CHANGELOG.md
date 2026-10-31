@@ -1,5 +1,15 @@
 # Changelog
 
+## 2.2.30 — 2026-10-31
+
+### Corrección
+- **Arranque en Brave/Tampermonkey**: espera a `document.documentElement` antes de inyectar CSS y aplicar features.
+- Evita el `TypeError: Cannot read properties of null (reading 'appendChild')` que abortaba el script y dejaba el panel sin montar.
+- `sheet()` tolera que aún no exista la raíz del documento.
+### Tests
+- Nuevo `document-start.test.mjs`: inyecta el bundle antes de `<html>`, como Tampermonkey.
+- 306 unitarios + 106 de navegador.
+
 ## 2.2.29 — 2026-10-31
 
 ### Mejora
