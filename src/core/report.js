@@ -1,10 +1,11 @@
 /** Informe de una línea por dato, pensado para pegar en un issue. */
 import { status as catalogStatus } from './catalog.js';
-import { capabilities } from './gm.js';
+import { capabilities, storageProbe } from './gm.js';
 import { trackedErrors } from './log.js';
 import { snapshot as perfSnapshot } from './perf.js';
 import { statuses } from './registry.js';
 import { brokenSelectors, promovidosRemotamente } from './selectors.js';
+import { currentUsername, isDarkTheme } from './twitch.js';
 import { VERSION } from './version.js';
 
 export function report() {
@@ -21,11 +22,20 @@ export function report() {
   const catalog = catalogStatus();
   const apis = capabilities();
   const perf = perfSnapshot();
+  const storage = storageProbe();
+  const brave = Boolean(globalThis.navigator?.brave);
+  const online = globalThis.navigator?.onLine !== false;
+  const login = currentUsername();
+  const theme = isDarkTheme() ? 'oscuro' : 'claro';
 
   const lines = [
     `Twitch++ v${VERSION}`,
     `gestor de scripts: ${apis.gestor}`,
-    `navegador: ${globalThis.navigator?.userAgent || 'desconocido'}`,
+    `navegador: ${globalThis.navigator?.userAgent || 'desconocido'} · Brave: ${brave ? 'sí' : 'no'}`,
+    `conexión: ${online ? 'online' : 'offline'}`,
+    `sesión: ${login || 'no detectada'}`,
+    `tema: ${theme}`,
+    `persistencia: ${storage.backend}; ${storage.persisted ? 'sobrevive a recargas' : 'no verificada (recarga y vuelve a mirar)'}`,
     `página: ${location.pathname}`,
     `arranque: ${perf.arranqueMs === null ? 'no medido' : `${perf.arranqueMs} ms`}`,
     `ticks: ${perf.ticks} (${perf.ticksPorSegundo}/s) · consultas: ${perf.consultas} · mutaciones: ${perf.mutaciones}`,

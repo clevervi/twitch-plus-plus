@@ -1,7 +1,7 @@
 import assert from 'node:assert/strict';
 import test from 'node:test';
 
-import { capabilities, deleteValue, getJson, getValue, managerName, postJson, setValue } from '../src/core/gm.js';
+import { capabilities, deleteValue, getJson, getValue, managerName, postJson, setValue, storageProbe } from '../src/core/gm.js';
 
 const APIS = ['GM_getValue', 'GM_setValue', 'GM_deleteValue', 'GM_addValueChangeListener', 'GM_xmlhttpRequest', 'GM_info'];
 
@@ -234,6 +234,33 @@ test('postJson resuelve null si la respuesta no es 2xx', async () => {
 
   try {
     assert.equal(await postJson('https://gql.twitch.tv/gql', {}), null);
+  } finally {
+    env.limpiar();
+  }
+});
+
+test('storageProbe verifica que el almacén del gestor sobrevive entre llamadas', () => {
+  const env = instalar();
+  try {
+    const primera = storageProbe();
+    assert.equal(primera.backend, 'GM');
+    assert.equal(primera.persisted, false, 'la primera vez no hay nada que leer');
+
+    const segunda = storageProbe();
+    assert.equal(segunda.persisted, true, 'la segunda ya encuentra el valor anterior');
+  } finally {
+    env.limpiar();
+  }
+});
+
+test('storageProbe usa localStorage cuando no hay GM_setValue', () => {
+  const env = instalar();
+  delete globalThis.GM_setValue;
+  delete globalThis.GM_getValue;
+
+  try {
+    assert.equal(storageProbe().backend, 'localStorage');
+    assert.equal(storageProbe().persisted, true);
   } finally {
     env.limpiar();
   }

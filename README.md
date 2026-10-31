@@ -8,7 +8,7 @@ La diferencia con un userscript de un solo archivo: **el código vive en este re
 npm run verify     # lint + idioma + build + tests (sin dependencias, sin npm install)
 npm run build      # genera dist/twitch-plus-plus.user.js y dist/latest.json
 npm run watch      # reconstruye al guardar
-npm test           # 304 tests unitarios
+npm test           # 306 tests unitarios
 npm run test:browser   # 105 tests en Chromium real (necesita npm install)
 ```
 
@@ -103,7 +103,7 @@ src/
   features/             una feature por archivo
   ui/panel.js           panel en shadow DOM (filas, ajustes, presets)
   ui/presets.js         minimal / balanced / agresivo
-test/                   304 tests con node:test
+test/                   306 tests con node:test
 tools/check-language.mjs vigila que la documentación no mezcla idiomas
 tools/dom-stub.mjs      DOM mínimo para arrancar el bundle fuera del navegador
 scripts/                build (bundler propio), lint, bump, validate-pr, release-notes
