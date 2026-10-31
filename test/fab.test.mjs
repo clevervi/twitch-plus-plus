@@ -62,27 +62,27 @@ describe('el boton flotante nunca es invisible', () => {
 describe('el boton flotante se recorta a la ventana', () => {
   it('una posicion guardada fuera de pantalla se mete dentro', () => {
     const pos = clampPlacement(5000, 5000, 1400, 900);
-    assert.equal(pos.right, 1368);
-    assert.equal(pos.bottom, 868);
+    assert.equal(pos.right, 1360);
+    assert.equal(pos.bottom, 860);
     assert.ok(pos.x >= 0 && pos.x < 1400, `x=${pos.x}`);
     assert.ok(pos.y >= 0 && pos.y < 900, `y=${pos.y}`);
-    assert.ok(pos.right + 26 <= 1400, 'el host entero debe caber a lo ancho');
-    assert.ok(pos.bottom + 26 <= 900, 'el host entero debe caber a lo alto');
+    assert.ok(pos.right + 40 <= 1400, 'el host entero debe caber a lo ancho');
+    assert.ok(pos.bottom + 40 <= 900, 'el host entero debe caber a lo alto');
   });
 
   it('una posicion negativa se pega al borde', () => {
     const pos = clampPlacement(-50, -50, 1400, 900);
     assert.equal(pos.right, 0);
     assert.equal(pos.bottom, 0);
-    assert.equal(pos.x, 1387);
-    assert.equal(pos.y, 887);
+    assert.equal(pos.x, 1380);
+    assert.equal(pos.y, 880);
   });
 
   it('tolera ventanas mas pequenas que el propio boton', () => {
     const pos = clampPlacement(100, 100, 20, 20);
     assert.equal(pos.right, 0);
     assert.equal(pos.bottom, 0);
-    assert.equal(pos.x, 7);
-    assert.equal(pos.y, 7);
+    assert.equal(pos.x, 0);
+    assert.equal(pos.y, 0);
   });
 });

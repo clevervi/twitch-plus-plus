@@ -11,11 +11,14 @@ import { refresh as refreshCatalog, status as catalogStatus } from '../core/cata
 import { check as checkUpdate, install as installUpdate, shouldCheck } from '../core/updater.js';
 import { ChatPause } from '../features/chat-pause.js';
 import { VERSION } from '../core/version.js';
+import { isDarkTheme } from '../core/twitch.js';
 import { PANEL_CSS } from './panel-css.js';
 import { PRESETS, PRESET_LABELS, idsOf } from './presets.js';
 
+const FAB_SIZE = 40;
+
 declare('fabRight', 'number', 14);
-declare('fabBottom', 'number', 56);
+declare('fabBottom', 'number', 88);
 declare('hasSeenFab', 'bool', false);
 
 let host = null;
@@ -29,6 +32,7 @@ let built = false;
 let cachedFabX = 0;
 let cachedFabY = 0;
 let fabState = 'idle';
+let refs = null;
 
 const NODE = {
   panel: 'panel',
@@ -39,6 +43,8 @@ const NODE = {
   body: 'body',
   note: 'note',
   pause: 'pause',
+  close: 'close',
+  active: 'active',
 };
 
 function node(name) {
@@ -94,9 +100,15 @@ function settingHtml(feature) {
 
 function featureRow(feature) {
   const tag = feature.remote ? '<span class="badge-remote">repo</span>' : '';
-  return `<div class="feature" data-feature="${feature.id}">
-    <label class="row label" data-search="${escapeHtml(feature.label.toLowerCase())}">
-      <span>${escapeHtml(feature.label)}${tag}</span>
+  const search = [feature.label, ...(feature.settings || []).map((setting) => setting.label)]
+    .join(' ')
+    .toLowerCase();
+  return `<div class="feature" data-feature="${feature.id}" data-search="${escapeHtml(search)}">
+    <label class="row label">
+      <span class="row-text">
+        <span class="row-title">${escapeHtml(feature.label)}${tag}</span>
+        <span class="row-note" data-status="${feature.id}" hidden></span>
+      </span>
       <input type="checkbox" data-key="${feature.id}">
     </label>
     ${settingHtml(feature)}
@@ -129,10 +141,19 @@ function sectionsHtml() {
             <span>Modo depuración</span>
             <input type="checkbox" data-key="debug">
           </label>
-          ${keys.map(keybindRow).join('')}`
+          ${keys.map(keybindRow).join('')}
+          <div class="advanced-actions">
+            <div class="advanced-title">Mantenimiento</div>
+            <button class="action-btn" data-action="update" type="button">Buscar actualización</button>
+            <button class="action-btn" data-action="catalog" type="button">Recargar catálogo</button>
+            <button class="action-btn" data-action="export" type="button">Exportar</button>
+            <button class="action-btn" data-action="import" type="button">Importar</button>
+            <button class="action-btn" data-action="diagnostics" type="button">Diagnóstico</button>
+            <button class="action-btn danger" data-action="reset" type="button">Reset</button>
+          </div>`
         : features.map(featureRow).join('');
     return `<div class="section" data-section="${section.id}">
-      <div class="section-title">${escapeHtml(section.title)}</div>
+      <button class="section-title" type="button" aria-expanded="true">${escapeHtml(section.title)}</button>
       <div class="section-body">${body}</div>
     </div>`;
   }).join('');
@@ -147,11 +168,11 @@ function sectionsHtml() {
 export function clampPlacement(right, bottom, winW = 1200, winH = 800) {
   const ancho = Number.isFinite(winW) && winW > 0 ? winW : 1200;
   const alto = Number.isFinite(winH) && winH > 0 ? winH : 800;
-  const maxRight = Math.max(0, ancho - 32);
-  const maxBottom = Math.max(0, alto - 32);
+  const maxRight = Math.max(0, ancho - FAB_SIZE);
+  const maxBottom = Math.max(0, alto - FAB_SIZE);
   const r = Math.min(maxRight, Math.max(0, Number.isFinite(right) ? right : 14));
-  const b = Math.min(maxBottom, Math.max(0, Number.isFinite(bottom) ? bottom : 56));
-  return { right: r, bottom: b, x: ancho - r - 13, y: alto - b - 13 };
+  const b = Math.min(maxBottom, Math.max(0, Number.isFinite(bottom) ? bottom : 88));
+  return { right: r, bottom: b, x: ancho - r - FAB_SIZE / 2, y: alto - b - FAB_SIZE / 2 };
 }
 
 function applyPlacement(right, bottom) {
@@ -181,7 +202,7 @@ function applyPlacement(right, bottom) {
   }
 
   if (isTop) {
-    const topPx = Math.max(0, winH - pos.bottom - 26);
+    const topPx = Math.max(0, winH - pos.bottom - FAB_SIZE);
     host.style.top = `${topPx}px`;
     host.style.bottom = 'auto';
   } else {
@@ -190,7 +211,7 @@ function applyPlacement(right, bottom) {
   }
 
   if (isLeft) {
-    const leftPx = Math.max(0, winW - pos.right - 26);
+    const leftPx = Math.max(0, winW - pos.right - FAB_SIZE);
     host.style.left = `${leftPx}px`;
     host.style.right = 'auto';
   } else {
@@ -199,7 +220,7 @@ function applyPlacement(right, bottom) {
   }
 
   if (panel) {
-    const availH = isTop ? (pos.bottom - 20) : (winH - pos.bottom - 36);
+    const availH = isTop ? (pos.bottom - FAB_SIZE - 10) : (winH - pos.bottom - FAB_SIZE - 10);
     panel.style.maxHeight = `${Math.max(220, Math.min(650, availH))}px`;
   }
 }
@@ -212,38 +233,31 @@ function build() {
   shadow = host.attachShadow({ mode: 'open' });
   shadow.innerHTML = `<style>${PANEL_CSS}</style>
     <div class="wrap">
-      <div class="toasts" id="toasts"></div>
-      <section class="panel" id="panel" hidden>
+      <div class="toasts" id="toasts" aria-live="polite"></div>
+      <section class="panel" id="panel" role="dialog" aria-label="Panel de Twitch++" hidden>
         <header class="head">
-          <span>Twitch<span class="plus">++</span></span>
-          <span class="ver">v${VERSION}</span>
+          <span class="brand">Twitch<span class="plus">++</span></span>
+          <span class="head-right">
+            <span class="ver">v${VERSION}</span>
+            <button class="close" id="close" type="button" aria-label="Cerrar panel" title="Cerrar (Esc)">×</button>
+          </span>
         </header>
         <div class="toolbar">
-          <input class="search" id="search" type="text" placeholder="Buscar…" spellcheck="false">
-          <select class="preset" id="preset">
+          <input class="search" id="search" type="search" placeholder="Buscar…" spellcheck="false" autocomplete="off" aria-label="Buscar ajustes">
+          <select class="preset" id="preset" aria-label="Preset">
             ${Object.entries(PRESET_LABELS)
               .map(([id, label]) => `<option value="${id}">${label}</option>`)
               .join('')}
           </select>
         </div>
         <div class="body" id="body">${sectionsHtml()}</div>
-        <div class="note" id="note" hidden></div>
+        <div class="note" id="note" role="status" hidden></div>
         <div class="actions">
-          <button class="action-btn" id="pause" data-action="pause">Pausar chat</button>
-          <div class="action-row">
-            <button class="action-btn" data-action="update">Buscar actualización</button>
-            <button class="action-btn" data-action="catalog">Recargar catálogo</button>
-          </div>
-          <div class="action-row">
-            <button class="action-btn" data-action="export">Exportar</button>
-            <button class="action-btn" data-action="import">Importar</button>
-            <button class="action-btn" data-action="diagnostics">Diagnóstico</button>
-            <button class="action-btn" data-action="reset">Reset</button>
-          </div>
+          <button class="action-btn primary" id="pause" data-action="pause" type="button">Pausar chat</button>
         </div>
-        <footer class="foot">Alt+Shift+T panel · Alt+Shift+P pausa de chat</footer>
+        <footer class="foot"><span id="active"></span> · Alt+Shift+T panel · Esc cierra</footer>
       </section>
-      <button class="fab" id="fab" title="Twitch++">++</button>
+      <button class="fab" id="fab" type="button" title="Twitch++" aria-label="Abrir panel de Twitch++" aria-expanded="false" aria-controls="panel">++</button>
     </div>`;
 
   (document.body || document.documentElement).appendChild(host);
@@ -253,11 +267,63 @@ function build() {
   setToastHost(node('toasts'));
 
   applyPlacement(get('fabRight'), get('fabBottom'));
+  applyTheme();
+  cacheRefs();
   bind();
   built = true;
   sync();
   flashFab();
   scheduleIdle();
+}
+
+/** Referencias estables para que `sync()` no recorra el shadow DOM en cada ruta. */
+function cacheRefs() {
+  if (!shadow) return;
+  const features = new Map();
+  for (const feature of allFeatures()) {
+    features.set(feature.id, {
+      input: shadow.querySelector(`input[data-key="${feature.id}"]`),
+      settings: shadow.querySelector(`[data-settings="${feature.id}"]`),
+      status: shadow.querySelector(`[data-status="${feature.id}"]`),
+    });
+  }
+  refs = {
+    features,
+    extras: ['catalog', 'autoUpdate', 'debug'].map((key) => ({
+      key,
+      input: shadow.querySelector(`input[data-key="${key}"]`),
+    })),
+    settings: [...shadow.querySelectorAll('input[data-setting], select[data-setting]')],
+    keybinds: [...shadow.querySelectorAll('.kb-input')],
+    preset: node('preset'),
+    pause: node('pause'),
+    active: node('active'),
+  };
+}
+
+/** El panel sigue el tema de Twitch: no es una isla negra en una página clara. */
+function applyTheme() {
+  if (panel) panel.dataset.theme = isDarkTheme() ? 'dark' : 'light';
+}
+
+/** Filtra por label y por nombres de ajustes; abre la sección si hay match. */
+function applySearch() {
+  if (!shadow) return;
+  const query = (node('search')?.value || '').toLowerCase().trim();
+  for (const section of shadow.querySelectorAll('.section')) {
+    let visible = 0;
+    for (const row of section.querySelectorAll('[data-search]')) {
+      const match = !query || (row.dataset.search || '').includes(query);
+      row.style.display = match ? '' : 'none';
+      if (match) visible += 1;
+    }
+    section.style.display = visible > 0 || !query ? '' : 'none';
+    const title = section.querySelector('.section-title');
+    if (query && visible > 0) {
+      section.classList.remove('collapsed');
+      title?.setAttribute('aria-expanded', 'true');
+    }
+  }
 }
 
 function setNote(html) {
@@ -428,6 +494,8 @@ function bind() {
     togglePanel();
   });
 
+  node('close').addEventListener('click', () => togglePanel(false));
+
   shadow.addEventListener('change', (event) => {
     const toggle = event.target.closest('input[type="checkbox"][data-key]');
     if (toggle) {
@@ -464,7 +532,9 @@ function bind() {
   shadow.addEventListener('click', (event) => {
     const title = event.target.closest('.section-title');
     if (title) {
-      title.closest('.section')?.classList.toggle('collapsed');
+      const section = title.closest('.section');
+      const collapsed = section?.classList.toggle('collapsed');
+      title.setAttribute('aria-expanded', String(!collapsed));
       return;
     }
     const action = event.target.closest('[data-action]');
@@ -485,26 +555,28 @@ function bind() {
     handlers[action.dataset.action]?.();
   });
 
-  node('search').addEventListener('input', (event) => {
-    const query = event.target.value.toLowerCase().trim();
-    for (const section of shadow.querySelectorAll('.section')) {
-      let visible = 0;
-      for (const row of section.querySelectorAll('[data-search]')) {
-        const match = !query || (row.dataset.search || '').includes(query);
-        row.style.display = match ? '' : 'none';
-        if (match) visible += 1;
-      }
-      section.style.display = visible > 0 || !query ? '' : 'none';
-    }
-  });
+  node('search').addEventListener('input', applySearch);
 
   node('preset').addEventListener('change', (event) => applyPreset(event.target.value));
 
   onBus('route', () => sync());
   onBus('chatPause:change', () => sync());
   onBus('catalog:updated', () => {
-    // el catálogo pudo añadir features: hay que redibujar las filas
-    node('body').innerHTML = sectionsHtml();
+    // el catálogo pudo añadir features: hay que redibujar las filas sin perder
+    // scroll, secciones colapsadas ni el filtro activo.
+    const body = node('body');
+    const scroll = body.scrollTop;
+    const collapsed = [...shadow.querySelectorAll('.section.collapsed')].map((s) => s.dataset.section);
+    body.innerHTML = sectionsHtml();
+    for (const id of collapsed) {
+      const section = shadow.querySelector(`.section[data-section="${id}"]`);
+      if (!section) continue;
+      section.classList.add('collapsed');
+      section.querySelector('.section-title')?.setAttribute('aria-expanded', 'false');
+    }
+    body.scrollTop = scroll;
+    cacheRefs();
+    applySearch();
     sync();
   });
   onBus('feature:disabled', ({ id }) => {
@@ -553,11 +625,15 @@ export function togglePanel(force) {
   if (!panel) build();
   const open = typeof force === 'boolean' ? force : panel.hidden;
   panel.hidden = !open;
+  fab.setAttribute('aria-expanded', String(open));
+  fab.setAttribute('aria-label', open ? 'Cerrar panel de Twitch++' : 'Abrir panel de Twitch++');
   if (open) {
     prevFocus = document.activeElement;
+    applyTheme();
     applyPlacement(get('fabRight'), get('fabBottom'));
     fab.classList.add('awake');
     clearTimeout(idleTimer);
+    sync();
     setTimeout(() => {
       const search = node('search');
       if (search && typeof search.focus === 'function') search.focus();
@@ -578,40 +654,54 @@ export function togglePanel(force) {
 
 export function sync() {
   if (!shadow) return;
+  if (!refs) cacheRefs();
+
+  const list = statuses();
+  const byId = new Map(list.map((item) => [item.id, item]));
+
   for (const feature of allFeatures()) {
-    const input = shadow.querySelector(`input[data-key="${feature.id}"]`);
-    if (input) input.checked = !!get(feature.id);
-    const box = shadow.querySelector(`[data-settings="${feature.id}"]`);
-    if (box) box.hidden = !get(feature.id);
+    const cached = refs?.features.get(feature.id);
+    if (!cached) continue;
+    const enabled = !!get(feature.id);
+    if (cached.input) cached.input.checked = enabled;
+    if (cached.settings) cached.settings.hidden = !enabled;
+    if (cached.status) {
+      const info = byId.get(feature.id);
+      const note = enabled && info ? info.motivo || (info.blocked ? 'inactiva ahora' : '') : '';
+      cached.status.textContent = note;
+      cached.status.hidden = !note;
+    }
   }
-  for (const key of ['catalog', 'autoUpdate', 'debug']) {
-    const input = shadow.querySelector(`input[data-key="${key}"]`);
+
+  for (const { key, input } of refs?.extras || []) {
     if (input) input.checked = !!get(key);
   }
 
-  for (const input of shadow.querySelectorAll('input[data-setting]')) {
+  for (const input of refs?.settings || []) {
     const key = input.dataset.setting;
     if (input.type === 'checkbox') input.checked = !!get(key);
     else input.value = String(get(key) ?? '');
   }
-  for (const select of shadow.querySelectorAll('select[data-setting]')) {
-    const key = select.dataset.setting;
-    select.value = String(get(key) ?? '');
-  }
 
   const keybinds = get('keybinds') || {};
-  for (const input of shadow.querySelectorAll('.kb-input')) {
+  for (const input of refs?.keybinds || []) {
     input.value = keybinds[input.dataset.kb] || '';
   }
 
   const preset = get('preset');
-  node('preset').value = PRESETS[preset] ? preset : 'custom';
+  if (refs?.preset) refs.preset.value = PRESETS[preset] ? preset : 'custom';
 
-  const pause = node('pause');
-  pause.textContent = ChatPause.isActive() ? 'Reanudar chat' : 'Pausar chat';
-  pause.classList.toggle('on', ChatPause.isActive());
+  if (refs?.pause) {
+    refs.pause.textContent = ChatPause.isActive() ? 'Reanudar chat' : 'Pausar chat';
+    refs.pause.classList.toggle('on', ChatPause.isActive());
+  }
   fab.classList.toggle('active', ChatPause.isActive());
   fab.title = ChatPause.isActive() ? 'Twitch++ — chat pausado' : 'Twitch++ (Alt+Shift+T)';
+  if (refs?.active) {
+    const active = list.filter((feature) => feature.active).length;
+    refs.active.textContent = `${active}/${list.length} activas`;
+  }
+  if (panel && !panel.hidden) applyTheme();
 }
 
 async function runUpdateCheck() {
@@ -636,20 +726,18 @@ async function runCatalogRefresh() {
   button.disabled = true;
   const result = await refreshCatalog({ force: true });
   button.disabled = false;
-  renderCatalogNote(result);
+  renderCatalogNote();
   sync();
   toast(result?.error ? 'Catálogo no disponible' : 'Catálogo actualizado');
 }
 
-function renderCatalogNote(result) {
+function renderCatalogNote() {
   const info = catalogStatus();
-  if (!get('catalog')) return setNote('Catálogo remoto desactivado.');
-  if (info.error) return setNote(`Catálogo: ${escapeHtml(info.error)}`);
-  const parts = [`Catálogo rev. ${info.revision}`];
-  if (info.selectors) parts.push(`${info.selectors} selectores remotos`);
-  if (info.features) parts.push(`${info.features} features del repo`);
-  if (info.note) parts.push(escapeHtml(info.note));
-  setNote(parts.join(' · '));
+  if (!get('catalog')) return setNote('');
+  if (info.error) {
+    return setNote('No se pudo leer el catálogo remoto; se usan los selectores locales. El detalle está en Diagnóstico.');
+  }
+  setNote('');
 }
 
 function runExport() {
