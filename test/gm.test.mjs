@@ -1,7 +1,7 @@
 import assert from 'node:assert/strict';
 import test from 'node:test';
 
-import { capabilities, deleteValue, getJson, getValue, managerName, setValue } from '../src/core/gm.js';
+import { capabilities, deleteValue, getJson, getValue, managerName, postJson, setValue } from '../src/core/gm.js';
 
 const APIS = ['GM_getValue', 'GM_setValue', 'GM_deleteValue', 'GM_addValueChangeListener', 'GM_xmlhttpRequest', 'GM_info'];
 
@@ -177,6 +177,63 @@ test('deleteValue limpia también la memoria de fallback', async () => {
     setValue('clave', 42);
     deleteValue('clave');
     assert.equal(getValue('clave', 'por defecto'), 'por defecto', 'memoria borrada');
+  } finally {
+    env.limpiar();
+  }
+});
+
+test('postJson manda POST con el cuerpo JSON y las cabeceras', async () => {
+  const env = instalar();
+  let capturado = null;
+  globalThis.GM_xmlhttpRequest = (opciones) => {
+    capturado = opciones;
+    opciones.onload({ status: 200, responseText: '{"ok":true}' });
+  };
+
+  try {
+    const resultado = await postJson(
+      'https://gql.twitch.tv/gql',
+      { query: 'q' },
+      { headers: { 'Client-ID': 'cliente' } },
+    );
+    assert.deepEqual(resultado, { ok: true });
+    assert.equal(capturado.method, 'POST');
+    assert.equal(capturado.data, '{"query":"q"}');
+    assert.equal(capturado.headers['Content-Type'], 'application/json');
+    assert.equal(capturado.headers['Client-ID'], 'cliente');
+  } finally {
+    env.limpiar();
+  }
+});
+
+test('postJson usa fetch cuando no hay GM_xmlhttpRequest', async () => {
+  const env = instalar();
+  delete globalThis.GM_xmlhttpRequest;
+  const originalFetch = globalThis.fetch;
+  let capturado = null;
+  globalThis.fetch = (url, opciones) => {
+    capturado = { url, opciones };
+    return Promise.resolve({ ok: true, json: async () => ({ ok: 1 }) });
+  };
+
+  try {
+    const resultado = await postJson('https://gql.twitch.tv/gql', { query: 'q' });
+    assert.deepEqual(resultado, { ok: 1 });
+    assert.equal(capturado.opciones.method, 'POST');
+    assert.equal(capturado.opciones.body, '{"query":"q"}');
+    assert.equal(capturado.opciones.headers['Content-Type'], 'application/json');
+  } finally {
+    globalThis.fetch = originalFetch;
+    env.limpiar();
+  }
+});
+
+test('postJson resuelve null si la respuesta no es 2xx', async () => {
+  const env = instalar();
+  globalThis.GM_xmlhttpRequest = (opciones) => opciones.onload({ status: 500, responseText: 'boom' });
+
+  try {
+    assert.equal(await postJson('https://gql.twitch.tv/gql', {}), null);
   } finally {
     env.limpiar();
   }
