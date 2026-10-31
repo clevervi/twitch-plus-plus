@@ -12,7 +12,7 @@
 import { log } from '../core/log.js';
 import { anotarMotivo, defineFeature, limpiarMotivo } from '../core/registry.js';
 import { read as leerSesion, remove as borrarSesion, write as guardarSesion } from '../core/session.js';
-import { channelFromHref } from '../core/twitch.js';
+import { channelFromHref, isRaidUrl } from '../core/twitch.js';
 
 const ID = 'raidGuard';
 const CLAVE = 'twpp:raidGuard';
@@ -47,16 +47,6 @@ function canalDe(url) {
   }
 }
 
-/** `true` si la URL lleva el marcador que Twitch pone al entrar en una raid. */
-export function esSaltoDeRaid(href) {
-  if (!href) return false;
-  try {
-    return new URL(href, 'https://www.twitch.tv').searchParams.get('referrer') === 'raid';
-  } catch {
-    return false;
-  }
-}
-
 function esManual(destino) {
   if (!manual.at || Date.now() - manual.at >= VENTANA_MANUAL) return false;
   return !manual.destino || manual.destino === destino;
@@ -86,7 +76,7 @@ function alTeclear(evento) {
  * `referrer=raid`: si la raid vuelve a recargar, no queremos rebotar en circulo.
  */
 function alSalir() {
-  if (esSaltoDeRaid(urlActual())) return;
+  if (isRaidUrl(urlActual())) return;
   guardarSesion(CLAVE, { url: urlActual(), at: Date.now() });
 }
 
@@ -132,7 +122,7 @@ function enRuta(route) {
 
   const actual = urlActual();
   const previo = anterior;
-  const esRaid = esSaltoDeRaid(actual);
+  const esRaid = isRaidUrl(actual);
 
   if (!esRaid) {
     anterior = { url: actual, canal: route?.canal || '' };
@@ -150,7 +140,7 @@ function enRuta(route) {
   }
 
   // Sin un canal anterior del que fiarse no hay a donde volver.
-  if (!previo || esSaltoDeRaid(previo.url)) {
+  if (!previo || isRaidUrl(previo.url)) {
     anterior = { url: actual, canal: route?.canal || '' };
     return;
   }
@@ -179,7 +169,7 @@ function enRuta(route) {
  * para no entrar en un bucle si Twitch insiste.
  */
 function comprobarRecarga() {
-  if (!esSaltoDeRaid(urlActual())) return;
+  if (!isRaidUrl(urlActual())) return;
 
   const guardado = leerSesion(CLAVE);
   const manualGuardado = leerSesion(CLAVE_MANUAL);
@@ -211,7 +201,7 @@ function arrancar() {
   if (activo) return;
   activo = true;
 
-  anterior = esSaltoDeRaid(urlActual()) ? null : { url: urlActual(), canal: canalDe(urlActual()) };
+  anterior = isRaidUrl(urlActual()) ? null : { url: urlActual(), canal: canalDe(urlActual()) };
 
   globalThis.document?.addEventListener?.('click', recordarManual, true);
   globalThis.document?.addEventListener?.('keydown', alTeclear, true);

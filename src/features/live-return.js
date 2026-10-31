@@ -15,7 +15,7 @@ import { log } from '../core/log.js';
 import { anotarMotivo, defineFeature, limpiarMotivo } from '../core/registry.js';
 import { read as leerSesion, remove as borrarSesion, write as guardarSesion } from '../core/session.js';
 import { get as storeGet } from '../core/store.js';
-import { channelFromHref } from '../core/twitch.js';
+import { channelFromHref, isRaidUrl } from '../core/twitch.js';
 
 const ID = 'liveReturn';
 const CLAVE_OBJETIVO = 'twpp:liveReturn.target';
@@ -45,14 +45,6 @@ const comprobandoSalida = new Set();
 
 function canalActual() {
   return channelFromHref(globalThis.location?.pathname || '/') || '';
-}
-
-function esSaltoDeRaid() {
-  try {
-    return new URLSearchParams(globalThis.location?.search || '').get('referrer') === 'raid';
-  } catch {
-    return false;
-  }
 }
 
 function limiteMs() {
@@ -148,7 +140,7 @@ function enRuta(route) {
   if (!previo?.canal || previo.canal === actual) return;
   if (previo.deSesion && ahora - previo.at > VENTANA_ULTIMO) return;
 
-  if (esSaltoDeRaid()) armar(previo.canal);
+  if (isRaidUrl(globalThis.location?.search || '')) armar(previo.canal);
   else comprobarSalida(previo.canal);
 }
 

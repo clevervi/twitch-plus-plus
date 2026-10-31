@@ -1,7 +1,7 @@
 import assert from 'node:assert/strict';
 import test from 'node:test';
 
-import { channelFromHref, channelFromCard, thumbnailUrl, parseViewerText, hoverDialog, sidebarTooltips } from '../src/core/twitch.js';
+import { channelFromHref, channelFromCard, thumbnailUrl, parseViewerText, hoverDialog, sidebarTooltips, isRaidUrl } from '../src/core/twitch.js';
 import { candidates } from '../src/core/selectors.js';
 
 test('channelFromHref extrae correctamente canales válidos y descarta rutas reservadas', () => {
@@ -32,6 +32,18 @@ test('channelFromHref rechaza segmentos mal codificados o que no son un canal', 
   assert.equal(channelFromHref('/foo%2fbar'), null);
   assert.equal(channelFromHref('/%64irectory'), null, 'las rutas reservadas también se decodifican');
   assert.equal(channelFromHref('/%6e%69%6e%6a%61'), 'ninja');
+});
+
+test('isRaidUrl reconoce solo el marcador exacto de raid', () => {
+  assert.equal(isRaidUrl('/rubius?referrer=raid'), true);
+  assert.equal(isRaidUrl('/rubius?foo=1&referrer=raid'), true);
+  assert.equal(isRaidUrl('https://www.twitch.tv/rubius?referrer=raid'), true);
+  assert.equal(isRaidUrl('/rubius?referrer=raidx'), false);
+  assert.equal(isRaidUrl('/rubius?referrer=host'), false);
+  assert.equal(isRaidUrl('/rubius'), false);
+  assert.equal(isRaidUrl(''), false);
+  assert.equal(isRaidUrl(null), false);
+  assert.equal(isRaidUrl('no es una url'), false);
 });
 
 test('thumbnailUrl genera la URL del CDN oficial de Twitch con resolución ajustada en 16:9', () => {

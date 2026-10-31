@@ -1,6 +1,6 @@
 # Twitch++
 
-Userscript de Tampermonkey para limpiar Twitch: tema OLED, sidebar compacta, chat con buscador y resaltados, analítica de viewers, auto-Channel Points y pausa de chat.
+Userscript de Tampermonkey para limpiar Twitch: tema OLED, sidebar compacta, chat con buscador y resaltados, analítica de viewers, auto-Channel Points, pausa de chat, guardia de raids y vuelta al canal.
 
 La diferencia con un userscript de un solo archivo: **el código vive en este repo** (módulos, tests, CI) y el script se **construye y se actualiza solo**. Además, el repo publica un *catálogo* de selectores y features experimentales que el script recoge por red: cuando Twitch cambia el DOM, se arregla desde aquí sin obligar a reinstalar nada.
 
@@ -8,8 +8,8 @@ La diferencia con un userscript de un solo archivo: **el código vive en este re
 npm run verify     # lint + idioma + build + tests (sin dependencias, sin npm install)
 npm run build      # genera dist/twitch-plus-plus.user.js y dist/latest.json
 npm run watch      # reconstruye al guardar
-npm test           # 143 tests unitarios
-npm run test:browser   # 15 tests en Chromium real (necesita npm install)
+npm test           # 304 tests unitarios
+npm run test:browser   # 95 tests en Chromium real (necesita npm install)
 ```
 
 ## Instalación
@@ -41,6 +41,8 @@ Solo hay un punto de contacto con las APIs de gestor de scripts: `src/core/gm.js
 | Sin gestor (abrir el `.user.js` en la página) | no, usa `localStorage` | no, usa `fetch` | funciona; la configuración no se comparte entre navegadores |
 
 Las APIs que el script declara son `GM_getValue`, `GM_setValue`, `GM_deleteValue`, `GM_addValueChangeListener`, `GM_xmlhttpRequest`, `GM_openInTab` y `GM_info`.
+
+Además, `liveReturn` consulta el GQL público de Twitch (`gql.twitch.tv`) para saber si un canal volvió a emitir. No envía datos de la cuenta ni necesita OAuth; solo pregunta por el login del canal.
 
 Para saber qué falta en tu caso, el panel lo dice:
 
@@ -86,6 +88,7 @@ src/
     selectors.js        registro de selectores con candidatos, fallback y salud
     store.js            config tipada (declare/get/set + import/export)
     migrations.js       un paso por versión de config
+    session.js          helpers de sessionStorage por pestaña
     probe.js            fuerza todas las features y devuelve qué funciona
     report.js           informe de texto para issues
     scheduler.js        latido único, evento + intervalo, se para en segundo plano
@@ -100,7 +103,7 @@ src/
   features/             una feature por archivo
   ui/panel.js           panel en shadow DOM (filas, ajustes, presets)
   ui/presets.js         minimal / balanced / agresivo
-test/                   93 tests con node:test
+test/                   304 tests con node:test
 tools/check-language.mjs vigila que la documentación no mezcla idiomas
 tools/dom-stub.mjs      DOM mínimo para arrancar el bundle fuera del navegador
 scripts/                build (bundler propio), lint, bump, validate-pr, release-notes
