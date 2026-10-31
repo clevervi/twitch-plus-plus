@@ -1,5 +1,16 @@
 # Changelog
 
+## 2.2.28 — 2026-10-31
+
+### Corregido
+- **OLED en tema claro**: ya no se activa por un nodo oculto de Twitch; el contenido deja de quedar negro u oculto.
+- **Sidebar compacta**: no agranda la sidebar colapsada; solo cambia la expandida.
+- **Filtro de chat**: la búsqueda se guarda y se restaura al cambiar de canal o recargar.
+### Herramientas
+- **Copiar diagnóstico** y **Desactivar todas** en Avanzado, para aislar problemas del script.
+### Tests
+- 304 unitarios + 105 de navegador.
+
 ## 2.2.27 — 2026-10-31
 
 ### Mejora
