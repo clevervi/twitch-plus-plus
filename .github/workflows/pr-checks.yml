@@ -13,9 +13,10 @@ jobs:
   validate:
     name: Validar convenciones del PR
     # Dependabot no puede abrir issues, así que sus PR nunca llevan
-    # `Closes #N`. Se salta solo este actor; `verify` sigue siendo
-    # obligatorio para todos en la regla de `main`.
-    if: github.actor != 'dependabot[bot]'
+    # `Closes #N`. Se mira el AUTOR del PR y no el actor del evento: si el
+    # mantenedor actualiza la rama, el actor deja de ser Dependabot y la
+    # validación correría igual, condenada a fallar por la rama y el cuerpo.
+    if: github.event.pull_request.user.login != 'dependabot[bot]'
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v4
