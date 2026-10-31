@@ -46,6 +46,7 @@ export const PANEL_CSS = `
     --accent: #9147ff; --accent-hover: #a970ff; --accent-text: #bf94ff;
     --danger: #ff5c5c; --danger-text: #ff9a9a;
     --danger-border: rgba(255,92,92,.45); --danger-soft: rgba(255,92,92,.12);
+    --warning: #e3b341;
     --remote: #00d4aa;
     width: 340px; max-height: 80vh; display: flex; flex-direction: column;
     background: var(--bg); border: 1px solid var(--border); border-radius: 10px;
@@ -59,6 +60,7 @@ export const PANEL_CSS = `
     --accent: #9147ff; --accent-hover: #772ce8; --accent-text: #5c16c5;
     --danger: #c81e1e; --danger-text: #a31212;
     --danger-border: rgba(200,30,30,.35); --danger-soft: rgba(200,30,30,.08);
+    --warning: #8a6d00;
     --remote: #007a63;
     box-shadow: 0 12px 34px rgba(0,0,0,.18);
   }
@@ -106,7 +108,8 @@ export const PANEL_CSS = `
   .row.label { cursor: pointer; }
   .row-text { display: flex; flex-direction: column; gap: 2px; min-width: 0; flex: 1; }
   .row-title { font-size: 13px; line-height: 1.35; }
-  .row-note { font-size: 11px; line-height: 1.35; color: var(--muted); user-select: text; }
+  .row-desc { font-size: 11.5px; line-height: 1.35; color: var(--muted); }
+  .row-note { font-size: 11px; line-height: 1.35; color: var(--warning); user-select: text; }
   .row-note[hidden] { display: none; }
   .row input[type="checkbox"] {
     appearance: none; width: 34px; height: 18px; border-radius: 999px;

@@ -5778,8 +5778,45 @@ return {
 };
 })();
 
-/* ---- src/ui/panel-css.js ---- */
+/* ---- src/ui/descriptions.js ---- */
 const __m42 = (function () {
+/** Pista corta de qué hace cada feature. El panel la muestra bajo el label. */
+const DESCRIPTIONS = {
+  darkMode: 'Fondo negro puro para el tema oscuro de Twitch.',
+  oledContrast: 'Sube el contraste de textos y bordes sobre OLED.',
+  theaterClean: 'Oculta la barra superior hasta que acercas el ratón.',
+  cleanMode: 'Quita bloques promocionales y ruido de la página.',
+  hideSidebar: 'Libera el ancho de la sidebar para el directo.',
+  hideViewerCount: 'Oculta el contador de espectadores.',
+  hideUpNext: 'Esconde la cola de recomendaciones del reproductor.',
+  hideStories: 'Quita la bandeja de Stories de la cabecera.',
+  hideExtensions: 'Oculta los botones de extensiones del player.',
+  hideChatExtras: 'Esconde Bits y normas del chat.',
+  hideOfflineChannels: 'Quita de la sidebar los canales desconectados.',
+  mentionHighlight: 'Marca las líneas del chat donde te mencionan.',
+  chatKeywordHighlight: 'Resalta las líneas con tus palabras clave.',
+  chatSearch: 'Filtra o atenúa mensajes desde una barra de búsqueda.',
+  chatFocus: 'Deja solo menciones, palabras clave y tus mensajes.',
+  viewerAnalytics: 'Añade viewers reales y chatters activos.',
+  sidebarCompact: 'Reduce el ancho de la sidebar.',
+  sidebarThumbnailPreview: 'Vista previa del canal al pasar por la sidebar.',
+  autoClaim: 'Reclama el cofre de puntos de canal al aparecer.',
+  autoReconnect: 'Reintenta reproducir si el directo se congela.',
+  raidGuard: 'Evita el salto automático al canal de la raid.',
+  liveReturn: 'Vuelve al canal cuando el streamer reanuda.',
+};
+
+function describe(id) {
+  return DESCRIPTIONS[id] || '';
+}
+return {
+  DESCRIPTIONS: DESCRIPTIONS,
+  describe: describe,
+};
+})();
+
+/* ---- src/ui/panel-css.js ---- */
+const __m43 = (function () {
 const PANEL_CSS = `
   :host { all: initial; }
   * { box-sizing: border-box; font-family: "Inter","Roobert",-apple-system,"Segoe UI",Roboto,sans-serif; }
@@ -5828,6 +5865,7 @@ const PANEL_CSS = `
     --accent: #9147ff; --accent-hover: #a970ff; --accent-text: #bf94ff;
     --danger: #ff5c5c; --danger-text: #ff9a9a;
     --danger-border: rgba(255,92,92,.45); --danger-soft: rgba(255,92,92,.12);
+    --warning: #e3b341;
     --remote: #00d4aa;
     width: 340px; max-height: 80vh; display: flex; flex-direction: column;
     background: var(--bg); border: 1px solid var(--border); border-radius: 10px;
@@ -5841,6 +5879,7 @@ const PANEL_CSS = `
     --accent: #9147ff; --accent-hover: #772ce8; --accent-text: #5c16c5;
     --danger: #c81e1e; --danger-text: #a31212;
     --danger-border: rgba(200,30,30,.35); --danger-soft: rgba(200,30,30,.08);
+    --warning: #8a6d00;
     --remote: #007a63;
     box-shadow: 0 12px 34px rgba(0,0,0,.18);
   }
@@ -5888,7 +5927,8 @@ const PANEL_CSS = `
   .row.label { cursor: pointer; }
   .row-text { display: flex; flex-direction: column; gap: 2px; min-width: 0; flex: 1; }
   .row-title { font-size: 13px; line-height: 1.35; }
-  .row-note { font-size: 11px; line-height: 1.35; color: var(--muted); user-select: text; }
+  .row-desc { font-size: 11.5px; line-height: 1.35; color: var(--muted); }
+  .row-note { font-size: 11px; line-height: 1.35; color: var(--warning); user-select: text; }
   .row-note[hidden] { display: none; }
   .row input[type="checkbox"] {
     appearance: none; width: 34px; height: 18px; border-radius: 999px;
@@ -5970,7 +6010,7 @@ return {
 })();
 
 /* ---- src/ui/presets.js ---- */
-const __m43 = (function () {
+const __m44 = (function () {
 /** Presets: un clic y la config queda como quieres. */
 const PRESETS = {
   minimal: ['darkMode', 'cleanMode', 'autoClaim'],
@@ -6024,7 +6064,7 @@ return {
 })();
 
 /* ---- src/ui/panel.js ---- */
-const __m44 = (function () {
+const __m45 = (function () {
 const { on: onBus } = __m0;
 const { setDebug: setDebug, trackedErrors: trackedErrors } = __m2;
 const { all: allFeatures, apply: apply, applyAll: applyAll, SECTIONS: SECTIONS, statuses: statuses } = __m6;
@@ -6038,10 +6078,12 @@ const { check: checkUpdate, install: installUpdate, shouldCheck: shouldCheck } =
 const { ChatPause: ChatPause } = __m20;
 const { VERSION: VERSION } = __m8;
 const { isDarkTheme: isDarkTheme } = __m15;
-const { PANEL_CSS: PANEL_CSS } = __m42;
-const { PRESETS: PRESETS, PRESET_LABELS: PRESET_LABELS, idsOf: idsOf } = __m43;
+const { describe: describe } = __m42;
+const { PANEL_CSS: PANEL_CSS } = __m43;
+const { PRESETS: PRESETS, PRESET_LABELS: PRESET_LABELS, idsOf: idsOf } = __m44;
 
 /** Panel de control en shadow DOM (sin colisiones con el CSS de Twitch). */
+
 
 
 
@@ -6076,6 +6118,7 @@ let cachedFabX = 0;
 let cachedFabY = 0;
 let fabState = 'idle';
 let refs = null;
+let seccionAbierta = 'visual';
 
 const NODE = {
   panel: 'panel',
@@ -6146,10 +6189,12 @@ function featureRow(feature) {
   const search = [feature.label, ...(feature.settings || []).map((setting) => setting.label)]
     .join(' ')
     .toLowerCase();
+  const desc = describe(feature.id);
   return `<div class="feature" data-feature="${feature.id}" data-search="${escapeHtml(search)}">
     <label class="row label">
       <span class="row-text">
         <span class="row-title">${escapeHtml(feature.label)}${tag}</span>
+        ${desc ? `<span class="row-desc">${escapeHtml(desc)}</span>` : ''}
         <span class="row-note" data-status="${feature.id}" hidden></span>
       </span>
       <input type="checkbox" data-key="${feature.id}">
@@ -6195,8 +6240,9 @@ function sectionsHtml() {
             <button class="action-btn danger" data-action="reset" type="button">Reset</button>
           </div>`
         : features.map(featureRow).join('');
-    return `<div class="section" data-section="${section.id}">
-      <button class="section-title" type="button" aria-expanded="true">${escapeHtml(section.title)}</button>
+    const open = section.id === seccionAbierta;
+    return `<div class="section${open ? '' : ' collapsed'}" data-section="${section.id}">
+      <button class="section-title" type="button" aria-expanded="${open}">${escapeHtml(section.title)}</button>
       <div class="section-body">${body}</div>
     </div>`;
   }).join('');
@@ -6360,11 +6406,17 @@ function applySearch() {
       row.style.display = match ? '' : 'none';
       if (match) visible += 1;
     }
-    section.style.display = visible > 0 || !query ? '' : 'none';
+    const mostrar = !query || visible > 0;
+    section.style.display = mostrar ? '' : 'none';
     const title = section.querySelector('.section-title');
-    if (query && visible > 0) {
-      section.classList.remove('collapsed');
-      title?.setAttribute('aria-expanded', 'true');
+    if (query) {
+      const abrir = mostrar && visible > 0;
+      section.classList.toggle('collapsed', !abrir);
+      title?.setAttribute('aria-expanded', String(abrir));
+    } else {
+      const abrir = section.dataset.section === seccionAbierta;
+      section.classList.toggle('collapsed', !abrir);
+      title?.setAttribute('aria-expanded', String(abrir));
     }
   }
 }
@@ -6576,8 +6628,13 @@ function bind() {
     const title = event.target.closest('.section-title');
     if (title) {
       const section = title.closest('.section');
-      const collapsed = section?.classList.toggle('collapsed');
-      title.setAttribute('aria-expanded', String(!collapsed));
+      const abrir = section?.classList.contains('collapsed');
+      for (const otra of shadow.querySelectorAll('.section')) {
+        const open = abrir && otra === section;
+        otra.classList.toggle('collapsed', !open);
+        otra.querySelector('.section-title')?.setAttribute('aria-expanded', String(open));
+      }
+      seccionAbierta = abrir ? section.dataset.section : null;
       return;
     }
     const action = event.target.closest('[data-action]');
@@ -6605,18 +6662,10 @@ function bind() {
   onBus('route', () => sync());
   onBus('chatPause:change', () => sync());
   onBus('catalog:updated', () => {
-    // el catálogo pudo añadir features: hay que redibujar las filas sin perder
-    // scroll, secciones colapsadas ni el filtro activo.
+    // El catálogo pudo añadir features: se redibuja sin perder scroll ni filtro.
     const body = node('body');
     const scroll = body.scrollTop;
-    const collapsed = [...shadow.querySelectorAll('.section.collapsed')].map((s) => s.dataset.section);
     body.innerHTML = sectionsHtml();
-    for (const id of collapsed) {
-      const section = shadow.querySelector(`.section[data-section="${id}"]`);
-      if (!section) continue;
-      section.classList.add('collapsed');
-      section.querySelector('.section-title')?.setAttribute('aria-expanded', 'false');
-    }
     body.scrollTop = scroll;
     cacheRefs();
     applySearch();
@@ -6850,7 +6899,7 @@ return {
 })();
 
 /* ---- src/app.js ---- */
-const __m45 = (function () {
+const __m46 = (function () {
 const { on: onBus } = __m0;
 const { refresh: refreshCatalog, status: catalogStatus, warm: warmCatalog } = __m9;
 const { onIdle: onIdle, ready: ready } = __m11;
@@ -6870,7 +6919,7 @@ const { show: toast } = __m18;
 const { check: checkUpdate, shouldCheck: shouldCheck } = __m19;
 const { VERSION: VERSION } = __m8;
 const { ChatPause: ChatPause } = __m20;
-const { UI: UI } = __m44;
+const { UI: UI } = __m45;
 
 /**
  * Arranque y API de diagnóstico.
@@ -7097,7 +7146,7 @@ return {
 })();
 
 /* ---- src/core/bridge.js ---- */
-const __m46 = (function () {
+const __m47 = (function () {
 const { log: log } = __m2;
 
 /**
@@ -7213,9 +7262,9 @@ return {
 })();
 
 /* ---- src/index.js ---- */
-const __m47 = (function () {
-const { diagnostics: diagnostics, setFeature: setFeature, start: start } = __m45;
-const { start: startBridge } = __m46;
+const __m48 = (function () {
+const { diagnostics: diagnostics, setFeature: setFeature, start: start } = __m46;
+const { start: startBridge } = __m47;
 const { VERSION: VERSION } = __m8;
 
 /**
@@ -7241,6 +7290,6 @@ return {
 };
 })();
 
-__m47;
+__m48;
 
 })();
