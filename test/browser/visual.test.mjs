@@ -169,4 +169,31 @@ describe('sidebar compacta', () => {
       'y la variable CSS se quita, no se deja puesta',
     );
   });
+
+  it('no agranda la sidebar cuando Twitch la tiene colapsada', async () => {
+    // En Twitch real, la colapsada mide 50 px y lleva
+    // `data-a-target="side-nav-bar-collapsed"` + `.side-nav--collapsed`.
+    // El selector `.side-nav` la alcanzaba y le ponía 72 px: la agrandaba.
+    await pagina.evaluate(() => {
+      const el = document.createElement('div');
+      el.id = 'twpp-collapsed-test';
+      el.className = 'side-nav side-nav--collapsed';
+      el.setAttribute('data-a-target', 'side-nav-bar-collapsed');
+      el.style.cssText = 'width:50px;min-width:50px;max-width:50px;height:100px';
+      document.body.appendChild(el);
+      window.TwitchPP.enable('sidebarCompact');
+    });
+    await pagina.waitForTimeout(250);
+
+    const medida = await pagina.evaluate(() => {
+      const el = document.getElementById('twpp-collapsed-test');
+      return el ? Math.round(el.getBoundingClientRect().width) : null;
+    });
+    assert.equal(medida, 50, `la colapsada debe seguir en 50 px, mide ${medida}`);
+
+    await pagina.evaluate(() => {
+      document.getElementById('twpp-collapsed-test')?.remove();
+      window.TwitchPP.disable('sidebarCompact');
+    });
+  });
 });

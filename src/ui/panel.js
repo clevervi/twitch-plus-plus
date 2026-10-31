@@ -1,7 +1,7 @@
 /** Panel de control en shadow DOM (sin colisiones con el CSS de Twitch). */
 import { on as onBus } from '../core/bus.js';
 import { setDebug, trackedErrors } from '../core/log.js';
-import { all as allFeatures, apply, applyAll, SECTIONS, statuses } from '../core/registry.js';
+import { all as allFeatures, apply, applyAll, disableAll, SECTIONS, statuses } from '../core/registry.js';
 import { report } from '../core/report.js';
 import { brokenSelectors, selectorReport } from '../core/selectors.js';
 import { declare, exportJSON, get, importJSON, reset as resetStore, set, setMany } from '../core/store.js';
@@ -153,6 +153,7 @@ function sectionsHtml() {
             <button class="action-btn" data-action="export" type="button">Exportar</button>
             <button class="action-btn" data-action="import" type="button">Importar</button>
             <button class="action-btn" data-action="diagnostics" type="button">Diagnóstico</button>
+            <button class="action-btn" data-action="disableAll" type="button">Desactivar todas</button>
             <button class="action-btn danger" data-action="reset" type="button">Reset</button>
           </div>`
         : features.map(featureRow).join('');
@@ -566,6 +567,7 @@ function bind() {
       export: () => runExport(),
       import: () => runImport(),
       diagnostics: () => runDiagnostics(),
+      disableAll: () => runDisableAll(),
       reset: () => runReset(),
     };
     handlers[action.dataset.action]?.();
@@ -777,15 +779,25 @@ function runImport() {
 function runDiagnostics() {
   const errors = trackedErrors();
   const dead = brokenSelectors();
+  const texto = report();
   console.table(statuses());
   console.table(selectorReport());
   if (errors.length) console.table(errors);
-  console.log('[Twitch++] informe:\n' + report());
+  console.log('[Twitch++] informe:\n' + texto);
+  if (navigator.clipboard?.writeText) {
+    navigator.clipboard.writeText(texto).then(() => toast('Informe copiado')).catch(() => {});
+  }
 
   const parts = [`${statuses().length} features`, `${errors.length} errores`];
   if (dead.length) parts.push(`${dead.length} selectores rotos`);
   toast(`Diagnóstico: ${parts.join(' · ')}`);
   if (dead.length) setNote(`Selectores sin resolver: <b>${dead.map((row) => row.key).join(', ')}</b><br>Copia el informe de la consola y abre una issue.`);
+}
+
+function runDisableAll() {
+  disableAll();
+  sync();
+  toast('Todas las features desactivadas');
 }
 
 function runReset() {

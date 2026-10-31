@@ -76,7 +76,7 @@ describe('acción principal separada del mantenimiento', () => {
     assert.equal(datos.resetEnAvanzado, true);
     assert.equal(datos.updateEnAcciones, false);
     assert.equal(datos.pauseEnAcciones, true);
-    assert.deepEqual(datos.accionesAvanzadas, ['update', 'catalog', 'export', 'import', 'diagnostics', 'reset']);
+    assert.deepEqual(datos.accionesAvanzadas, ['update', 'catalog', 'export', 'import', 'diagnostics', 'disableAll', 'reset']);
   });
 });
 

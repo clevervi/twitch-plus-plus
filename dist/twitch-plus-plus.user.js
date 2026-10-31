@@ -2203,13 +2203,17 @@ function thumbnailUrl(channel, width = 320) {
  * se deduce del color de fondo real (sirve para cuando cambian el marcado).
  */
 function isDarkTheme() {
-  if (document.documentElement.classList.contains('tw-root--theme-dark')) return true;
-  if (document.body?.classList.contains('tw-root--theme-dark')) return true;
-  if (qs('.tw-root--theme-dark')) return true;
-  // Camino simetrico del anterior. Si Twitch no usara nunca esta clase, esta
-  // comprobacion no llega a dispararse y el comportamiento no cambia: por eso
-  // se puede anadir sin haber verificado el nombre en la pagina real.
-  if (document.documentElement.classList.contains('tw-root--theme-light')) return false;
+  const html = document.documentElement;
+  const body = document.body;
+
+  // La clase explicita del documento manda. Twitch deja nodos ocultos con
+  // `tw-root--theme-dark` (sus CSS vars por capas); buscarlos hacia abajo daba
+  // un falso positivo y aplicaba OLED sobre el tema claro. Por eso ya no se
+  // usa `qs('.tw-root--theme-dark')`.
+  if (html?.classList.contains('tw-root--theme-light')) return false;
+  if (body?.classList.contains('tw-root--theme-light')) return false;
+  if (html?.classList.contains('tw-root--theme-dark')) return true;
+  if (body?.classList.contains('tw-root--theme-dark')) return true;
 
   // La luminancia se lee del <html> y NO del <body>, a proposito.
   //
@@ -3788,7 +3792,7 @@ const __m27 = (function () {
 const { qs: qs } = __m11;
 const { defineFeature: defineFeature } = __m6;
 const { compilarSeguro: compilarSeguro } = __m23;
-const { get: storeGet } = __m5;
+const { declare: declare, get: storeGet, set: storeSet } = __m5;
 const { chatContainer: chatContainer, chatLines: chatLines, messageText: messageText } = __m15;
 
 /** Buscador dentro del chat: filtra, cuenta y permite saltar entre coincidencias. */
@@ -3797,6 +3801,8 @@ const { chatContainer: chatContainer, chatLines: chatLines, messageText: message
 
 
 
+
+declare('chatSearchQuery', 'string', '');
 
 let bar = null;
 let matches = [];
@@ -3907,10 +3913,15 @@ function ensureUI() {
   parent.insertBefore(node, parent.firstChild);
 
   const input = qs('.twpp-search-input', node);
-  input.addEventListener('input', apply);
+  input.value = storeGet('chatSearchQuery') || '';
+  input.addEventListener('input', () => {
+    storeSet('chatSearchQuery', input.value);
+    apply();
+  });
   input.addEventListener('keydown', (event) => {
     if (event.key === 'Escape') {
       input.value = '';
+      storeSet('chatSearchQuery', '');
       apply();
       input.blur();
     }
@@ -3921,6 +3932,7 @@ function ensureUI() {
   });
   qs('.twpp-search-clear', node).addEventListener('click', () => {
     input.value = '';
+    storeSet('chatSearchQuery', '');
     apply();
     input.focus();
   });
@@ -3928,6 +3940,7 @@ function ensureUI() {
   qs('.twpp-search-prev', node).addEventListener('click', () => jump(-1));
 
   bar = node;
+  if (input.value.trim()) apply();
   return bar;
 }
 
@@ -5147,10 +5160,11 @@ defineFeature({
   default: false,
   settings: [{ key: 'sidebarWidth', label: 'Ancho (px)', type: 'number', default: 72, min: 50, max: 120 }],
   css: `
+    /* Solo la expandida: Twitch ya deja la colapsada en 50 px y forzarla a
+       72/120 la agrandaba. */
     %SCOPE% [data-a-target="side-nav-bar"],
-    %SCOPE% .side-nav,
-    %SCOPE% [data-test-selector="side-nav"],
-    %SCOPE% nav[aria-label="Primary navigation"] {
+    %SCOPE% .side-nav.side-nav--expanded,
+    %SCOPE% [data-test-selector="side-nav"]:not(.side-nav--collapsed) {
       width: var(--twpp-sidebar-width, 72px) !important;
       min-width: var(--twpp-sidebar-width, 72px) !important;
       max-width: var(--twpp-sidebar-width, 72px) !important;
@@ -6067,7 +6081,7 @@ return {
 const __m45 = (function () {
 const { on: onBus } = __m0;
 const { setDebug: setDebug, trackedErrors: trackedErrors } = __m2;
-const { all: allFeatures, apply: apply, applyAll: applyAll, SECTIONS: SECTIONS, statuses: statuses } = __m6;
+const { all: allFeatures, apply: apply, applyAll: applyAll, disableAll: disableAll, SECTIONS: SECTIONS, statuses: statuses } = __m6;
 const { report: report } = __m14;
 const { brokenSelectors: brokenSelectors, selectorReport: selectorReport } = __m3;
 const { declare: declare, exportJSON: exportJSON, get: get, importJSON: importJSON, reset: resetStore, set: set, setMany: setMany } = __m5;
@@ -6237,6 +6251,7 @@ function sectionsHtml() {
             <button class="action-btn" data-action="export" type="button">Exportar</button>
             <button class="action-btn" data-action="import" type="button">Importar</button>
             <button class="action-btn" data-action="diagnostics" type="button">Diagnóstico</button>
+            <button class="action-btn" data-action="disableAll" type="button">Desactivar todas</button>
             <button class="action-btn danger" data-action="reset" type="button">Reset</button>
           </div>`
         : features.map(featureRow).join('');
@@ -6650,6 +6665,7 @@ function bind() {
       export: () => runExport(),
       import: () => runImport(),
       diagnostics: () => runDiagnostics(),
+      disableAll: () => runDisableAll(),
       reset: () => runReset(),
     };
     handlers[action.dataset.action]?.();
@@ -6861,15 +6877,25 @@ function runImport() {
 function runDiagnostics() {
   const errors = trackedErrors();
   const dead = brokenSelectors();
+  const texto = report();
   console.table(statuses());
   console.table(selectorReport());
   if (errors.length) console.table(errors);
-  console.log('[Twitch++] informe:\n' + report());
+  console.log('[Twitch++] informe:\n' + texto);
+  if (navigator.clipboard?.writeText) {
+    navigator.clipboard.writeText(texto).then(() => toast('Informe copiado')).catch(() => {});
+  }
 
   const parts = [`${statuses().length} features`, `${errors.length} errores`];
   if (dead.length) parts.push(`${dead.length} selectores rotos`);
   toast(`Diagnóstico: ${parts.join(' · ')}`);
   if (dead.length) setNote(`Selectores sin resolver: <b>${dead.map((row) => row.key).join(', ')}</b><br>Copia el informe de la consola y abre una issue.`);
+}
+
+function runDisableAll() {
+  disableAll();
+  sync();
+  toast('Todas las features desactivadas');
 }
 
 function runReset() {
