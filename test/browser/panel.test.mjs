@@ -81,14 +81,33 @@ describe('acción principal separada del mantenimiento', () => {
 });
 
 describe('secciones accesibles', () => {
-  it('son botones y actualizan aria-expanded al colapsar', async () => {
+  it('solo hay una sección abierta y cada feature trae su pista', async () => {
+    await abrir();
+    const estado = await page.evaluate(() => {
+      const { shadow } = window.__twpp;
+      return {
+        abiertas: [...shadow.querySelectorAll('.section:not(.collapsed)')].map((s) => s.dataset.section),
+        desc: shadow.querySelector('.feature[data-feature="darkMode"] .row-desc')?.textContent || '',
+      };
+    });
+    assert.deepEqual(estado.abiertas, ['visual']);
+    assert.match(estado.desc, /negro|fondo/i);
+  });
+
+  it('son botones y abren una sola sección', async () => {
     await abrir();
     const antes = await page.evaluate(() => {
-      const title = window.__twpp.shadow.querySelector('.section[data-section="chat"] .section-title');
-      return { tag: title.tagName, expanded: title.getAttribute('aria-expanded') };
+      const { shadow } = window.__twpp;
+      const title = shadow.querySelector('.section[data-section="chat"] .section-title');
+      return {
+        tag: title.tagName,
+        expanded: title.getAttribute('aria-expanded'),
+        visual: shadow.querySelector('.section[data-section="visual"]').classList.contains('collapsed'),
+      };
     });
     assert.equal(antes.tag, 'BUTTON');
-    assert.equal(antes.expanded, 'true');
+    assert.equal(antes.expanded, 'false');
+    assert.equal(antes.visual, false);
 
     const despues = await page.evaluate(() => {
       const { shadow } = window.__twpp;
@@ -96,14 +115,23 @@ describe('secciones accesibles', () => {
       title.click();
       return {
         expanded: title.getAttribute('aria-expanded'),
-        collapsed: title.closest('.section').classList.contains('collapsed'),
+        visual: shadow.querySelector('.section[data-section="visual"]').classList.contains('collapsed'),
+        abiertas: [...shadow.querySelectorAll('.section:not(.collapsed)')].map((s) => s.dataset.section),
       };
     });
-    assert.equal(despues.expanded, 'false');
-    assert.equal(despues.collapsed, true);
+    assert.equal(despues.expanded, 'true');
+    assert.equal(despues.visual, true);
+    assert.deepEqual(despues.abiertas, ['chat']);
+
+    const cerrado = await page.evaluate(() => {
+      const { shadow } = window.__twpp;
+      shadow.querySelector('.section[data-section="chat"] .section-title').click();
+      return [...shadow.querySelectorAll('.section:not(.collapsed)')].length;
+    });
+    assert.equal(cerrado, 0);
 
     await page.evaluate(() =>
-      window.__twpp.shadow.querySelector('.section[data-section="chat"] .section-title').click(),
+      window.__twpp.shadow.querySelector('.section[data-section="visual"] .section-title').click(),
     );
   });
 });
@@ -124,16 +152,23 @@ describe('buscador del panel', () => {
       return {
         feature: shadow.querySelector('.feature[data-feature="autoReconnect"]').style.display,
         otra: shadow.querySelector('.feature[data-feature="darkMode"]').style.display,
+        abiertas: [...shadow.querySelectorAll('.section:not(.collapsed)')].map((s) => s.dataset.section),
       };
     });
     assert.notEqual(porAjuste.feature, 'none', 'el ajuste "Espera inicial" debe encontrar su feature');
     assert.equal(porAjuste.otra, 'none');
+    assert.deepEqual(porAjuste.abiertas, ['auto'], 'la sección con el ajuste se abre sola');
 
     await buscar('ancho');
-    const porAncho = await page.evaluate(
-      () => window.__twpp.shadow.querySelector('.feature[data-feature="sidebarCompact"]').style.display,
-    );
-    assert.notEqual(porAncho, 'none', 'el ajuste "Ancho (px)" debe encontrar la feature');
+    const porAncho = await page.evaluate(() => {
+      const { shadow } = window.__twpp;
+      return {
+        feature: shadow.querySelector('.feature[data-feature="sidebarCompact"]').style.display,
+        abiertas: [...shadow.querySelectorAll('.section:not(.collapsed)')].map((s) => s.dataset.section),
+      };
+    });
+    assert.notEqual(porAncho.feature, 'none', 'el ajuste "Ancho (px)" debe encontrar la feature');
+    assert.deepEqual(porAncho.abiertas, ['sidebar']);
 
     await buscar('zzzz');
     const sinResultados = await page.evaluate(
@@ -142,6 +177,10 @@ describe('buscador del panel', () => {
     assert.equal(sinResultados, 'none');
 
     await buscar('');
+    const restaurado = await page.evaluate(
+      () => [...window.__twpp.shadow.querySelectorAll('.section:not(.collapsed)')].map((s) => s.dataset.section),
+    );
+    assert.deepEqual(restaurado, ['visual'], 'al limpiar vuelve la sección que estaba abierta');
   });
 });
 

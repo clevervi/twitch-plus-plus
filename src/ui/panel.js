@@ -12,6 +12,7 @@ import { check as checkUpdate, install as installUpdate, shouldCheck } from '../
 import { ChatPause } from '../features/chat-pause.js';
 import { VERSION } from '../core/version.js';
 import { isDarkTheme } from '../core/twitch.js';
+import { describe } from './descriptions.js';
 import { PANEL_CSS } from './panel-css.js';
 import { PRESETS, PRESET_LABELS, idsOf } from './presets.js';
 
@@ -33,6 +34,7 @@ let cachedFabX = 0;
 let cachedFabY = 0;
 let fabState = 'idle';
 let refs = null;
+let seccionAbierta = 'visual';
 
 const NODE = {
   panel: 'panel',
@@ -103,10 +105,12 @@ function featureRow(feature) {
   const search = [feature.label, ...(feature.settings || []).map((setting) => setting.label)]
     .join(' ')
     .toLowerCase();
+  const desc = describe(feature.id);
   return `<div class="feature" data-feature="${feature.id}" data-search="${escapeHtml(search)}">
     <label class="row label">
       <span class="row-text">
         <span class="row-title">${escapeHtml(feature.label)}${tag}</span>
+        ${desc ? `<span class="row-desc">${escapeHtml(desc)}</span>` : ''}
         <span class="row-note" data-status="${feature.id}" hidden></span>
       </span>
       <input type="checkbox" data-key="${feature.id}">
@@ -152,8 +156,9 @@ function sectionsHtml() {
             <button class="action-btn danger" data-action="reset" type="button">Reset</button>
           </div>`
         : features.map(featureRow).join('');
-    return `<div class="section" data-section="${section.id}">
-      <button class="section-title" type="button" aria-expanded="true">${escapeHtml(section.title)}</button>
+    const open = section.id === seccionAbierta;
+    return `<div class="section${open ? '' : ' collapsed'}" data-section="${section.id}">
+      <button class="section-title" type="button" aria-expanded="${open}">${escapeHtml(section.title)}</button>
       <div class="section-body">${body}</div>
     </div>`;
   }).join('');
@@ -317,11 +322,17 @@ function applySearch() {
       row.style.display = match ? '' : 'none';
       if (match) visible += 1;
     }
-    section.style.display = visible > 0 || !query ? '' : 'none';
+    const mostrar = !query || visible > 0;
+    section.style.display = mostrar ? '' : 'none';
     const title = section.querySelector('.section-title');
-    if (query && visible > 0) {
-      section.classList.remove('collapsed');
-      title?.setAttribute('aria-expanded', 'true');
+    if (query) {
+      const abrir = mostrar && visible > 0;
+      section.classList.toggle('collapsed', !abrir);
+      title?.setAttribute('aria-expanded', String(abrir));
+    } else {
+      const abrir = section.dataset.section === seccionAbierta;
+      section.classList.toggle('collapsed', !abrir);
+      title?.setAttribute('aria-expanded', String(abrir));
     }
   }
 }
@@ -533,8 +544,13 @@ function bind() {
     const title = event.target.closest('.section-title');
     if (title) {
       const section = title.closest('.section');
-      const collapsed = section?.classList.toggle('collapsed');
-      title.setAttribute('aria-expanded', String(!collapsed));
+      const abrir = section?.classList.contains('collapsed');
+      for (const otra of shadow.querySelectorAll('.section')) {
+        const open = abrir && otra === section;
+        otra.classList.toggle('collapsed', !open);
+        otra.querySelector('.section-title')?.setAttribute('aria-expanded', String(open));
+      }
+      seccionAbierta = abrir ? section.dataset.section : null;
       return;
     }
     const action = event.target.closest('[data-action]');
@@ -562,18 +578,10 @@ function bind() {
   onBus('route', () => sync());
   onBus('chatPause:change', () => sync());
   onBus('catalog:updated', () => {
-    // el catálogo pudo añadir features: hay que redibujar las filas sin perder
-    // scroll, secciones colapsadas ni el filtro activo.
+    // El catálogo pudo añadir features: se redibuja sin perder scroll ni filtro.
     const body = node('body');
     const scroll = body.scrollTop;
-    const collapsed = [...shadow.querySelectorAll('.section.collapsed')].map((s) => s.dataset.section);
     body.innerHTML = sectionsHtml();
-    for (const id of collapsed) {
-      const section = shadow.querySelector(`.section[data-section="${id}"]`);
-      if (!section) continue;
-      section.classList.add('collapsed');
-      section.querySelector('.section-title')?.setAttribute('aria-expanded', 'false');
-    }
     body.scrollTop = scroll;
     cacheRefs();
     applySearch();
