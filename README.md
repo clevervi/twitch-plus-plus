@@ -9,7 +9,7 @@ npm run verify     # lint + idioma + build + tests (sin dependencias, sin npm in
 npm run build      # genera dist/twitch-plus-plus.user.js y dist/latest.json
 npm run watch      # reconstruye al guardar
 npm test           # 306 tests unitarios
-npm run test:browser   # 105 tests en Chromium real (necesita npm install)
+npm run test:browser   # 106 tests en Chromium real (necesita npm install)
 ```
 
 ## Instalación
