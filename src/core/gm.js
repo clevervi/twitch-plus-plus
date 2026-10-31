@@ -179,6 +179,30 @@ export function postJson(url, payload, { timeout = 10000, headers } = {}) {
   });
 }
 
+const PROBE_KEY = 'twpp:storageProbe';
+
+/**
+ * Comprueba que el almacén sobrevive: lee el valor de la ejecución anterior y
+ * escribe uno nuevo. La primera vez `persisted` es false; tras una recarga,
+ * true si el gestor (o localStorage) conservó el valor.
+ */
+export function storageProbe() {
+  const backend = has('GM_setValue') ? 'GM' : 'localStorage';
+  const previous = getValue(PROBE_KEY, null);
+  const at = Date.now();
+  const value = `${at}-${Math.random().toString(36).slice(2, 8)}`;
+  try {
+    setValue(PROBE_KEY, { value, at });
+  } catch (error) {
+    return { backend, persisted: false, error: String(error?.message || error) };
+  }
+  return {
+    backend,
+    persisted: Boolean(previous && typeof previous === 'object' && previous.value),
+    previousAt: previous?.at || null,
+  };
+}
+
 export function managerName() {
   try {
     if (exists('GM_info')) return String(globalThis.GM_info.scriptHandler || 'otro');

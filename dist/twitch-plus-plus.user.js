@@ -244,6 +244,30 @@ function postJson(url, payload, { timeout = 10000, headers } = {}) {
   });
 }
 
+const PROBE_KEY = 'twpp:storageProbe';
+
+/**
+ * Comprueba que el almacén sobrevive: lee el valor de la ejecución anterior y
+ * escribe uno nuevo. La primera vez `persisted` es false; tras una recarga,
+ * true si el gestor (o localStorage) conservó el valor.
+ */
+function storageProbe() {
+  const backend = has('GM_setValue') ? 'GM' : 'localStorage';
+  const previous = getValue(PROBE_KEY, null);
+  const at = Date.now();
+  const value = `${at}-${Math.random().toString(36).slice(2, 8)}`;
+  try {
+    setValue(PROBE_KEY, { value, at });
+  } catch (error) {
+    return { backend, persisted: false, error: String(error?.message || error) };
+  }
+  return {
+    backend,
+    persisted: Boolean(previous && typeof previous === 'object' && previous.value),
+    previousAt: previous?.at || null,
+  };
+}
+
 function managerName() {
   try {
     if (exists('GM_info')) return String(globalThis.GM_info.scriptHandler || 'otro');
@@ -281,6 +305,7 @@ return {
   openInTab: openInTab,
   getJson: getJson,
   postJson: postJson,
+  storageProbe: storageProbe,
   managerName: managerName,
   capabilities: capabilities,
 };
@@ -2049,65 +2074,8 @@ return {
 };
 })();
 
-/* ---- src/core/report.js ---- */
-const __m14 = (function () {
-const { status: catalogStatus } = __m9;
-const { capabilities: capabilities } = __m1;
-const { trackedErrors: trackedErrors } = __m2;
-const { snapshot: perfSnapshot } = __m10;
-const { statuses: statuses } = __m6;
-const { brokenSelectors: brokenSelectors, promovidosRemotamente: promovidosRemotamente } = __m3;
-const { VERSION: VERSION } = __m8;
-
-/** Informe de una línea por dato, pensado para pegar en un issue. */
-
-
-
-
-
-
-
-
-function report() {
-  const list = statuses();
-  const active = list.filter((feature) => feature.active).map((feature) => feature.id);
-  const blocked = list.filter((feature) => feature.enabled && !feature.active).map((feature) => feature.id);
-  const failing = list.filter((feature) => feature.failures > 0).map((feature) => `${feature.id} (${feature.failures})`);
-  const dead = brokenSelectors().map((row) => row.key);
-  // Solo las claves donde el catálogo remoto ha cambiado el ganador. Es la
-  // información que hace falta para decidir si un fix del repo era acertado.
-  const promovidos = promovidosRemotamente()
-    .map((p) => `${p.key}=${p.candidato}`)
-    .join(', ');
-  const catalog = catalogStatus();
-  const apis = capabilities();
-  const perf = perfSnapshot();
-
-  const lines = [
-    `Twitch++ v${VERSION}`,
-    `gestor de scripts: ${apis.gestor}`,
-    `navegador: ${globalThis.navigator?.userAgent || 'desconocido'}`,
-    `página: ${location.pathname}`,
-    `arranque: ${perf.arranqueMs === null ? 'no medido' : `${perf.arranqueMs} ms`}`,
-    `ticks: ${perf.ticks} (${perf.ticksPorSegundo}/s) · consultas: ${perf.consultas} · mutaciones: ${perf.mutaciones}`,
-    `features activas: ${active.join(', ') || '—'}`,
-    `features bloqueadas por condición: ${blocked.join(', ') || '—'}`,
-    `features con errores: ${failing.join(', ') || '—'}`,
-    `selectores sin resolver: ${dead.join(', ') || '—'}`,
-    `ganadores remotos: ${promovidos || 'ninguno'}`,
-    `APIs ausentes: ${apis.ausentes.join(', ') || 'ninguna'}`,
-    `catálogo: rev. ${catalog.revision || 'local'}${catalog.remote ? '' : ' (sin remoto)'}${catalog.error ? ` — ${catalog.error}` : ''}`,
-  ];
-  for (const entry of trackedErrors().slice(-5)) lines.push(`error: ${entry.scope}: ${entry.message}`);
-  return lines.join('\n');
-}
-return {
-  report: report,
-};
-})();
-
 /* ---- src/core/twitch.js ---- */
-const __m15 = (function () {
+const __m14 = (function () {
 const { qs: qs, qsAll: qsAll, isVisible: isVisible } = __m11;
 const { select: select, selectAll: selectAll } = __m3;
 
@@ -2363,12 +2331,80 @@ return {
 };
 })();
 
+/* ---- src/core/report.js ---- */
+const __m15 = (function () {
+const { status: catalogStatus } = __m9;
+const { capabilities: capabilities, storageProbe: storageProbe } = __m1;
+const { trackedErrors: trackedErrors } = __m2;
+const { snapshot: perfSnapshot } = __m10;
+const { statuses: statuses } = __m6;
+const { brokenSelectors: brokenSelectors, promovidosRemotamente: promovidosRemotamente } = __m3;
+const { currentUsername: currentUsername, isDarkTheme: isDarkTheme } = __m14;
+const { VERSION: VERSION } = __m8;
+
+/** Informe de una línea por dato, pensado para pegar en un issue. */
+
+
+
+
+
+
+
+
+
+function report() {
+  const list = statuses();
+  const active = list.filter((feature) => feature.active).map((feature) => feature.id);
+  const blocked = list.filter((feature) => feature.enabled && !feature.active).map((feature) => feature.id);
+  const failing = list.filter((feature) => feature.failures > 0).map((feature) => `${feature.id} (${feature.failures})`);
+  const dead = brokenSelectors().map((row) => row.key);
+  // Solo las claves donde el catálogo remoto ha cambiado el ganador. Es la
+  // información que hace falta para decidir si un fix del repo era acertado.
+  const promovidos = promovidosRemotamente()
+    .map((p) => `${p.key}=${p.candidato}`)
+    .join(', ');
+  const catalog = catalogStatus();
+  const apis = capabilities();
+  const perf = perfSnapshot();
+  const storage = storageProbe();
+  const brave = Boolean(globalThis.navigator?.brave);
+  const online = globalThis.navigator?.onLine !== false;
+  const login = currentUsername();
+  const theme = isDarkTheme() ? 'oscuro' : 'claro';
+
+  const lines = [
+    `Twitch++ v${VERSION}`,
+    `gestor de scripts: ${apis.gestor}`,
+    `navegador: ${globalThis.navigator?.userAgent || 'desconocido'} · Brave: ${brave ? 'sí' : 'no'}`,
+    `conexión: ${online ? 'online' : 'offline'}`,
+    `sesión: ${login || 'no detectada'}`,
+    `tema: ${theme}`,
+    `persistencia: ${storage.backend}; ${storage.persisted ? 'sobrevive a recargas' : 'no verificada (recarga y vuelve a mirar)'}`,
+    `página: ${location.pathname}`,
+    `arranque: ${perf.arranqueMs === null ? 'no medido' : `${perf.arranqueMs} ms`}`,
+    `ticks: ${perf.ticks} (${perf.ticksPorSegundo}/s) · consultas: ${perf.consultas} · mutaciones: ${perf.mutaciones}`,
+    `features activas: ${active.join(', ') || '—'}`,
+    `features bloqueadas por condición: ${blocked.join(', ') || '—'}`,
+    `features con errores: ${failing.join(', ') || '—'}`,
+    `selectores sin resolver: ${dead.join(', ') || '—'}`,
+    `ganadores remotos: ${promovidos || 'ninguno'}`,
+    `APIs ausentes: ${apis.ausentes.join(', ') || 'ninguna'}`,
+    `catálogo: rev. ${catalog.revision || 'local'}${catalog.remote ? '' : ' (sin remoto)'}${catalog.error ? ` — ${catalog.error}` : ''}`,
+  ];
+  for (const entry of trackedErrors().slice(-5)) lines.push(`error: ${entry.scope}: ${entry.message}`);
+  return lines.join('\n');
+}
+return {
+  report: report,
+};
+})();
+
 /* ---- src/core/router.js ---- */
 const __m16 = (function () {
 const { emit: emit } = __m0;
 const { log: log } = __m2;
 const { getValue: getValue, setValue: setValue } = __m1;
-const { channelFromHref: channelFromHref } = __m15;
+const { channelFromHref: channelFromHref } = __m14;
 
 /** Detección de navegación SPA (Twitch no recarga la página al cambiar de canal). */
 
@@ -3437,7 +3473,7 @@ const { defineFeature: defineFeature } = __m6;
 const { warn: warn } = __m2;
 const { compilarSeguro: compilarSeguro } = __m23;
 const { get: storeGet, onChange: onChange } = __m5;
-const { chatContainer: chatContainer, chatLines: chatLines, messageText: messageText } = __m15;
+const { chatContainer: chatContainer, chatLines: chatLines, messageText: messageText } = __m14;
 
 /** Resalta mensajes que contienen palabras clave (por defecto o regex). */
 
@@ -3561,7 +3597,7 @@ return {
 /* ---- src/features/mention-highlight.js ---- */
 const __m25 = (function () {
 const { defineFeature: defineFeature } = __m6;
-const { chatContainer: chatContainer, chatLines: chatLines, currentUsername: currentUsername, messageText: messageText } = __m15;
+const { chatContainer: chatContainer, chatLines: chatLines, currentUsername: currentUsername, messageText: messageText } = __m14;
 
 /** Resalta los mensajes que te mencionan. */
 
@@ -3651,7 +3687,7 @@ return {
 const __m26 = (function () {
 const { anotarMotivo: anotarMotivo, defineFeature: defineFeature, limpiarMotivo: limpiarMotivo } = __m6;
 const { get: storeGet, onChange: onChange } = __m5;
-const { chatContainer: chatContainer, chatLines: chatLines, currentUsername: currentUsername, messageText: messageText, usernameOf: usernameOf } = __m15;
+const { chatContainer: chatContainer, chatLines: chatLines, currentUsername: currentUsername, messageText: messageText, usernameOf: usernameOf } = __m14;
 const { buildMatcher: buildMatcher } = __m24;
 const { buildMentionPattern: buildMentionPattern } = __m25;
 
@@ -3793,7 +3829,7 @@ const { qs: qs } = __m11;
 const { defineFeature: defineFeature } = __m6;
 const { compilarSeguro: compilarSeguro } = __m23;
 const { declare: declare, get: storeGet, set: storeSet } = __m5;
-const { chatContainer: chatContainer, chatLines: chatLines, messageText: messageText } = __m15;
+const { chatContainer: chatContainer, chatLines: chatLines, messageText: messageText } = __m14;
 
 /** Buscador dentro del chat: filtra, cuenta y permite saltar entre coincidencias. */
 
@@ -4042,7 +4078,7 @@ return {
 const __m29 = (function () {
 const { defineFeature: defineFeature } = __m6;
 const { get: storeGet } = __m5;
-const { isDarkTheme: isDarkTheme } = __m15;
+const { isDarkTheme: isDarkTheme } = __m14;
 
 defineFeature({
   id: 'darkMode',
@@ -4596,7 +4632,7 @@ const { log: log } = __m2;
 const { anotarMotivo: anotarMotivo, defineFeature: defineFeature, limpiarMotivo: limpiarMotivo } = __m6;
 const { read: leerSesion, remove: borrarSesion, write: guardarSesion } = __m34;
 const { get: storeGet } = __m5;
-const { channelFromHref: channelFromHref, isRaidUrl: isRaidUrl } = __m15;
+const { channelFromHref: channelFromHref, isRaidUrl: isRaidUrl } = __m14;
 
 /**
  * Volver al canal cuando el streamer vuelve a emitir.
@@ -4892,7 +4928,7 @@ const __m36 = (function () {
 const { log: log } = __m2;
 const { anotarMotivo: anotarMotivo, defineFeature: defineFeature, limpiarMotivo: limpiarMotivo } = __m6;
 const { read: leerSesion, remove: borrarSesion, write: guardarSesion } = __m34;
-const { channelFromHref: channelFromHref, isRaidUrl: isRaidUrl } = __m15;
+const { channelFromHref: channelFromHref, isRaidUrl: isRaidUrl } = __m14;
 
 /**
  * No dejarse llevar a la raid cuando el directo termina.
@@ -5208,7 +5244,7 @@ const __m38 = (function () {
 const { log: log } = __m2;
 const { defineFeature: defineFeature, anotarMotivo: anotarMotivo, limpiarMotivo: limpiarMotivo } = __m6;
 const { get: storeGet } = __m5;
-const { channelFromCard: channelFromCard, thumbnailUrl: thumbnailUrl, visibleChannels: visibleChannels, sidebarTooltips: sidebarTooltips } = __m15;
+const { channelFromCard: channelFromCard, thumbnailUrl: thumbnailUrl, visibleChannels: visibleChannels, sidebarTooltips: sidebarTooltips } = __m14;
 
 /** Miniaturas de canal al pasar el ratón por una card de la sidebar. */
 
@@ -5629,7 +5665,7 @@ return {
 const __m40 = (function () {
 const { defineFeature: defineFeature } = __m6;
 const { get: storeGet } = __m5;
-const { chatContainer: chatContainer, chatLines: chatLines, usernameOf: usernameOf, viewerCount: viewerCount } = __m15;
+const { chatContainer: chatContainer, chatLines: chatLines, usernameOf: usernameOf, viewerCount: viewerCount } = __m14;
 
 /** Contador real de viewers + chatters activos por ventana deslizante. */
 
@@ -6082,7 +6118,7 @@ const __m45 = (function () {
 const { on: onBus } = __m0;
 const { setDebug: setDebug, trackedErrors: trackedErrors } = __m2;
 const { all: allFeatures, apply: apply, applyAll: applyAll, disableAll: disableAll, SECTIONS: SECTIONS, statuses: statuses } = __m6;
-const { report: report } = __m14;
+const { report: report } = __m15;
 const { brokenSelectors: brokenSelectors, selectorReport: selectorReport } = __m3;
 const { declare: declare, exportJSON: exportJSON, get: get, importJSON: importJSON, reset: resetStore, set: set, setMany: setMany } = __m5;
 const { list: keybindList, setCombo: setCombo } = __m12;
@@ -6090,13 +6126,15 @@ const { setHost: setToastHost, show: toast } = __m18;
 const { refresh: refreshCatalog, status: catalogStatus } = __m9;
 const { check: checkUpdate, install: installUpdate, shouldCheck: shouldCheck } = __m19;
 const { ChatPause: ChatPause } = __m20;
+const { estaEnDirecto: estaEnDirecto } = __m35;
 const { VERSION: VERSION } = __m8;
-const { isDarkTheme: isDarkTheme } = __m15;
+const { currentUsername: currentUsername, isDarkTheme: isDarkTheme } = __m14;
 const { describe: describe } = __m42;
 const { PANEL_CSS: PANEL_CSS } = __m43;
 const { PRESETS: PRESETS, PRESET_LABELS: PRESET_LABELS, idsOf: idsOf } = __m44;
 
 /** Panel de control en shadow DOM (sin colisiones con el CSS de Twitch). */
+
 
 
 
@@ -6250,6 +6288,7 @@ function sectionsHtml() {
             <button class="action-btn" data-action="catalog" type="button">Recargar catálogo</button>
             <button class="action-btn" data-action="export" type="button">Exportar</button>
             <button class="action-btn" data-action="import" type="button">Importar</button>
+            <button class="action-btn" data-action="connectivity" type="button">Comprobar conexión</button>
             <button class="action-btn" data-action="diagnostics" type="button">Diagnóstico</button>
             <button class="action-btn" data-action="disableAll" type="button">Desactivar todas</button>
             <button class="action-btn danger" data-action="reset" type="button">Reset</button>
@@ -6665,6 +6704,7 @@ function bind() {
       export: () => runExport(),
       import: () => runImport(),
       diagnostics: () => runDiagnostics(),
+      connectivity: () => runConnectivityCheck(),
       disableAll: () => runDisableAll(),
       reset: () => runReset(),
     };
@@ -6874,6 +6914,31 @@ function runImport() {
   }
 }
 
+async function runConnectivityCheck() {
+  const button = shadow.querySelector('[data-action="connectivity"]');
+  if (button) button.disabled = true;
+
+  let twitch = false;
+  try {
+    await fetch('/favicon.ico', { cache: 'no-store' });
+    twitch = true;
+  } catch {
+    twitch = false;
+  }
+
+  const gql = (await estaEnDirecto('twitch')).ok;
+  const online = navigator.onLine !== false;
+  const brave = Boolean(navigator.brave);
+  const login = currentUsername() || '';
+  const resumen = `Conexión: ${online ? 'online' : 'offline'} · Twitch: ${twitch ? 'ok' : 'falla'} · GQL: ${gql ? 'ok' : 'falla'} · Brave: ${brave ? 'sí' : 'no'} · sesión: ${login || 'no detectada'}`;
+  setNote(resumen);
+  if (navigator.clipboard?.writeText) {
+    navigator.clipboard.writeText(`${resumen}\n\n${report()}`).catch(() => {});
+  }
+  toast(gql && twitch ? 'Conexión correcta' : 'Hay fallos de conexión');
+  if (button) button.disabled = false;
+}
+
 function runDiagnostics() {
   const errors = trackedErrors();
   const dead = brokenSelectors();
@@ -6934,7 +6999,7 @@ const { bindGlobal: bindGlobal, register: registerKeybind } = __m12;
 const { setDebug: setDebug, track: track, trackedErrors: trackedErrors, warn: warn } = __m2;
 const { probe: probe } = __m13;
 const { registrarArranque: registrarArranque, reset: resetPerf, snapshot: perfSnapshot } = __m10;
-const { report: report } = __m14;
+const { report: report } = __m15;
 const { applyAll: applyAll, disableAll: disableAll, onRouteAll: onRouteAll, statuses: statuses, motivos: motivosDeInactividad } = __m6;
 const { start: startRouter, navegacion: navegacion } = __m16;
 const { brokenSelectors: brokenSelectors, selectorReport: selectorReport } = __m3;

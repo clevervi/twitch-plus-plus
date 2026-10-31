@@ -10,8 +10,9 @@ import { setHost as setToastHost, show as toast } from '../core/toast.js';
 import { refresh as refreshCatalog, status as catalogStatus } from '../core/catalog.js';
 import { check as checkUpdate, install as installUpdate, shouldCheck } from '../core/updater.js';
 import { ChatPause } from '../features/chat-pause.js';
+import { estaEnDirecto } from '../features/live-return.js';
 import { VERSION } from '../core/version.js';
-import { isDarkTheme } from '../core/twitch.js';
+import { currentUsername, isDarkTheme } from '../core/twitch.js';
 import { describe } from './descriptions.js';
 import { PANEL_CSS } from './panel-css.js';
 import { PRESETS, PRESET_LABELS, idsOf } from './presets.js';
@@ -152,6 +153,7 @@ function sectionsHtml() {
             <button class="action-btn" data-action="catalog" type="button">Recargar catálogo</button>
             <button class="action-btn" data-action="export" type="button">Exportar</button>
             <button class="action-btn" data-action="import" type="button">Importar</button>
+            <button class="action-btn" data-action="connectivity" type="button">Comprobar conexión</button>
             <button class="action-btn" data-action="diagnostics" type="button">Diagnóstico</button>
             <button class="action-btn" data-action="disableAll" type="button">Desactivar todas</button>
             <button class="action-btn danger" data-action="reset" type="button">Reset</button>
@@ -567,6 +569,7 @@ function bind() {
       export: () => runExport(),
       import: () => runImport(),
       diagnostics: () => runDiagnostics(),
+      connectivity: () => runConnectivityCheck(),
       disableAll: () => runDisableAll(),
       reset: () => runReset(),
     };
@@ -774,6 +777,31 @@ function runImport() {
   } catch {
     toast('JSON inválido');
   }
+}
+
+async function runConnectivityCheck() {
+  const button = shadow.querySelector('[data-action="connectivity"]');
+  if (button) button.disabled = true;
+
+  let twitch = false;
+  try {
+    await fetch('/favicon.ico', { cache: 'no-store' });
+    twitch = true;
+  } catch {
+    twitch = false;
+  }
+
+  const gql = (await estaEnDirecto('twitch')).ok;
+  const online = navigator.onLine !== false;
+  const brave = Boolean(navigator.brave);
+  const login = currentUsername() || '';
+  const resumen = `Conexión: ${online ? 'online' : 'offline'} · Twitch: ${twitch ? 'ok' : 'falla'} · GQL: ${gql ? 'ok' : 'falla'} · Brave: ${brave ? 'sí' : 'no'} · sesión: ${login || 'no detectada'}`;
+  setNote(resumen);
+  if (navigator.clipboard?.writeText) {
+    navigator.clipboard.writeText(`${resumen}\n\n${report()}`).catch(() => {});
+  }
+  toast(gql && twitch ? 'Conexión correcta' : 'Hay fallos de conexión');
+  if (button) button.disabled = false;
 }
 
 function runDiagnostics() {
