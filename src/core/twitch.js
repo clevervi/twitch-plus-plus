@@ -90,13 +90,17 @@ export function thumbnailUrl(channel, width = 320) {
  * se deduce del color de fondo real (sirve para cuando cambian el marcado).
  */
 export function isDarkTheme() {
-  if (document.documentElement.classList.contains('tw-root--theme-dark')) return true;
-  if (document.body?.classList.contains('tw-root--theme-dark')) return true;
-  if (qs('.tw-root--theme-dark')) return true;
-  // Camino simetrico del anterior. Si Twitch no usara nunca esta clase, esta
-  // comprobacion no llega a dispararse y el comportamiento no cambia: por eso
-  // se puede anadir sin haber verificado el nombre en la pagina real.
-  if (document.documentElement.classList.contains('tw-root--theme-light')) return false;
+  const html = document.documentElement;
+  const body = document.body;
+
+  // La clase explicita del documento manda. Twitch deja nodos ocultos con
+  // `tw-root--theme-dark` (sus CSS vars por capas); buscarlos hacia abajo daba
+  // un falso positivo y aplicaba OLED sobre el tema claro. Por eso ya no se
+  // usa `qs('.tw-root--theme-dark')`.
+  if (html?.classList.contains('tw-root--theme-light')) return false;
+  if (body?.classList.contains('tw-root--theme-light')) return false;
+  if (html?.classList.contains('tw-root--theme-dark')) return true;
+  if (body?.classList.contains('tw-root--theme-dark')) return true;
 
   // La luminancia se lee del <html> y NO del <body>, a proposito.
   //

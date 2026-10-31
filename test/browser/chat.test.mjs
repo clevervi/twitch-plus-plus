@@ -209,6 +209,36 @@ describe('buscar en el chat', () => {
     );
   });
 
+  it('recuerda el filtro al cambiar de canal', async () => {
+    await pagina.evaluate(() => window.TwitchPP.enable('chatSearch'));
+    await pagina.waitForTimeout(400);
+    await escribir('Buenas');
+    await pagina.waitForTimeout(500);
+
+    await pagina.evaluate(() => history.pushState({}, '', '/otro-canal'));
+    await pagina.waitForFunction(
+      () => document.querySelector('.twpp-search-input')?.value === 'Buenas',
+      null,
+      { timeout: 4000 },
+    );
+
+    const estado = await pagina.evaluate(() => ({
+      value: document.querySelector('.twpp-search-input')?.value,
+      ocultas: document.querySelectorAll('.twpp-chat-hidden').length,
+      match: document.querySelectorAll('.twpp-chat-match').length,
+    }));
+    assert.equal(estado.value, 'Buenas', 'la consulta debe restaurarse');
+    assert.ok(estado.ocultas > 0, 'el filtro debe volver a aplicarse');
+    assert.ok(estado.match > 0);
+
+    await pagina.evaluate(() => {
+      const input = document.querySelector('.twpp-search-input');
+      if (!input) return;
+      input.value = '';
+      input.dispatchEvent(new Event('input', { bubbles: true }));
+    });
+  });
+
   it('al apagar desaparece la barra y se quita el resaltado', async () => {
     await pagina.evaluate(() => window.TwitchPP.enable('chatSearch'));
     await pagina.waitForTimeout(400);

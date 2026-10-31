@@ -153,4 +153,28 @@ describe('when() apaga y enciende la feature segun el tema, sin tocar el interru
     assert.equal(e.oledActiva, true);
     assert.equal(e.oledScope, true, 'la clase de scope tiene que coincidir con el estado');
   });
+
+  it('un nodo oculto con tw-root--theme-dark no engaña al detector', async () => {
+    // Twitch deja un contenedor oculto con la clase del tema oscuro para sus
+    // CSS vars. Mirar el primer nodo del DOM convertía una página clara en
+    // oscura y aplicaba OLED encima.
+    await ponerTema(true);
+    await pagina.evaluate(() => {
+      const node = document.createElement('div');
+      node.id = 'twpp-fake-dark';
+      node.className = 'tw-root--theme-dark';
+      node.hidden = true;
+      document.body.appendChild(node);
+    });
+
+    await esperarA(
+      async () => !(await oledConScope()),
+      'el nodo oculto no debe activar OLED en una página clara',
+    );
+    const e = await estado();
+    assert.equal(e.darkActiva, false, 'el tema claro debe mandar sobre el nodo oculto');
+    assert.equal(e.darkScope, false);
+
+    await pagina.evaluate(() => document.getElementById('twpp-fake-dark')?.remove());
+  });
 });

@@ -16,10 +16,11 @@ defineFeature({
   default: false,
   settings: [{ key: 'sidebarWidth', label: 'Ancho (px)', type: 'number', default: 72, min: 50, max: 120 }],
   css: `
+    /* Solo la expandida: Twitch ya deja la colapsada en 50 px y forzarla a
+       72/120 la agrandaba. */
     %SCOPE% [data-a-target="side-nav-bar"],
-    %SCOPE% .side-nav,
-    %SCOPE% [data-test-selector="side-nav"],
-    %SCOPE% nav[aria-label="Primary navigation"] {
+    %SCOPE% .side-nav.side-nav--expanded,
+    %SCOPE% [data-test-selector="side-nav"]:not(.side-nav--collapsed) {
       width: var(--twpp-sidebar-width, 72px) !important;
       min-width: var(--twpp-sidebar-width, 72px) !important;
       max-width: var(--twpp-sidebar-width, 72px) !important;

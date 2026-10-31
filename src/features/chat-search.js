@@ -2,8 +2,10 @@
 import { qs } from '../core/dom.js';
 import { defineFeature } from '../core/registry.js';
 import { compilarSeguro } from '../core/regex.js';
-import { get as storeGet } from '../core/store.js';
+import { declare, get as storeGet, set as storeSet } from '../core/store.js';
 import { chatContainer, chatLines, messageText } from '../core/twitch.js';
+
+declare('chatSearchQuery', 'string', '');
 
 let bar = null;
 let matches = [];
@@ -114,10 +116,15 @@ function ensureUI() {
   parent.insertBefore(node, parent.firstChild);
 
   const input = qs('.twpp-search-input', node);
-  input.addEventListener('input', apply);
+  input.value = storeGet('chatSearchQuery') || '';
+  input.addEventListener('input', () => {
+    storeSet('chatSearchQuery', input.value);
+    apply();
+  });
   input.addEventListener('keydown', (event) => {
     if (event.key === 'Escape') {
       input.value = '';
+      storeSet('chatSearchQuery', '');
       apply();
       input.blur();
     }
@@ -128,6 +135,7 @@ function ensureUI() {
   });
   qs('.twpp-search-clear', node).addEventListener('click', () => {
     input.value = '';
+    storeSet('chatSearchQuery', '');
     apply();
     input.focus();
   });
@@ -135,6 +143,7 @@ function ensureUI() {
   qs('.twpp-search-prev', node).addEventListener('click', () => jump(-1));
 
   bar = node;
+  if (input.value.trim()) apply();
   return bar;
 }
 
