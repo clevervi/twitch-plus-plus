@@ -11,6 +11,7 @@ import { describe, it } from 'node:test';
  * que nadie lo notase. Este test convierte ese olvido en un fallo visible.
  */
 const CI = readFileSync(resolve(process.cwd(), '.github/workflows/ci.yml'), 'utf8');
+const PR_CHECKS = readFileSync(resolve(process.cwd(), '.github/workflows/pr-checks.yml'), 'utf8');
 const PKG = JSON.parse(readFileSync(resolve(process.cwd(), 'package.json'), 'utf8'));
 
 describe('la CI no se desincroniza de npm run verify', () => {
@@ -64,6 +65,14 @@ describe('la CI no se desincroniza de npm run verify', () => {
     // dentro de verify: si el build falla, el diff se compara contra un bundle
     // a medias y el resultado no significa nada.
     assert.match(CI, /git diff --exit-code dist\//, 'el guard de dist debe quedarse en CI');
+  });
+
+  it('la validacion de PR se salta Dependabot por autor, no por actor', () => {
+    // Al actualizar la rama de un PR de Dependabot, el actor del evento pasa a
+    // ser el mantenedor. Mirando el actor, la validacion corria y fallaba por
+    // la rama `dependabot/...` y el cuerpo sin `Closes #N`.
+    assert.match(PR_CHECKS, /github\.event\.pull_request\.user\.login != 'dependabot\[bot\]'/);
+    assert.doesNotMatch(PR_CHECKS, /github\.actor != 'dependabot\[bot\]'/);
   });
 
   it('la validacion de YAML sigue en ci.yml', () => {
