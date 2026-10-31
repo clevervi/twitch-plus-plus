@@ -14,6 +14,7 @@ let page;
 let errores;
 let cerrar;
 const consultas = [];
+let live = false;
 
 before(async () => {
   ({ page, errores, cerrar } = await arrancar());
@@ -26,7 +27,7 @@ before(async () => {
     await ruta.fulfill({
       status: 200,
       contentType: 'application/json',
-      body: JSON.stringify({ data: { user: { stream: null } } }),
+      body: JSON.stringify({ data: { user: { stream: live ? { id: 'stream-1' } : null } } }),
     });
   });
 });
@@ -52,6 +53,24 @@ describe('vuelta cuando el canal reanuda', () => {
 
     assert.deepEqual(consultas.map((c) => c.login), ['ibai']);
     assert.equal(consultas[0].clientId, 'kimne78kx3ncx6brgo4mv6wki5h1ko');
+    assert.deepEqual(errores, []);
+  });
+
+  it('cuando el canal vuelve a emitir, navega de vuelta', async () => {
+    // El objetivo sigue armado del test anterior. Se instala el reloj falso
+    // después de armar y se salta al futuro sin disparar el timeout de 8 s del
+    // fetch: `setSystemTime` mueve `Date.now()` pero no ejecuta temporizadores.
+    await page.clock.install();
+    live = true;
+    const ahora = await page.evaluate(() => Date.now());
+    await page.clock.setSystemTime(ahora + 61_000);
+
+    // Despierta al scheduler con una ruta que no cambia de canal.
+    await page.evaluate(() => history.pushState({}, '', '/auronplay?kick=1'));
+
+    await page.waitForURL('**/ibai', { timeout: 8000 });
+    assert.equal(await page.evaluate(() => location.pathname), '/ibai');
+    assert.equal(consultas.at(-1).login, 'ibai', 'la vuelta se decide con una consulta al canal');
     assert.deepEqual(errores, []);
   });
 });
