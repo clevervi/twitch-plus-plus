@@ -1,5 +1,14 @@
 # Changelog
 
+## 2.2.29 — 2026-10-31
+
+### Mejora
+- **Comprobar conexión**: el panel prueba Twitch, GQL público, `navigator.onLine`, Brave y la sesión, y copia el informe.
+- **Diagnóstico enriquecido**: añade navegador/Brave, conexión, sesión, tema y persistencia del almacén.
+- **Persistencia verificable**: `storageProbe()` deja una marca y la lee en la siguiente ejecución; si no sobrevive a una recarga, se ve en el informe.
+### Tests
+- 306 unitarios + 105 de navegador.
+
 ## 2.2.28 — 2026-10-31
 
 ### Corregido
