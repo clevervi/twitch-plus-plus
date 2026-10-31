@@ -1,5 +1,19 @@
 # Changelog
 
+## 2.2.26 — 2026-10-31
+
+### Mejora
+- **Panel de control** (#167): FAB más grande y mejor colocado, botón de cerrar, contador de features activas y acciones de mantenimiento dentro de Avanzado.
+- **Tema del panel**: sigue el tema claro/oscuro de Twitch, con mejor contraste y foco visible.
+- **Estado por feature**: muestra “inactiva ahora” o el motivo cuando una feature está encendida pero no actúa.
+- **Buscador**: indexa también los nombres de los ajustes y oculta la feature completa.
+### Detalles
+- “Balanced” pasa a “Equilibrado”.
+- El aviso de catálogo se muestra en lenguaje humano; el detalle técnico queda en Diagnóstico.
+- `sync()` usa referencias cacheadas en vez de recorrer el shadow DOM en cada ruta.
+### Tests
+- 304 unitarios + 101 de navegador.
+
 ## 2.2.25 — 2026-10-31
 
 ### Mejora
