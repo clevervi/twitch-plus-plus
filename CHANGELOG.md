@@ -1,5 +1,17 @@
 # Changelog
 
+## 2.2.27 — 2026-10-31
+
+### Mejora
+- **Panel en acordeón** (#171): solo una sección abierta a la vez; Visual cabe sin scroll y Chat necesita muy poco.
+- **Descripciones por feature**: una línea bajo cada label explica qué hace.
+- **Buscador**: al buscar se abren las secciones con coincidencias; al limpiar vuelve la anterior.
+### Detalles
+- La sección abierta se conserva al cambiar de tema, cerrar el panel o actualizar el catálogo.
+- El estado de feature usa un color de aviso.
+### Tests
+- 304 unitarios + 102 de navegador.
+
 ## 2.2.26 — 2026-10-31
 
 ### Mejora
