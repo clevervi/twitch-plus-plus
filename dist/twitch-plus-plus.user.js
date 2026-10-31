@@ -1367,11 +1367,13 @@ const STYLE_ID = 'twpp-style';
 let current = '';
 
 function sheet() {
+  const root = document.head || document.documentElement;
+  if (!root) return null;
   let node = document.getElementById(STYLE_ID);
   if (!node) {
     node = document.createElement('style');
     node.id = STYLE_ID;
-    (document.head || document.documentElement).appendChild(node);
+    root.appendChild(node);
   }
   return node;
 }
@@ -1388,7 +1390,8 @@ function build() {
 /** Reconstruye el CSS consolidado (llamar tras añadir features remotas). */
 function rebuild() {
   current = build();
-  sheet().textContent = current;
+  const node = sheet();
+  if (node) node.textContent = current;
   log('CSS reconstruido:', `${(current.length / 1024).toFixed(1)} KB`);
   return current;
 }
@@ -7119,6 +7122,29 @@ function start() {
     }
   }
 
+  // Con @run-at document-start el documento puede no tener todavía <html>.
+  // Esperar a la raíz evita abortar en bootStyles y en las clases de features.
+  whenDocumentRoot(startAfterRoot);
+}
+
+function whenDocumentRoot(callback) {
+  if (document.documentElement) {
+    callback();
+    return;
+  }
+  if (typeof MutationObserver !== 'function') {
+    document.addEventListener('DOMContentLoaded', callback, { once: true });
+    return;
+  }
+  const observer = new MutationObserver(() => {
+    if (!document.documentElement) return;
+    observer.disconnect();
+    callback();
+  });
+  observer.observe(document, { childList: true, subtree: true });
+}
+
+function startAfterRoot() {
   // Capa 1: todo lo que no necesita <body>. Se ejecuta en document-start para
   // que el CSS esté en la página antes de que Twitch pinte el tema claro.
   try {

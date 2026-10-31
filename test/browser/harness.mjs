@@ -27,8 +27,12 @@ const AYUDANTE = () => {
   window.__twpp = { shadow: host?.shadowRoot ?? null, host: host ?? null };
 };
 
-/** Devuelve `{ page, errores }` con la página ya cargada y el script arrancado. */
-export async function arrancar() {
+/**
+ * Devuelve `{ page, errores }` con la página ya cargada y el script arrancado.
+ * `documentStart` inyecta el bundle antes de que exista <html>, como
+ * Tampermonkey con `@run-at document-start`.
+ */
+export async function arrancar({ documentStart = false } = {}) {
   const fixture = readFileSync(FIXTURE, 'utf8');
   const bundle = readFileSync(BUNDLE, 'utf8');
 
@@ -52,13 +56,16 @@ export async function arrancar() {
     }
     return ruta.fulfill({ status: 200, contentType: 'text/html; charset=utf-8', body: fixture });
   });
-  // El bundle lo carga el propio fixture con un <script> normal, en el
-  // <head>. Con `addInitScript` se ejecutaría antes de que exista ningún nodo
-  // del documento, y entonces document.head y document.documentElement son
-  // los dos null y el script aborta al construir sus estilos. Hay una nota
-  // sobre esto en la fixture.
+  // El fixture carga /bundle.js con un <script> normal. Con `documentStart`
+  // se inyecta antes de que exista el documento y la etiqueta se sirve vacía
+  // para no arrancar dos veces.
+  if (documentStart) await context.addInitScript({ content: bundle });
   await context.route('**/bundle.js', (ruta) =>
-    ruta.fulfill({ status: 200, contentType: 'text/javascript; charset=utf-8', body: bundle }),
+    ruta.fulfill({
+      status: 200,
+      contentType: 'text/javascript; charset=utf-8',
+      body: documentStart ? '' : bundle,
+    }),
   );
 
   // El scheduler sale por `if (running || document.hidden) return`, así que si

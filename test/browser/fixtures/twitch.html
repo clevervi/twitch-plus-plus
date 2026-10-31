@@ -32,15 +32,10 @@
     .channel-info-bar__title { font-weight: 700; }
   </style>
   <!--
-    El bundle se carga como un script normal, en el <head>, que es lo más
-    cercano a `@run-at document-start` que se puede sin `addInitScript`.
-
-    Probar con `addInitScript` parece más fiel pero no funciona: se ejecuta
-    antes de que exista cualquier nodo del documento, y entonces
-    `document.head` y `document.documentElement` son los dos null. El bundle
-    aborta en `bootStyles()` y el script entero no arranca. Se comprobó que
-    colgar el <style> del propio nodo Document tampoco vale: impide que el
-    analizador construya la página.
+    El bundle se carga como un script normal, en el <head>. La suite también
+    puede inyectarlo con `addInitScript` (`arrancar({ documentStart: true })`)
+    para reproducir a Tampermonkey con `@run-at document-start`, antes de que
+    exista <html>. El arranque espera a `document.documentElement`.
   -->
   <script src="./bundle.js"></script>
 </head>

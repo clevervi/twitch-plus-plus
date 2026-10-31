@@ -5,11 +5,13 @@ const STYLE_ID = 'twpp-style';
 let current = '';
 
 function sheet() {
+  const root = document.head || document.documentElement;
+  if (!root) return null;
   let node = document.getElementById(STYLE_ID);
   if (!node) {
     node = document.createElement('style');
     node.id = STYLE_ID;
-    (document.head || document.documentElement).appendChild(node);
+    root.appendChild(node);
   }
   return node;
 }
@@ -26,7 +28,8 @@ function build() {
 /** Reconstruye el CSS consolidado (llamar tras añadir features remotas). */
 export function rebuild() {
   current = build();
-  sheet().textContent = current;
+  const node = sheet();
+  if (node) node.textContent = current;
   log('CSS reconstruido:', `${(current.length / 1024).toFixed(1)} KB`);
   return current;
 }

@@ -105,6 +105,29 @@ export function start() {
     }
   }
 
+  // Con @run-at document-start el documento puede no tener todavía <html>.
+  // Esperar a la raíz evita abortar en bootStyles y en las clases de features.
+  whenDocumentRoot(startAfterRoot);
+}
+
+function whenDocumentRoot(callback) {
+  if (document.documentElement) {
+    callback();
+    return;
+  }
+  if (typeof MutationObserver !== 'function') {
+    document.addEventListener('DOMContentLoaded', callback, { once: true });
+    return;
+  }
+  const observer = new MutationObserver(() => {
+    if (!document.documentElement) return;
+    observer.disconnect();
+    callback();
+  });
+  observer.observe(document, { childList: true, subtree: true });
+}
+
+function startAfterRoot() {
   // Capa 1: todo lo que no necesita <body>. Se ejecuta en document-start para
   // que el CSS esté en la página antes de que Twitch pinte el tema claro.
   try {
