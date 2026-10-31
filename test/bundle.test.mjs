@@ -71,6 +71,7 @@ test('los hooks declarados en el header son los que necesita el repo', () => {
     '// @match        https://*.twitch.tv/*',
     '@grant        GM_xmlhttpRequest',
     '@connect      raw.githubusercontent.com',
+    '@connect      gql.twitch.tv',
     '@downloadURL',
     '@updateURL',
     `@version      ${VERSION}`,

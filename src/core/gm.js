@@ -110,8 +110,8 @@ export function openInTab(url) {
   return null;
 }
 
-/** GET JSON con timeout. Devuelve `null` en cualquier fallo (sin lanzar). */
-export function getJson(url, { timeout = 10000, headers } = {}) {
+/** GET/POST JSON con timeout. Devuelve `null` en cualquier fallo (sin lanzar). */
+function requestJson({ url, method = 'GET', body, timeout = 10000, headers }) {
   return new Promise((resolve) => {
     let settled = false;
     const done = (value) => {
@@ -126,7 +126,7 @@ export function getJson(url, { timeout = 10000, headers } = {}) {
       const controller = typeof AbortController === 'function' ? new AbortController() : null;
       const timer = controller && timeout > 0 ? setTimeout(() => controller.abort(), timeout) : null;
       try {
-        fetch(url, { headers, signal: controller?.signal })
+        fetch(url, { method, headers, body, signal: controller?.signal })
           .then((res) => (res.ok ? res.json() : null))
           .then(done)
           .catch(() => done(null))
@@ -142,10 +142,11 @@ export function getJson(url, { timeout = 10000, headers } = {}) {
 
     try {
       globalThis.GM_xmlhttpRequest({
-        method: 'GET',
+        method,
         url,
         timeout,
         headers,
+        data: body,
         onload(res) {
           try {
             if (!res || res.status < 200 || res.status >= 300) return done(null);
@@ -160,6 +161,21 @@ export function getJson(url, { timeout = 10000, headers } = {}) {
     } catch {
       done(null);
     }
+  });
+}
+
+export function getJson(url, { timeout = 10000, headers } = {}) {
+  return requestJson({ url, timeout, headers });
+}
+
+/** POST con cuerpo JSON. El `Content-Type` se puede sobrescribir desde `headers`. */
+export function postJson(url, payload, { timeout = 10000, headers } = {}) {
+  return requestJson({
+    url,
+    method: 'POST',
+    body: typeof payload === 'string' ? payload : JSON.stringify(payload),
+    timeout,
+    headers: { 'Content-Type': 'application/json', ...headers },
   });
 }
 

@@ -19,6 +19,7 @@
 // @grant        GM_openInTab
 // @grant        GM_info
 // @connect      raw.githubusercontent.com
+// @connect      gql.twitch.tv
 // @run-at       document-start
 // @noframes
 // ==/UserScript==
