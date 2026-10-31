@@ -29,6 +29,16 @@ export function channelFromHref(href) {
   return decoded.toLowerCase();
 }
 
+/** `true` si la URL lleva el marcador que Twitch pone al entrar en una raid. */
+export function isRaidUrl(href) {
+  if (!href) return false;
+  try {
+    return new URL(href, 'https://www.twitch.tv').searchParams.get('referrer') === 'raid';
+  } catch {
+    return false;
+  }
+}
+
 export function channelFromCard(card) {
   const link =
     (card?.matches?.('a[href]') && card) ||

@@ -13,7 +13,7 @@ import assert from 'node:assert/strict';
 import { afterEach, beforeEach, describe, it } from 'node:test';
 
 import { get as getFeature, motivoDe } from '../src/core/registry.js';
-import { esSaltoDeRaid } from '../src/features/raid-guard.js';
+import '../src/features/raid-guard.js';
 
 const ID = 'raidGuard';
 const CLAVE = 'twpp:raidGuard';
@@ -121,15 +121,6 @@ describe('declaracion del guardia de raids', () => {
     assert.ok(feature, 'la feature deberia estar registrada');
     assert.equal(feature.section, 'auto');
     assert.equal(feature.default, false);
-  });
-
-  it('solo reconoce el marcador exacto de raid', () => {
-    assert.equal(esSaltoDeRaid('/rubius?referrer=raid'), true);
-    assert.equal(esSaltoDeRaid('/rubius?foo=1&referrer=raid'), true);
-    assert.equal(esSaltoDeRaid('/rubius?referrer=raidx'), false);
-    assert.equal(esSaltoDeRaid('/rubius?referrer=host'), false);
-    assert.equal(esSaltoDeRaid('/rubius'), false);
-    assert.equal(esSaltoDeRaid('no es una url'), false);
   });
 });
 

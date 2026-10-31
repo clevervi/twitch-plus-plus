@@ -2142,6 +2142,16 @@ function channelFromHref(href) {
   return decoded.toLowerCase();
 }
 
+/** `true` si la URL lleva el marcador que Twitch pone al entrar en una raid. */
+function isRaidUrl(href) {
+  if (!href) return false;
+  try {
+    return new URL(href, 'https://www.twitch.tv').searchParams.get('referrer') === 'raid';
+  } catch {
+    return false;
+  }
+}
+
 function channelFromCard(card) {
   const link =
     (card?.matches?.('a[href]') && card) ||
@@ -2332,6 +2342,7 @@ function parseViewerText(txt) {
 }
 return {
   channelFromHref: channelFromHref,
+  isRaidUrl: isRaidUrl,
   channelFromCard: channelFromCard,
   sidebarTooltips: sidebarTooltips,
   visibleChannels: visibleChannels,
@@ -4572,7 +4583,7 @@ const { log: log } = __m2;
 const { anotarMotivo: anotarMotivo, defineFeature: defineFeature, limpiarMotivo: limpiarMotivo } = __m6;
 const { read: leerSesion, remove: borrarSesion, write: guardarSesion } = __m34;
 const { get: storeGet } = __m5;
-const { channelFromHref: channelFromHref } = __m15;
+const { channelFromHref: channelFromHref, isRaidUrl: isRaidUrl } = __m15;
 
 /**
  * Volver al canal cuando el streamer vuelve a emitir.
@@ -4621,14 +4632,6 @@ const comprobandoSalida = new Set();
 
 function canalActual() {
   return channelFromHref(globalThis.location?.pathname || '/') || '';
-}
-
-function esSaltoDeRaid() {
-  try {
-    return new URLSearchParams(globalThis.location?.search || '').get('referrer') === 'raid';
-  } catch {
-    return false;
-  }
 }
 
 function limiteMs() {
@@ -4724,7 +4727,7 @@ function enRuta(route) {
   if (!previo?.canal || previo.canal === actual) return;
   if (previo.deSesion && ahora - previo.at > VENTANA_ULTIMO) return;
 
-  if (esSaltoDeRaid()) armar(previo.canal);
+  if (isRaidUrl(globalThis.location?.search || '')) armar(previo.canal);
   else comprobarSalida(previo.canal);
 }
 
@@ -4876,7 +4879,7 @@ const __m36 = (function () {
 const { log: log } = __m2;
 const { anotarMotivo: anotarMotivo, defineFeature: defineFeature, limpiarMotivo: limpiarMotivo } = __m6;
 const { read: leerSesion, remove: borrarSesion, write: guardarSesion } = __m34;
-const { channelFromHref: channelFromHref } = __m15;
+const { channelFromHref: channelFromHref, isRaidUrl: isRaidUrl } = __m15;
 
 /**
  * No dejarse llevar a la raid cuando el directo termina.
@@ -4927,16 +4930,6 @@ function canalDe(url) {
   }
 }
 
-/** `true` si la URL lleva el marcador que Twitch pone al entrar en una raid. */
-function esSaltoDeRaid(href) {
-  if (!href) return false;
-  try {
-    return new URL(href, 'https://www.twitch.tv').searchParams.get('referrer') === 'raid';
-  } catch {
-    return false;
-  }
-}
-
 function esManual(destino) {
   if (!manual.at || Date.now() - manual.at >= VENTANA_MANUAL) return false;
   return !manual.destino || manual.destino === destino;
@@ -4966,7 +4959,7 @@ function alTeclear(evento) {
  * `referrer=raid`: si la raid vuelve a recargar, no queremos rebotar en circulo.
  */
 function alSalir() {
-  if (esSaltoDeRaid(urlActual())) return;
+  if (isRaidUrl(urlActual())) return;
   guardarSesion(CLAVE, { url: urlActual(), at: Date.now() });
 }
 
@@ -5012,7 +5005,7 @@ function enRuta(route) {
 
   const actual = urlActual();
   const previo = anterior;
-  const esRaid = esSaltoDeRaid(actual);
+  const esRaid = isRaidUrl(actual);
 
   if (!esRaid) {
     anterior = { url: actual, canal: route?.canal || '' };
@@ -5030,7 +5023,7 @@ function enRuta(route) {
   }
 
   // Sin un canal anterior del que fiarse no hay a donde volver.
-  if (!previo || esSaltoDeRaid(previo.url)) {
+  if (!previo || isRaidUrl(previo.url)) {
     anterior = { url: actual, canal: route?.canal || '' };
     return;
   }
@@ -5059,7 +5052,7 @@ function enRuta(route) {
  * para no entrar en un bucle si Twitch insiste.
  */
 function comprobarRecarga() {
-  if (!esSaltoDeRaid(urlActual())) return;
+  if (!isRaidUrl(urlActual())) return;
 
   const guardado = leerSesion(CLAVE);
   const manualGuardado = leerSesion(CLAVE_MANUAL);
@@ -5091,7 +5084,7 @@ function arrancar() {
   if (activo) return;
   activo = true;
 
-  anterior = esSaltoDeRaid(urlActual()) ? null : { url: urlActual(), canal: canalDe(urlActual()) };
+  anterior = isRaidUrl(urlActual()) ? null : { url: urlActual(), canal: canalDe(urlActual()) };
 
   globalThis.document?.addEventListener?.('click', recordarManual, true);
   globalThis.document?.addEventListener?.('keydown', alTeclear, true);
@@ -5130,7 +5123,7 @@ defineFeature({
   onRoute: enRuta,
 });
 return {
-  esSaltoDeRaid: esSaltoDeRaid,
+
 };
 })();
 
